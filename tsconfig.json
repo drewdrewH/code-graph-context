@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",  
+    "target": "ES2022", 
+    "moduleResolution": "node", 
+    "outDir": "dist",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strict": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strictNullChecks": true,  
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*", "tools/**/*"]
+}

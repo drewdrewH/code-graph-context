@@ -1,0 +1,3416 @@
+{
+  "nodes": [
+    {
+      "id": "SourceFile:3e47f76f-9414-40cf-abdc-99b39cd05306",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:3e47f76f-9414-40cf-abdc-99b39cd05306",
+        "name": "app.controller.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.controller.ts",
+        "startLine": 1,
+        "endLine": 13,
+        "sourceCode": "import { Controller, Get } from '@nestjs/common';\nimport { AppService } from './app.service';\n\n@Controller()\nexport class AppController {\n  constructor(private readonly appService: AppService) {}\n\n  @Get()\n  getHello(): string {\n    return this.appService.getHello();\n  }\n}\n",
+        "createdAt": "2025-06-27T07:24:47.111Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "iluvcoffee/src/app.controller.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 2,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "ClassDeclaration:01d55b57-6be5-451e-9ae6-4b07e3b11462",
+      "labels": [
+        "Controller",
+        "NestJS",
+        "Class",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ClassDeclaration:01d55b57-6be5-451e-9ae6-4b07e3b11462",
+        "name": "AppController",
+        "coreType": "ClassDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.controller.ts",
+        "startLine": 4,
+        "endLine": 12,
+        "sourceCode": "@Controller()\nexport class AppController {\n  constructor(private readonly appService: AppService) {}\n\n  @Get()\n  getHello(): string {\n    return this.appService.getHello();\n  }\n}",
+        "createdAt": "2025-06-27T07:24:47.113Z",
+        "isExported": true,
+        "visibility": "public",
+        "context": {
+          "isAbstract": false,
+          "isDefaultExport": false,
+          "implementsClauses": [],
+          "decoratorNames": [
+            "Controller"
+          ],
+          "methodCount": 1,
+          "propertyCount": 0,
+          "constructorParameterCount": 1,
+          "basePath": "",
+          "endpointCount": 1,
+          "hasGlobalGuards": false,
+          "hasGlobalPipes": false,
+          "hasGlobalInterceptors": false,
+          "version": null
+        },
+        "semanticType": "NestController"
+      }
+    },
+    {
+      "id": "Decorator:175559f0-526c-4ac9-b131-b7325ea7ed81",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:175559f0-526c-4ac9-b131-b7325ea7ed81",
+        "name": "Controller",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.controller.ts",
+        "startLine": 4,
+        "endLine": 4,
+        "sourceCode": "@Controller()",
+        "createdAt": "2025-06-27T07:24:47.113Z",
+        "context": {
+          "arguments": [],
+          "target": "unknown"
+        }
+      }
+    },
+    {
+      "id": "MethodDeclaration:97262a67-eb5e-482b-a79b-33b58cb7c989",
+      "labels": [
+        "HttpEndpoint",
+        "NestJS",
+        "Method",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "MethodDeclaration:97262a67-eb5e-482b-a79b-33b58cb7c989",
+        "name": "getHello",
+        "coreType": "MethodDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.controller.ts",
+        "startLine": 8,
+        "endLine": 11,
+        "sourceCode": "@Get()\n  getHello(): string {\n    return this.appService.getHello();\n  }",
+        "createdAt": "2025-06-27T07:24:47.114Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isAsync": false,
+          "isAbstract": false,
+          "returnType": "string",
+          "parameterCount": 0,
+          "decoratorNames": [
+            "Get"
+          ],
+          "isGetter": false,
+          "isSetter": false,
+          "overloadCount": 1,
+          "httpMethod": "GET",
+          "path": "",
+          "fullPath": "",
+          "statusCode": null,
+          "hasAuth": false,
+          "hasValidation": false,
+          "guardNames": [],
+          "pipeNames": [],
+          "interceptorNames": []
+        },
+        "semanticType": "HttpEndpoint"
+      }
+    },
+    {
+      "id": "Decorator:043e3f64-bf2d-4547-bb5f-7ade12d3cca8",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:043e3f64-bf2d-4547-bb5f-7ade12d3cca8",
+        "name": "Get",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.controller.ts",
+        "startLine": 8,
+        "endLine": 8,
+        "sourceCode": "@Get()",
+        "createdAt": "2025-06-27T07:24:47.114Z",
+        "context": {
+          "arguments": [],
+          "target": "unknown"
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:97d7b80f-97a5-4677-a5f1-550e6eb90ff8",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:97d7b80f-97a5-4677-a5f1-550e6eb90ff8",
+        "name": "@nestjs/common",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.controller.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { Controller, Get } from '@nestjs/common';",
+        "createdAt": "2025-06-27T07:24:47.114Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/common",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Controller",
+            "Get"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:af3cc762-4bcd-4a95-abdc-e307e79cc534",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:af3cc762-4bcd-4a95-abdc-e307e79cc534",
+        "name": "./app.service",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.controller.ts",
+        "startLine": 2,
+        "endLine": 2,
+        "sourceCode": "import { AppService } from './app.service';",
+        "createdAt": "2025-06-27T07:24:47.114Z",
+        "context": {
+          "moduleSpecifier": "./app.service",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "AppService"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "SourceFile:5281a953-539f-42a0-84c3-e862ac0dac71",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:5281a953-539f-42a0-84c3-e862ac0dac71",
+        "name": "app.module.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.module.ts",
+        "startLine": 1,
+        "endLine": 25,
+        "sourceCode": "import { Module } from '@nestjs/common';\nimport { AppController } from './app.controller';\nimport { AppService } from './app.service';\nimport { CoffeesModule } from './coffees/coffees.module';\nimport { TypeOrmModule } from '@nestjs/typeorm';\n\n@Module({\n  imports: [\n    CoffeesModule,\n    TypeOrmModule.forRoot({\n      type: 'postgres', // type of our database\n      host: 'localhost', // database host\n      port: 5432, // database host\n      username: 'coffee', // username\n      password: 'pass123', // user password\n      database: 'postgres', // name of our database,\n      autoLoadEntities: true, // models will be loaded automatically\n      synchronize: true, // your entities will be synced with the database(recommended: disable in prod)\n    }),\n  ],\n  controllers: [AppController],\n  providers: [AppService],\n})\nexport class AppModule {}\n",
+        "createdAt": "2025-06-27T07:24:47.114Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "iluvcoffee/src/app.module.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 5,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "ClassDeclaration:b20abdf4-d34b-4ec0-8467-87fd312b0a4b",
+      "labels": [
+        "Module",
+        "NestJS",
+        "Class",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ClassDeclaration:b20abdf4-d34b-4ec0-8467-87fd312b0a4b",
+        "name": "AppModule",
+        "coreType": "ClassDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.module.ts",
+        "startLine": 7,
+        "endLine": 24,
+        "sourceCode": "@Module({\n  imports: [\n    CoffeesModule,\n    TypeOrmModule.forRoot({\n      type: 'postgres', // type of our database\n      host: 'localhost', // database host\n      port: 5432, // database host\n      username: 'coffee', // username\n      password: 'pass123', // user password\n      database: 'postgres', // name of our database,\n      autoLoadEntities: true, // models will be loaded automatically\n      synchronize: true, // your entities will be synced with the database(recommended: disable in prod)\n    }),\n  ],\n  controllers: [AppController],\n  providers: [AppService],\n})\nexport class AppModule {}",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "isExported": true,
+        "visibility": "public",
+        "context": {
+          "isAbstract": false,
+          "isDefaultExport": false,
+          "implementsClauses": [],
+          "decoratorNames": [
+            "Module"
+          ],
+          "methodCount": 0,
+          "propertyCount": 0,
+          "constructorParameterCount": 0,
+          "isGlobal": false,
+          "isDynamic": false,
+          "imports": [
+            "CoffeesModule",
+            "TypeOrmModule.forRoot({\n      type: postgres",
+            "// type of our database\n      host: localhost",
+            "// database host\n      port: 5432",
+            "// database host\n      username: coffee",
+            "// username\n      password: pass123",
+            "// user password\n      database: postgres",
+            "// name of our database",
+            "autoLoadEntities: true",
+            "// models will be loaded automatically\n      synchronize: true",
+            "// your entities will be synced with the database(recommended: disable in prod)\n    })"
+          ],
+          "providers": [
+            "AppService"
+          ],
+          "controllers": [
+            "AppController"
+          ],
+          "exports": []
+        },
+        "semanticType": "NestModule"
+      }
+    },
+    {
+      "id": "Decorator:b0e7b674-1322-450e-a985-b9993831d7ee",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:b0e7b674-1322-450e-a985-b9993831d7ee",
+        "name": "Module",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.module.ts",
+        "startLine": 7,
+        "endLine": 23,
+        "sourceCode": "@Module({\n  imports: [\n    CoffeesModule,\n    TypeOrmModule.forRoot({\n      type: 'postgres', // type of our database\n      host: 'localhost', // database host\n      port: 5432, // database host\n      username: 'coffee', // username\n      password: 'pass123', // user password\n      database: 'postgres', // name of our database,\n      autoLoadEntities: true, // models will be loaded automatically\n      synchronize: true, // your entities will be synced with the database(recommended: disable in prod)\n    }),\n  ],\n  controllers: [AppController],\n  providers: [AppService],\n})",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "context": {
+          "arguments": [
+            "{\n  imports: [\n    CoffeesModule,\n    TypeOrmModule.forRoot({\n      type: 'postgres', // type of our database\n      host: 'localhost', // database host\n      port: 5432, // database host\n      username: 'coffee', // username\n      password: 'pass123', // user password\n      database: 'postgres', // name of our database,\n      autoLoadEntities: true, // models will be loaded automatically\n      synchronize: true, // your entities will be synced with the database(recommended: disable in prod)\n    }),\n  ],\n  controllers: [AppController],\n  providers: [AppService],\n}"
+          ],
+          "target": "unknown"
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:c4ada06f-e156-4ae3-b8c9-fc7d65c172f4",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:c4ada06f-e156-4ae3-b8c9-fc7d65c172f4",
+        "name": "@nestjs/common",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.module.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { Module } from '@nestjs/common';",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/common",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Module"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:3f1b1d54-d93f-46c7-9a75-308def7e1917",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:3f1b1d54-d93f-46c7-9a75-308def7e1917",
+        "name": "./app.controller",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.module.ts",
+        "startLine": 2,
+        "endLine": 2,
+        "sourceCode": "import { AppController } from './app.controller';",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "context": {
+          "moduleSpecifier": "./app.controller",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "AppController"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:25404604-81d9-4fec-9f28-1d7fc5b5b576",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:25404604-81d9-4fec-9f28-1d7fc5b5b576",
+        "name": "./app.service",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.module.ts",
+        "startLine": 3,
+        "endLine": 3,
+        "sourceCode": "import { AppService } from './app.service';",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "context": {
+          "moduleSpecifier": "./app.service",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "AppService"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:42481b1f-6ca0-43dc-9126-33cd1d9fe854",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:42481b1f-6ca0-43dc-9126-33cd1d9fe854",
+        "name": "./coffees/coffees.module",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.module.ts",
+        "startLine": 4,
+        "endLine": 4,
+        "sourceCode": "import { CoffeesModule } from './coffees/coffees.module';",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "context": {
+          "moduleSpecifier": "./coffees/coffees.module",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "CoffeesModule"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:90508b4f-dbe1-4494-846a-510df212f118",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:90508b4f-dbe1-4494-846a-510df212f118",
+        "name": "@nestjs/typeorm",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.module.ts",
+        "startLine": 5,
+        "endLine": 5,
+        "sourceCode": "import { TypeOrmModule } from '@nestjs/typeorm';",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/typeorm",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "TypeOrmModule"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "SourceFile:c177ec30-fd93-4d7b-816a-2f0a26b8e8a0",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:c177ec30-fd93-4d7b-816a-2f0a26b8e8a0",
+        "name": "app.service.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.service.ts",
+        "startLine": 1,
+        "endLine": 9,
+        "sourceCode": "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class AppService {\n  getHello(): string {\n    return 'Hello World!';\n  }\n}\n",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "iluvcoffee/src/app.service.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 1,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "ClassDeclaration:b21ebadb-4cd3-4963-83cc-63a9285f29c0",
+      "labels": [
+        "Service",
+        "NestJS",
+        "Class",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ClassDeclaration:b21ebadb-4cd3-4963-83cc-63a9285f29c0",
+        "name": "AppService",
+        "coreType": "ClassDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.service.ts",
+        "startLine": 3,
+        "endLine": 8,
+        "sourceCode": "@Injectable()\nexport class AppService {\n  getHello(): string {\n    return 'Hello World!';\n  }\n}",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "isExported": true,
+        "visibility": "public",
+        "context": {
+          "isAbstract": false,
+          "isDefaultExport": false,
+          "implementsClauses": [],
+          "decoratorNames": [
+            "Injectable"
+          ],
+          "methodCount": 1,
+          "propertyCount": 0,
+          "constructorParameterCount": 0,
+          "scope": "DEFAULT",
+          "isAsync": false,
+          "dependencyCount": 0,
+          "injectionToken": null
+        },
+        "semanticType": "NestService"
+      }
+    },
+    {
+      "id": "Decorator:e5f69c6b-2d68-4a02-943d-00213ae0e23b",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:e5f69c6b-2d68-4a02-943d-00213ae0e23b",
+        "name": "Injectable",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.service.ts",
+        "startLine": 3,
+        "endLine": 3,
+        "sourceCode": "@Injectable()",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "context": {
+          "arguments": [],
+          "target": "unknown"
+        }
+      }
+    },
+    {
+      "id": "MethodDeclaration:104276e5-41fe-4432-8bc5-5b0bf5d0a38d",
+      "labels": [
+        "Method",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "MethodDeclaration:104276e5-41fe-4432-8bc5-5b0bf5d0a38d",
+        "name": "getHello",
+        "coreType": "MethodDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.service.ts",
+        "startLine": 5,
+        "endLine": 7,
+        "sourceCode": "getHello(): string {\n    return 'Hello World!';\n  }",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isAsync": false,
+          "isAbstract": false,
+          "returnType": "string",
+          "parameterCount": 0,
+          "decoratorNames": [],
+          "isGetter": false,
+          "isSetter": false,
+          "overloadCount": 1
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:ede01e90-3670-41cd-a4b0-8910239e79ed",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:ede01e90-3670-41cd-a4b0-8910239e79ed",
+        "name": "@nestjs/common",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/app.service.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { Injectable } from '@nestjs/common';",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/common",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Injectable"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "SourceFile:e57cacf2-e8dd-43fe-8fb8-7604a3f6a9fa",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:e57cacf2-e8dd-43fe-8fb8-7604a3f6a9fa",
+        "name": "main.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/main.ts",
+        "startLine": 1,
+        "endLine": 11,
+        "sourceCode": "import { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module';\nimport { ValidationPipe } from '@nestjs/common';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  app.useGlobalPipes(new ValidationPipe());\n  await app.listen(process.env.PORT ?? 3000);\n}\nbootstrap();\n",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "iluvcoffee/src/main.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 3,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "FunctionDeclaration:0bb363e3-8107-4f4f-b5ba-af586f78a79e",
+      "labels": [
+        "Function",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "FunctionDeclaration:0bb363e3-8107-4f4f-b5ba-af586f78a79e",
+        "name": "bootstrap",
+        "coreType": "FunctionDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/main.ts",
+        "startLine": 5,
+        "endLine": 9,
+        "sourceCode": "async function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  app.useGlobalPipes(new ValidationPipe());\n  await app.listen(process.env.PORT ?? 3000);\n}",
+        "createdAt": "2025-06-27T07:24:47.115Z",
+        "isExported": false
+      }
+    },
+    {
+      "id": "ImportDeclaration:4de48d0b-5dcb-4146-acbd-95e8a05e649e",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:4de48d0b-5dcb-4146-acbd-95e8a05e649e",
+        "name": "@nestjs/core",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/main.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { NestFactory } from '@nestjs/core';",
+        "createdAt": "2025-06-27T07:24:47.951Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/core",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "NestFactory"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:6af2438b-ec02-44c7-aef6-d36f55fd82ca",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:6af2438b-ec02-44c7-aef6-d36f55fd82ca",
+        "name": "./app.module",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/main.ts",
+        "startLine": 2,
+        "endLine": 2,
+        "sourceCode": "import { AppModule } from './app.module';",
+        "createdAt": "2025-06-27T07:24:47.951Z",
+        "context": {
+          "moduleSpecifier": "./app.module",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "AppModule"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:8411fdf1-7d1f-4bc8-b005-829a542b75b1",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:8411fdf1-7d1f-4bc8-b005-829a542b75b1",
+        "name": "@nestjs/common",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/main.ts",
+        "startLine": 3,
+        "endLine": 3,
+        "sourceCode": "import { ValidationPipe } from '@nestjs/common';",
+        "createdAt": "2025-06-27T07:24:47.951Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/common",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "ValidationPipe"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "SourceFile:21074107-8340-4666-9448-e391bc1c26a6",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:21074107-8340-4666-9448-e391bc1c26a6",
+        "name": "coffees.controller.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.controller.ts",
+        "startLine": 1,
+        "endLine": 13,
+        "sourceCode": "import { Controller, Get } from '@nestjs/common';\nimport { CoffeesService } from './coffees.service';\n\n@Controller('coffees')\nexport class CoffeesController {\n  constructor(private readonly coffeesService: CoffeesService) {}\n\n  @Get()\n  findAll() {\n    return 'This action returns all coffees';\n  }\n}\n",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "src/coffees/coffees.controller.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 2,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "ClassDeclaration:b9baba5a-2d42-408e-9de0-0187a8ac78e1",
+      "labels": [
+        "Controller",
+        "NestJS",
+        "Class",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ClassDeclaration:b9baba5a-2d42-408e-9de0-0187a8ac78e1",
+        "name": "CoffeesController",
+        "coreType": "ClassDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.controller.ts",
+        "startLine": 4,
+        "endLine": 12,
+        "sourceCode": "@Controller('coffees')\nexport class CoffeesController {\n  constructor(private readonly coffeesService: CoffeesService) {}\n\n  @Get()\n  findAll() {\n    return 'This action returns all coffees';\n  }\n}",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "isExported": true,
+        "visibility": "public",
+        "context": {
+          "isAbstract": false,
+          "isDefaultExport": false,
+          "implementsClauses": [],
+          "decoratorNames": [
+            "Controller"
+          ],
+          "methodCount": 1,
+          "propertyCount": 0,
+          "constructorParameterCount": 1,
+          "basePath": "coffees",
+          "endpointCount": 1,
+          "hasGlobalGuards": false,
+          "hasGlobalPipes": false,
+          "hasGlobalInterceptors": false,
+          "version": null
+        },
+        "semanticType": "NestController"
+      }
+    },
+    {
+      "id": "Decorator:e25d5af6-f47c-463b-9fc2-ca5d8c0b6b44",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:e25d5af6-f47c-463b-9fc2-ca5d8c0b6b44",
+        "name": "Controller",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.controller.ts",
+        "startLine": 4,
+        "endLine": 4,
+        "sourceCode": "@Controller('coffees')",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "arguments": [
+            "'coffees'"
+          ],
+          "target": "unknown"
+        }
+      }
+    },
+    {
+      "id": "MethodDeclaration:c100af20-6280-49a0-b649-90eb2eb7b01c",
+      "labels": [
+        "HttpEndpoint",
+        "NestJS",
+        "Method",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "MethodDeclaration:c100af20-6280-49a0-b649-90eb2eb7b01c",
+        "name": "findAll",
+        "coreType": "MethodDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.controller.ts",
+        "startLine": 8,
+        "endLine": 11,
+        "sourceCode": "@Get()\n  findAll() {\n    return 'This action returns all coffees';\n  }",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isAsync": false,
+          "isAbstract": false,
+          "returnType": "void",
+          "parameterCount": 0,
+          "decoratorNames": [
+            "Get"
+          ],
+          "isGetter": false,
+          "isSetter": false,
+          "overloadCount": 1,
+          "httpMethod": "GET",
+          "path": "",
+          "fullPath": "",
+          "statusCode": null,
+          "hasAuth": false,
+          "hasValidation": false,
+          "guardNames": [],
+          "pipeNames": [],
+          "interceptorNames": []
+        },
+        "semanticType": "HttpEndpoint"
+      }
+    },
+    {
+      "id": "Decorator:7ac13215-1d9a-4060-8c3d-0b65019a0e0e",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:7ac13215-1d9a-4060-8c3d-0b65019a0e0e",
+        "name": "Get",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.controller.ts",
+        "startLine": 8,
+        "endLine": 8,
+        "sourceCode": "@Get()",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "arguments": [],
+          "target": "unknown"
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:421770fa-4936-45ed-942d-22ecf678e15b",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:421770fa-4936-45ed-942d-22ecf678e15b",
+        "name": "@nestjs/common",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.controller.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { Controller, Get } from '@nestjs/common';",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/common",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Controller",
+            "Get"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:89f63da4-4279-42ae-a711-7412e126c76f",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:89f63da4-4279-42ae-a711-7412e126c76f",
+        "name": "./coffees.service",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.controller.ts",
+        "startLine": 2,
+        "endLine": 2,
+        "sourceCode": "import { CoffeesService } from './coffees.service';",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "moduleSpecifier": "./coffees.service",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "CoffeesService"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "SourceFile:89ad1954-0415-4324-88b9-f8b4055d796b",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:89ad1954-0415-4324-88b9-f8b4055d796b",
+        "name": "coffees.module.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.module.ts",
+        "startLine": 1,
+        "endLine": 13,
+        "sourceCode": "import { Module } from '@nestjs/common';\nimport { CoffeesController } from './coffees.controller';\nimport { CoffeesService } from './coffees.service';\nimport { Coffee } from './entities/coffee.entity';\nimport { TypeOrmModule } from '@nestjs/typeorm';\n\n@Module({\n  imports: [TypeOrmModule.forFeature([Coffee])],\n  controllers: [CoffeesController],\n  providers: [CoffeesService],\n})\nexport class CoffeesModule {}\n",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "src/coffees/coffees.module.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 5,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "ClassDeclaration:1646eead-3315-4a0f-af9c-fe065402a35f",
+      "labels": [
+        "Module",
+        "NestJS",
+        "Class",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ClassDeclaration:1646eead-3315-4a0f-af9c-fe065402a35f",
+        "name": "CoffeesModule",
+        "coreType": "ClassDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.module.ts",
+        "startLine": 7,
+        "endLine": 12,
+        "sourceCode": "@Module({\n  imports: [TypeOrmModule.forFeature([Coffee])],\n  controllers: [CoffeesController],\n  providers: [CoffeesService],\n})\nexport class CoffeesModule {}",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "isExported": true,
+        "visibility": "public",
+        "context": {
+          "isAbstract": false,
+          "isDefaultExport": false,
+          "implementsClauses": [],
+          "decoratorNames": [
+            "Module"
+          ],
+          "methodCount": 0,
+          "propertyCount": 0,
+          "constructorParameterCount": 0,
+          "isGlobal": false,
+          "isDynamic": false,
+          "imports": [
+            "TypeOrmModule.forFeature([Coffee"
+          ],
+          "providers": [
+            "CoffeesService"
+          ],
+          "controllers": [
+            "CoffeesController"
+          ],
+          "exports": []
+        },
+        "semanticType": "NestModule"
+      }
+    },
+    {
+      "id": "Decorator:433a168c-e305-4047-a647-2072d786cbf4",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:433a168c-e305-4047-a647-2072d786cbf4",
+        "name": "Module",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.module.ts",
+        "startLine": 7,
+        "endLine": 11,
+        "sourceCode": "@Module({\n  imports: [TypeOrmModule.forFeature([Coffee])],\n  controllers: [CoffeesController],\n  providers: [CoffeesService],\n})",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "arguments": [
+            "{\n  imports: [TypeOrmModule.forFeature([Coffee])],\n  controllers: [CoffeesController],\n  providers: [CoffeesService],\n}"
+          ],
+          "target": "unknown"
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:3ee2010e-0038-4084-aaaf-11898361aea9",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:3ee2010e-0038-4084-aaaf-11898361aea9",
+        "name": "@nestjs/common",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.module.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { Module } from '@nestjs/common';",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/common",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Module"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:f543e3d8-dc60-4fa7-87ad-f6948fbe7f4d",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:f543e3d8-dc60-4fa7-87ad-f6948fbe7f4d",
+        "name": "./coffees.controller",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.module.ts",
+        "startLine": 2,
+        "endLine": 2,
+        "sourceCode": "import { CoffeesController } from './coffees.controller';",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "moduleSpecifier": "./coffees.controller",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "CoffeesController"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:6f7f7861-8da5-4195-a4f0-681d4e1fb817",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:6f7f7861-8da5-4195-a4f0-681d4e1fb817",
+        "name": "./coffees.service",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.module.ts",
+        "startLine": 3,
+        "endLine": 3,
+        "sourceCode": "import { CoffeesService } from './coffees.service';",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "moduleSpecifier": "./coffees.service",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "CoffeesService"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:358700c1-7f9a-4824-8098-57451d183eb0",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:358700c1-7f9a-4824-8098-57451d183eb0",
+        "name": "./entities/coffee.entity",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.module.ts",
+        "startLine": 4,
+        "endLine": 4,
+        "sourceCode": "import { Coffee } from './entities/coffee.entity';",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "moduleSpecifier": "./entities/coffee.entity",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Coffee"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:fd3e963b-ae69-43c3-96ea-2dcbd97860c5",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:fd3e963b-ae69-43c3-96ea-2dcbd97860c5",
+        "name": "@nestjs/typeorm",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.module.ts",
+        "startLine": 5,
+        "endLine": 5,
+        "sourceCode": "import { TypeOrmModule } from '@nestjs/typeorm';",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/typeorm",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "TypeOrmModule"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "SourceFile:fb3a215d-fe6c-401a-97ae-aade3aa24b95",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:fb3a215d-fe6c-401a-97ae-aade3aa24b95",
+        "name": "coffees.service.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 1,
+        "endLine": 48,
+        "sourceCode": "import { Injectable, NotFoundException } from '@nestjs/common';\nimport { InjectRepository } from '@nestjs/typeorm';\nimport { Repository } from 'typeorm';\nimport { CreateCoffeeDto } from './dto/create-coffee.dto';\nimport { UpdateCoffeeDto } from './dto/update-coffee.dto';\nimport { Coffee } from './entities/coffee.entity';\n\n@Injectable()\nexport class CoffeesService {\n  constructor(\n    @InjectRepository(Coffee)\n    private readonly coffeeRepository: Repository<Coffee>,\n  ) {}\n\n  findAll() {\n    return this.coffeeRepository.find();\n  }\n\n  async findOne(id: string) {\n    const coffee = await this.coffeeRepository.findOne({ where: { id: +id } });\n    if (!coffee) {\n      throw new NotFoundException(`Coffee #${id} not found`);\n    }\n    return coffee;\n  }\n\n  create(createCoffeeDto: CreateCoffeeDto) {\n    const coffee = this.coffeeRepository.create(createCoffeeDto);\n    return this.coffeeRepository.save(coffee);\n  }\n\n  async update(id: string, updateCoffeeDto: UpdateCoffeeDto) {\n    const coffee = await this.coffeeRepository.preload({\n      id: +id,\n      ...updateCoffeeDto,\n    });\n    if (!coffee) {\n      throw new NotFoundException(`Coffee #${id} not found`);\n    }\n    return this.coffeeRepository.save(coffee);\n  }\n\n  async remove(id: string) {\n    const coffee = await this.findOne(id);\n    return this.coffeeRepository.remove(coffee);\n  }\n}\n",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "src/coffees/coffees.service.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 6,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+      "labels": [
+        "Service",
+        "NestJS",
+        "Class",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+        "name": "CoffeesService",
+        "coreType": "ClassDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 8,
+        "endLine": 47,
+        "sourceCode": "@Injectable()\nexport class CoffeesService {\n  constructor(\n    @InjectRepository(Coffee)\n    private readonly coffeeRepository: Repository<Coffee>,\n  ) {}\n\n  findAll() {\n    return this.coffeeRepository.find();\n  }\n\n  async findOne(id: string) {\n    const coffee = await this.coffeeRepository.findOne({ where: { id: +id } });\n    if (!coffee) {\n      throw new NotFoundException(`Coffee #${id} not found`);\n    }\n    return coffee;\n  }\n\n  create(createCoffeeDto: CreateCoffeeDto) {\n    const coffee = this.coffeeRepository.create(createCoffeeDto);\n    return this.coffeeRepository.save(coffee);\n  }\n\n  async update(id: string, updateCoffeeDto: UpdateCoffeeDto) {\n    const coffee = await this.coffeeRepository.preload({\n      id: +id,\n      ...updateCoffeeDto,\n    });\n    if (!coffee) {\n      throw new NotFoundException(`Coffee #${id} not found`);\n    }\n    return this.coffeeRepository.save(coffee);\n  }\n\n  async remove(id: string) {\n    const coffee = await this.findOne(id);\n    return this.coffeeRepository.remove(coffee);\n  }\n}",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "isExported": true,
+        "visibility": "public",
+        "context": {
+          "isAbstract": false,
+          "isDefaultExport": false,
+          "implementsClauses": [],
+          "decoratorNames": [
+            "Injectable"
+          ],
+          "methodCount": 5,
+          "propertyCount": 0,
+          "constructorParameterCount": 1,
+          "scope": "DEFAULT",
+          "isAsync": true,
+          "dependencyCount": 1,
+          "injectionToken": null
+        },
+        "semanticType": "NestService"
+      }
+    },
+    {
+      "id": "Decorator:78b23cdc-e824-4d33-80f2-6bb17fc00da3",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:78b23cdc-e824-4d33-80f2-6bb17fc00da3",
+        "name": "Injectable",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 8,
+        "endLine": 8,
+        "sourceCode": "@Injectable()",
+        "createdAt": "2025-06-27T07:24:47.953Z",
+        "context": {
+          "arguments": [],
+          "target": "unknown"
+        }
+      }
+    },
+    {
+      "id": "MethodDeclaration:b672cb87-6294-453f-9f2c-2c6fb07a05c3",
+      "labels": [
+        "Method",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "MethodDeclaration:b672cb87-6294-453f-9f2c-2c6fb07a05c3",
+        "name": "findAll",
+        "coreType": "MethodDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 15,
+        "endLine": 17,
+        "sourceCode": "findAll() {\n    return this.coffeeRepository.find();\n  }",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isAsync": false,
+          "isAbstract": false,
+          "returnType": "void",
+          "parameterCount": 0,
+          "decoratorNames": [],
+          "isGetter": false,
+          "isSetter": false,
+          "overloadCount": 1
+        }
+      }
+    },
+    {
+      "id": "MethodDeclaration:a3e6fa71-1898-4d93-9fba-09bf7e16ea0c",
+      "labels": [
+        "Method",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "MethodDeclaration:a3e6fa71-1898-4d93-9fba-09bf7e16ea0c",
+        "name": "findOne",
+        "coreType": "MethodDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 19,
+        "endLine": 25,
+        "sourceCode": "async findOne(id: string) {\n    const coffee = await this.coffeeRepository.findOne({ where: { id: +id } });\n    if (!coffee) {\n      throw new NotFoundException(`Coffee #${id} not found`);\n    }\n    return coffee;\n  }",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isAsync": true,
+          "isAbstract": false,
+          "returnType": "void",
+          "parameterCount": 1,
+          "decoratorNames": [],
+          "isGetter": false,
+          "isSetter": false,
+          "overloadCount": 1
+        }
+      }
+    },
+    {
+      "id": "ParameterDeclaration:a572451f-617a-4959-9bbf-a18519f8f014",
+      "labels": [
+        "Parameter",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ParameterDeclaration:a572451f-617a-4959-9bbf-a18519f8f014",
+        "name": "id",
+        "coreType": "ParameterDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 19,
+        "endLine": 19,
+        "sourceCode": "id: string",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "type": "string",
+          "isOptional": false,
+          "isRestParameter": false,
+          "hasDefaultValue": false,
+          "decoratorNames": [],
+          "parameterIndex": 0
+        }
+      }
+    },
+    {
+      "id": "MethodDeclaration:cdbfd074-f0ee-449b-a989-2bbc83c53014",
+      "labels": [
+        "Method",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "MethodDeclaration:cdbfd074-f0ee-449b-a989-2bbc83c53014",
+        "name": "create",
+        "coreType": "MethodDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 27,
+        "endLine": 30,
+        "sourceCode": "create(createCoffeeDto: CreateCoffeeDto) {\n    const coffee = this.coffeeRepository.create(createCoffeeDto);\n    return this.coffeeRepository.save(coffee);\n  }",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isAsync": false,
+          "isAbstract": false,
+          "returnType": "void",
+          "parameterCount": 1,
+          "decoratorNames": [],
+          "isGetter": false,
+          "isSetter": false,
+          "overloadCount": 1
+        }
+      }
+    },
+    {
+      "id": "ParameterDeclaration:9f56b188-4aa5-4b40-9b78-a3f953f6d5a1",
+      "labels": [
+        "Parameter",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ParameterDeclaration:9f56b188-4aa5-4b40-9b78-a3f953f6d5a1",
+        "name": "createCoffeeDto",
+        "coreType": "ParameterDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 27,
+        "endLine": 27,
+        "sourceCode": "createCoffeeDto: CreateCoffeeDto",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "type": "CreateCoffeeDto",
+          "isOptional": false,
+          "isRestParameter": false,
+          "hasDefaultValue": false,
+          "decoratorNames": [],
+          "parameterIndex": 0
+        }
+      }
+    },
+    {
+      "id": "MethodDeclaration:f34c6e44-ed32-4f32-85c9-a4c14def8ea3",
+      "labels": [
+        "Method",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "MethodDeclaration:f34c6e44-ed32-4f32-85c9-a4c14def8ea3",
+        "name": "update",
+        "coreType": "MethodDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 32,
+        "endLine": 41,
+        "sourceCode": "async update(id: string, updateCoffeeDto: UpdateCoffeeDto) {\n    const coffee = await this.coffeeRepository.preload({\n      id: +id,\n      ...updateCoffeeDto,\n    });\n    if (!coffee) {\n      throw new NotFoundException(`Coffee #${id} not found`);\n    }\n    return this.coffeeRepository.save(coffee);\n  }",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isAsync": true,
+          "isAbstract": false,
+          "returnType": "void",
+          "parameterCount": 2,
+          "decoratorNames": [],
+          "isGetter": false,
+          "isSetter": false,
+          "overloadCount": 1
+        }
+      }
+    },
+    {
+      "id": "ParameterDeclaration:3f75a6b7-afa5-4a5d-8f45-9f6217849673",
+      "labels": [
+        "Parameter",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ParameterDeclaration:3f75a6b7-afa5-4a5d-8f45-9f6217849673",
+        "name": "id",
+        "coreType": "ParameterDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 32,
+        "endLine": 32,
+        "sourceCode": "id: string",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "type": "string",
+          "isOptional": false,
+          "isRestParameter": false,
+          "hasDefaultValue": false,
+          "decoratorNames": [],
+          "parameterIndex": 0
+        }
+      }
+    },
+    {
+      "id": "ParameterDeclaration:66fcab99-4e31-4792-b326-dce12a3ded7a",
+      "labels": [
+        "Parameter",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ParameterDeclaration:66fcab99-4e31-4792-b326-dce12a3ded7a",
+        "name": "updateCoffeeDto",
+        "coreType": "ParameterDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 32,
+        "endLine": 32,
+        "sourceCode": "updateCoffeeDto: UpdateCoffeeDto",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "type": "UpdateCoffeeDto",
+          "isOptional": false,
+          "isRestParameter": false,
+          "hasDefaultValue": false,
+          "decoratorNames": [],
+          "parameterIndex": 2
+        }
+      }
+    },
+    {
+      "id": "MethodDeclaration:afa14116-5322-423c-83ae-befe3edde6f4",
+      "labels": [
+        "Method",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "MethodDeclaration:afa14116-5322-423c-83ae-befe3edde6f4",
+        "name": "remove",
+        "coreType": "MethodDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 43,
+        "endLine": 46,
+        "sourceCode": "async remove(id: string) {\n    const coffee = await this.findOne(id);\n    return this.coffeeRepository.remove(coffee);\n  }",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isAsync": true,
+          "isAbstract": false,
+          "returnType": "void",
+          "parameterCount": 1,
+          "decoratorNames": [],
+          "isGetter": false,
+          "isSetter": false,
+          "overloadCount": 1
+        }
+      }
+    },
+    {
+      "id": "ParameterDeclaration:66b01262-4e03-410b-a975-d85db87d762d",
+      "labels": [
+        "Parameter",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ParameterDeclaration:66b01262-4e03-410b-a975-d85db87d762d",
+        "name": "id",
+        "coreType": "ParameterDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 43,
+        "endLine": 43,
+        "sourceCode": "id: string",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "type": "string",
+          "isOptional": false,
+          "isRestParameter": false,
+          "hasDefaultValue": false,
+          "decoratorNames": [],
+          "parameterIndex": 0
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:3ff3293b-4cb3-4766-97a3-d42d788a4270",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:3ff3293b-4cb3-4766-97a3-d42d788a4270",
+        "name": "@nestjs/common",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { Injectable, NotFoundException } from '@nestjs/common';",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/common",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Injectable",
+            "NotFoundException"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:68dfd14a-8765-4239-8554-95183af986ea",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:68dfd14a-8765-4239-8554-95183af986ea",
+        "name": "@nestjs/typeorm",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 2,
+        "endLine": 2,
+        "sourceCode": "import { InjectRepository } from '@nestjs/typeorm';",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/typeorm",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "InjectRepository"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:10858fc5-3e97-4dd1-942e-f03b06a4b722",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:10858fc5-3e97-4dd1-942e-f03b06a4b722",
+        "name": "typeorm",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 3,
+        "endLine": 3,
+        "sourceCode": "import { Repository } from 'typeorm';",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "moduleSpecifier": "typeorm",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Repository"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:0d5dabb6-0560-4a66-9ae2-01ce557b91e3",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:0d5dabb6-0560-4a66-9ae2-01ce557b91e3",
+        "name": "./dto/create-coffee.dto",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 4,
+        "endLine": 4,
+        "sourceCode": "import { CreateCoffeeDto } from './dto/create-coffee.dto';",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "moduleSpecifier": "./dto/create-coffee.dto",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "CreateCoffeeDto"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:d3611d28-8287-4925-a31f-2746785b77bd",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:d3611d28-8287-4925-a31f-2746785b77bd",
+        "name": "./dto/update-coffee.dto",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 5,
+        "endLine": 5,
+        "sourceCode": "import { UpdateCoffeeDto } from './dto/update-coffee.dto';",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "moduleSpecifier": "./dto/update-coffee.dto",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "UpdateCoffeeDto"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:0f48f9d8-980d-47f8-ac41-eb58984f9211",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:0f48f9d8-980d-47f8-ac41-eb58984f9211",
+        "name": "./entities/coffee.entity",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/coffees.service.ts",
+        "startLine": 6,
+        "endLine": 6,
+        "sourceCode": "import { Coffee } from './entities/coffee.entity';",
+        "createdAt": "2025-06-27T07:24:47.954Z",
+        "context": {
+          "moduleSpecifier": "./entities/coffee.entity",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Coffee"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "SourceFile:b4cf8b2d-981f-405d-8f73-c0bd11b4b737",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:b4cf8b2d-981f-405d-8f73-c0bd11b4b737",
+        "name": "create-coffee.dto.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/create-coffee.dto.ts",
+        "startLine": 1,
+        "endLine": 13,
+        "sourceCode": "import { IsString } from 'class-validator';\n\nexport class CreateCoffeeDto {\n  @IsString()\n  readonly name: string;\n\n  @IsString()\n  readonly brand: string;\n\n  @IsString({ each: true })\n  readonly flavors: string[];\n}\n",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "coffees/dto/create-coffee.dto.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 1,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "ClassDeclaration:60e2e33d-ce05-4ee1-9b23-57184f3998ae",
+      "labels": [
+        "DTO",
+        "NestJS",
+        "Class",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ClassDeclaration:60e2e33d-ce05-4ee1-9b23-57184f3998ae",
+        "name": "CreateCoffeeDto",
+        "coreType": "ClassDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/create-coffee.dto.ts",
+        "startLine": 3,
+        "endLine": 12,
+        "sourceCode": "export class CreateCoffeeDto {\n  @IsString()\n  readonly name: string;\n\n  @IsString()\n  readonly brand: string;\n\n  @IsString({ each: true })\n  readonly flavors: string[];\n}",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "isExported": true,
+        "visibility": "public",
+        "context": {
+          "isAbstract": false,
+          "isDefaultExport": false,
+          "implementsClauses": [],
+          "decoratorNames": [],
+          "methodCount": 0,
+          "propertyCount": 3,
+          "constructorParameterCount": 0,
+          "validationDecorators": [
+            "IsString"
+          ],
+          "isRequestDto": false,
+          "isResponseDto": false,
+          "isPartialDto": false,
+          "baseClass": null
+        },
+        "semanticType": "DTOClass"
+      }
+    },
+    {
+      "id": "PropertyDeclaration:e6800d8f-19d3-4043-88a1-4587b71f5b73",
+      "labels": [
+        "Property",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "PropertyDeclaration:e6800d8f-19d3-4043-88a1-4587b71f5b73",
+        "name": "name",
+        "coreType": "PropertyDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/create-coffee.dto.ts",
+        "startLine": 4,
+        "endLine": 5,
+        "sourceCode": "@IsString()\n  readonly name: string;",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isReadonly": true,
+          "type": "string",
+          "hasInitializer": false,
+          "decoratorNames": [
+            "IsString"
+          ],
+          "isOptional": false
+        }
+      }
+    },
+    {
+      "id": "Decorator:1038780a-8da3-4260-8a2d-cc72650cb6fe",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:1038780a-8da3-4260-8a2d-cc72650cb6fe",
+        "name": "IsString",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/create-coffee.dto.ts",
+        "startLine": 4,
+        "endLine": 4,
+        "sourceCode": "@IsString()",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "arguments": [],
+          "target": "method"
+        }
+      }
+    },
+    {
+      "id": "PropertyDeclaration:8d355785-b1c6-442c-8b85-599a988242bd",
+      "labels": [
+        "Property",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "PropertyDeclaration:8d355785-b1c6-442c-8b85-599a988242bd",
+        "name": "brand",
+        "coreType": "PropertyDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/create-coffee.dto.ts",
+        "startLine": 7,
+        "endLine": 8,
+        "sourceCode": "@IsString()\n  readonly brand: string;",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isReadonly": true,
+          "type": "string",
+          "hasInitializer": false,
+          "decoratorNames": [
+            "IsString"
+          ],
+          "isOptional": false
+        }
+      }
+    },
+    {
+      "id": "Decorator:d64c30c1-ec28-4b0f-bfde-011d352b0cf4",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:d64c30c1-ec28-4b0f-bfde-011d352b0cf4",
+        "name": "IsString",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/create-coffee.dto.ts",
+        "startLine": 7,
+        "endLine": 7,
+        "sourceCode": "@IsString()",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "arguments": [],
+          "target": "method"
+        }
+      }
+    },
+    {
+      "id": "PropertyDeclaration:1754dc18-b03d-4c87-921e-276150d4a8a1",
+      "labels": [
+        "Property",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "PropertyDeclaration:1754dc18-b03d-4c87-921e-276150d4a8a1",
+        "name": "flavors",
+        "coreType": "PropertyDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/create-coffee.dto.ts",
+        "startLine": 10,
+        "endLine": 11,
+        "sourceCode": "@IsString({ each: true })\n  readonly flavors: string[];",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isReadonly": true,
+          "type": "string[]",
+          "hasInitializer": false,
+          "decoratorNames": [
+            "IsString"
+          ],
+          "isOptional": false
+        }
+      }
+    },
+    {
+      "id": "Decorator:aedc580b-d763-48cb-a105-10923c7ac07b",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:aedc580b-d763-48cb-a105-10923c7ac07b",
+        "name": "IsString",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/create-coffee.dto.ts",
+        "startLine": 10,
+        "endLine": 10,
+        "sourceCode": "@IsString({ each: true })",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "arguments": [
+            "{ each: true }"
+          ],
+          "target": "method"
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:313e4fc4-7e39-41fd-8887-649507792261",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:313e4fc4-7e39-41fd-8887-649507792261",
+        "name": "class-validator",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/create-coffee.dto.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { IsString } from 'class-validator';",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "moduleSpecifier": "class-validator",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "IsString"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "SourceFile:c968a502-8e92-464f-ab48-e4a98c2a9004",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:c968a502-8e92-464f-ab48-e4a98c2a9004",
+        "name": "update-coffee.dto.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/update-coffee.dto.ts",
+        "startLine": 1,
+        "endLine": 5,
+        "sourceCode": "import { PartialType } from '@nestjs/mapped-types';\nimport { CreateCoffeeDto } from './create-coffee.dto';\n\nexport class UpdateCoffeeDto extends PartialType(CreateCoffeeDto) {}\n",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "coffees/dto/update-coffee.dto.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 2,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "ClassDeclaration:04c2ef52-36e4-4d1e-ad61-cc7626a8d16b",
+      "labels": [
+        "DTO",
+        "NestJS",
+        "Class",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ClassDeclaration:04c2ef52-36e4-4d1e-ad61-cc7626a8d16b",
+        "name": "UpdateCoffeeDto",
+        "coreType": "ClassDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/update-coffee.dto.ts",
+        "startLine": 4,
+        "endLine": 4,
+        "sourceCode": "export class UpdateCoffeeDto extends PartialType(CreateCoffeeDto) {}",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "isExported": true,
+        "visibility": "public",
+        "context": {
+          "isAbstract": false,
+          "isDefaultExport": false,
+          "extendsClause": "PartialType(CreateCoffeeDto)",
+          "implementsClauses": [],
+          "decoratorNames": [],
+          "methodCount": 0,
+          "propertyCount": 0,
+          "constructorParameterCount": 0,
+          "validationDecorators": [],
+          "isRequestDto": false,
+          "isResponseDto": false,
+          "isPartialDto": false,
+          "baseClass": null
+        },
+        "semanticType": "DTOClass"
+      }
+    },
+    {
+      "id": "ImportDeclaration:7ea1a5f1-f9bf-4fc9-a288-b229036ad8c3",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:7ea1a5f1-f9bf-4fc9-a288-b229036ad8c3",
+        "name": "@nestjs/mapped-types",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/update-coffee.dto.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { PartialType } from '@nestjs/mapped-types';",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "moduleSpecifier": "@nestjs/mapped-types",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "PartialType"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:2d2b58cb-e111-4c9e-aa01-13dc94377669",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:2d2b58cb-e111-4c9e-aa01-13dc94377669",
+        "name": "./create-coffee.dto",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/dto/update-coffee.dto.ts",
+        "startLine": 2,
+        "endLine": 2,
+        "sourceCode": "import { CreateCoffeeDto } from './create-coffee.dto';",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "moduleSpecifier": "./create-coffee.dto",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "CreateCoffeeDto"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    },
+    {
+      "id": "SourceFile:f017b8c4-24bf-4f2b-a257-ca05c49e91ae",
+      "labels": [
+        "SourceFile",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "SourceFile:f017b8c4-24bf-4f2b-a257-ca05c49e91ae",
+        "name": "coffee.entity.ts",
+        "coreType": "SourceFile",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 1,
+        "endLine": 17,
+        "sourceCode": "import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';\n\n@Entity() // sql table === 'coffee'\nexport class Coffee {\n  @PrimaryGeneratedColumn()\n  id: number;\n\n  @Column()\n  name: string;\n\n  @Column()\n  brand: string;\n\n  @Column('json', { nullable: true })\n  flavors: string[];\n}\n",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "isExported": false,
+        "context": {
+          "extension": ".ts",
+          "relativePath": "coffees/entities/coffee.entity.ts",
+          "isTestFile": false,
+          "isDeclarationFile": false,
+          "moduleKind": "ES6",
+          "importCount": 1,
+          "exportCount": 0,
+          "declarationCount": 1
+        }
+      }
+    },
+    {
+      "id": "ClassDeclaration:9b0ceeca-868a-4bda-809b-c926f1e57978",
+      "labels": [
+        "Entity",
+        "NestJS",
+        "Class",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ClassDeclaration:9b0ceeca-868a-4bda-809b-c926f1e57978",
+        "name": "Coffee",
+        "coreType": "ClassDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 3,
+        "endLine": 16,
+        "sourceCode": "@Entity() // sql table === 'coffee'\nexport class Coffee {\n  @PrimaryGeneratedColumn()\n  id: number;\n\n  @Column()\n  name: string;\n\n  @Column()\n  brand: string;\n\n  @Column('json', { nullable: true })\n  flavors: string[];\n}",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "isExported": true,
+        "visibility": "public",
+        "context": {
+          "isAbstract": false,
+          "isDefaultExport": false,
+          "implementsClauses": [],
+          "decoratorNames": [
+            "Entity"
+          ],
+          "methodCount": 0,
+          "propertyCount": 4,
+          "constructorParameterCount": 0,
+          "tableName": null,
+          "columnCount": 4,
+          "hasRelations": false
+        },
+        "semanticType": "EntityClass"
+      }
+    },
+    {
+      "id": "Decorator:784f1de2-9efe-4aab-a976-84a37d825181",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:784f1de2-9efe-4aab-a976-84a37d825181",
+        "name": "Entity",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 3,
+        "endLine": 3,
+        "sourceCode": "@Entity()",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "arguments": [],
+          "target": "unknown"
+        }
+      }
+    },
+    {
+      "id": "PropertyDeclaration:7aa5eb05-1479-454d-9521-2030b61dbd29",
+      "labels": [
+        "Property",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "PropertyDeclaration:7aa5eb05-1479-454d-9521-2030b61dbd29",
+        "name": "id",
+        "coreType": "PropertyDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 5,
+        "endLine": 6,
+        "sourceCode": "@PrimaryGeneratedColumn()\n  id: number;",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isReadonly": false,
+          "type": "number",
+          "hasInitializer": false,
+          "decoratorNames": [
+            "PrimaryGeneratedColumn"
+          ],
+          "isOptional": false
+        }
+      }
+    },
+    {
+      "id": "Decorator:2b6cf87e-4462-41a9-8c72-0f1823ccba5c",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:2b6cf87e-4462-41a9-8c72-0f1823ccba5c",
+        "name": "PrimaryGeneratedColumn",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 5,
+        "endLine": 5,
+        "sourceCode": "@PrimaryGeneratedColumn()",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "arguments": [],
+          "target": "method"
+        }
+      }
+    },
+    {
+      "id": "PropertyDeclaration:8e3c7bd6-b485-4ef8-8481-0ed1f3d7a6d9",
+      "labels": [
+        "Property",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "PropertyDeclaration:8e3c7bd6-b485-4ef8-8481-0ed1f3d7a6d9",
+        "name": "name",
+        "coreType": "PropertyDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 8,
+        "endLine": 9,
+        "sourceCode": "@Column()\n  name: string;",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isReadonly": false,
+          "type": "string",
+          "hasInitializer": false,
+          "decoratorNames": [
+            "Column"
+          ],
+          "isOptional": false
+        }
+      }
+    },
+    {
+      "id": "Decorator:b1a152d7-db4d-40f4-b02b-796d20e228f1",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:b1a152d7-db4d-40f4-b02b-796d20e228f1",
+        "name": "Column",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 8,
+        "endLine": 8,
+        "sourceCode": "@Column()",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "arguments": [],
+          "target": "method"
+        }
+      }
+    },
+    {
+      "id": "PropertyDeclaration:d2189df3-efcb-4dca-86a2-aa42bbafa2ce",
+      "labels": [
+        "Property",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "PropertyDeclaration:d2189df3-efcb-4dca-86a2-aa42bbafa2ce",
+        "name": "brand",
+        "coreType": "PropertyDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 11,
+        "endLine": 12,
+        "sourceCode": "@Column()\n  brand: string;",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isReadonly": false,
+          "type": "string",
+          "hasInitializer": false,
+          "decoratorNames": [
+            "Column"
+          ],
+          "isOptional": false
+        }
+      }
+    },
+    {
+      "id": "Decorator:57b7ffbf-caca-4138-bb3a-f1f812f52620",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:57b7ffbf-caca-4138-bb3a-f1f812f52620",
+        "name": "Column",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 11,
+        "endLine": 11,
+        "sourceCode": "@Column()",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "arguments": [],
+          "target": "method"
+        }
+      }
+    },
+    {
+      "id": "PropertyDeclaration:07fa7a69-b42a-4bd6-a49d-dffe561abea5",
+      "labels": [
+        "Property",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "PropertyDeclaration:07fa7a69-b42a-4bd6-a49d-dffe561abea5",
+        "name": "flavors",
+        "coreType": "PropertyDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 14,
+        "endLine": 15,
+        "sourceCode": "@Column('json', { nullable: true })\n  flavors: string[];",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "visibility": "public",
+        "context": {
+          "isStatic": false,
+          "isReadonly": false,
+          "type": "string[]",
+          "hasInitializer": false,
+          "decoratorNames": [
+            "Column"
+          ],
+          "isOptional": false
+        }
+      }
+    },
+    {
+      "id": "Decorator:82179c07-70ad-41f8-a0c3-62ae861e6297",
+      "labels": [
+        "Decorator"
+      ],
+      "properties": {
+        "id": "Decorator:82179c07-70ad-41f8-a0c3-62ae861e6297",
+        "name": "Column",
+        "coreType": "Decorator",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 14,
+        "endLine": 14,
+        "sourceCode": "@Column('json', { nullable: true })",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "arguments": [
+            "'json'",
+            "{ nullable: true }"
+          ],
+          "target": "method"
+        }
+      }
+    },
+    {
+      "id": "ImportDeclaration:ba744b2f-1a96-4751-bf91-fe92b1ad2beb",
+      "labels": [
+        "Import",
+        "TypeScript"
+      ],
+      "properties": {
+        "id": "ImportDeclaration:ba744b2f-1a96-4751-bf91-fe92b1ad2beb",
+        "name": "typeorm",
+        "coreType": "ImportDeclaration",
+        "filePath": "/Users/andrew.hernandez/nestjs/iluvcoffee/src/coffees/entities/coffee.entity.ts",
+        "startLine": 1,
+        "endLine": 1,
+        "sourceCode": "import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';",
+        "createdAt": "2025-06-27T07:24:47.958Z",
+        "context": {
+          "moduleSpecifier": "typeorm",
+          "isTypeOnly": false,
+          "importKind": "named",
+          "namedImports": [
+            "Column",
+            "Entity",
+            "PrimaryGeneratedColumn"
+          ],
+          "defaultImport": null,
+          "namespaceImport": null
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "CONTAINS:ccc5c606-1544-43d9-8978-e945ef774967",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:3e47f76f-9414-40cf-abdc-99b39cd05306",
+      "endNodeId": "ClassDeclaration:01d55b57-6be5-451e-9ae6-4b07e3b11462",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.113Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:7d1a8ce6-eada-4be3-93be-c4bca2da5f77",
+      "type": "DECORATED_WITH",
+      "startNodeId": "ClassDeclaration:01d55b57-6be5-451e-9ae6-4b07e3b11462",
+      "endNodeId": "Decorator:175559f0-526c-4ac9-b131-b7325ea7ed81",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.113Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:6f7bdb2e-9fba-402b-8704-51c1f70640b4",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:01d55b57-6be5-451e-9ae6-4b07e3b11462",
+      "endNodeId": "MethodDeclaration:97262a67-eb5e-482b-a79b-33b58cb7c989",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.114Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:89de102f-1b65-4e79-a719-8b9e98c56f69",
+      "type": "DECORATED_WITH",
+      "startNodeId": "MethodDeclaration:97262a67-eb5e-482b-a79b-33b58cb7c989",
+      "endNodeId": "Decorator:043e3f64-bf2d-4547-bb5f-7ade12d3cca8",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.114Z"
+      }
+    },
+    {
+      "id": "CONTAINS:59bd629b-f347-4a86-84ee-5bcbd58a4ebf",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:3e47f76f-9414-40cf-abdc-99b39cd05306",
+      "endNodeId": "ImportDeclaration:97d7b80f-97a5-4677-a5f1-550e6eb90ff8",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.114Z"
+      }
+    },
+    {
+      "id": "CONTAINS:7a30978b-fd0c-4a4f-aa8a-29266c6f34cf",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:3e47f76f-9414-40cf-abdc-99b39cd05306",
+      "endNodeId": "ImportDeclaration:af3cc762-4bcd-4a95-abdc-e307e79cc534",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.114Z"
+      }
+    },
+    {
+      "id": "CONTAINS:af977fac-7f9d-4435-9e08-097a0f24870b",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:5281a953-539f-42a0-84c3-e862ac0dac71",
+      "endNodeId": "ClassDeclaration:b20abdf4-d34b-4ec0-8467-87fd312b0a4b",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:8ccffeeb-3297-47f8-916e-32a706a59189",
+      "type": "DECORATED_WITH",
+      "startNodeId": "ClassDeclaration:b20abdf4-d34b-4ec0-8467-87fd312b0a4b",
+      "endNodeId": "Decorator:b0e7b674-1322-450e-a985-b9993831d7ee",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "CONTAINS:1587c82f-933a-47c5-a459-c48ba2e0d8ce",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:5281a953-539f-42a0-84c3-e862ac0dac71",
+      "endNodeId": "ImportDeclaration:c4ada06f-e156-4ae3-b8c9-fc7d65c172f4",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "CONTAINS:3c5810a2-3681-4106-ad98-87ff17f450cd",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:5281a953-539f-42a0-84c3-e862ac0dac71",
+      "endNodeId": "ImportDeclaration:3f1b1d54-d93f-46c7-9a75-308def7e1917",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "CONTAINS:ee1a5111-c724-436f-9570-1f35261be43f",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:5281a953-539f-42a0-84c3-e862ac0dac71",
+      "endNodeId": "ImportDeclaration:25404604-81d9-4fec-9f28-1d7fc5b5b576",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "CONTAINS:32001c06-d351-46b4-bca8-a26da45dc6fc",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:5281a953-539f-42a0-84c3-e862ac0dac71",
+      "endNodeId": "ImportDeclaration:42481b1f-6ca0-43dc-9126-33cd1d9fe854",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "CONTAINS:697f25cf-16b2-4f4c-a2f6-6930ad9f1d34",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:5281a953-539f-42a0-84c3-e862ac0dac71",
+      "endNodeId": "ImportDeclaration:90508b4f-dbe1-4494-846a-510df212f118",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "CONTAINS:4df5db58-7624-46ac-8108-94e495cc5042",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:c177ec30-fd93-4d7b-816a-2f0a26b8e8a0",
+      "endNodeId": "ClassDeclaration:b21ebadb-4cd3-4963-83cc-63a9285f29c0",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:251ac225-6f0e-4009-a484-2b8e03c2bc94",
+      "type": "DECORATED_WITH",
+      "startNodeId": "ClassDeclaration:b21ebadb-4cd3-4963-83cc-63a9285f29c0",
+      "endNodeId": "Decorator:e5f69c6b-2d68-4a02-943d-00213ae0e23b",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:9f1e2a4a-af95-472b-a0ed-573ca097579e",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:b21ebadb-4cd3-4963-83cc-63a9285f29c0",
+      "endNodeId": "MethodDeclaration:104276e5-41fe-4432-8bc5-5b0bf5d0a38d",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "CONTAINS:4849714a-3963-4cd9-ac1c-8b4b19288eb9",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:c177ec30-fd93-4d7b-816a-2f0a26b8e8a0",
+      "endNodeId": "ImportDeclaration:ede01e90-3670-41cd-a4b0-8910239e79ed",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.115Z"
+      }
+    },
+    {
+      "id": "CONTAINS:1e3aba58-820a-4bac-8ab9-30fd72c56d31",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:e57cacf2-e8dd-43fe-8fb8-7604a3f6a9fa",
+      "endNodeId": "FunctionDeclaration:0bb363e3-8107-4f4f-b5ba-af586f78a79e",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.951Z"
+      }
+    },
+    {
+      "id": "CONTAINS:51bf5ec6-d900-47ed-a626-587ef85edd7b",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:e57cacf2-e8dd-43fe-8fb8-7604a3f6a9fa",
+      "endNodeId": "ImportDeclaration:4de48d0b-5dcb-4146-acbd-95e8a05e649e",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.951Z"
+      }
+    },
+    {
+      "id": "CONTAINS:aa2441c4-977e-472c-8f41-5386f0911c2e",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:e57cacf2-e8dd-43fe-8fb8-7604a3f6a9fa",
+      "endNodeId": "ImportDeclaration:6af2438b-ec02-44c7-aef6-d36f55fd82ca",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.951Z"
+      }
+    },
+    {
+      "id": "CONTAINS:fbaade51-82e8-4648-a080-e78818f7350d",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:e57cacf2-e8dd-43fe-8fb8-7604a3f6a9fa",
+      "endNodeId": "ImportDeclaration:8411fdf1-7d1f-4bc8-b005-829a542b75b1",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.951Z"
+      }
+    },
+    {
+      "id": "CONTAINS:a924fda9-63c4-418d-ad1e-01324b534161",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:21074107-8340-4666-9448-e391bc1c26a6",
+      "endNodeId": "ClassDeclaration:b9baba5a-2d42-408e-9de0-0187a8ac78e1",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:80dc1ae9-288c-40e2-80e9-15a6aeb9483e",
+      "type": "DECORATED_WITH",
+      "startNodeId": "ClassDeclaration:b9baba5a-2d42-408e-9de0-0187a8ac78e1",
+      "endNodeId": "Decorator:e25d5af6-f47c-463b-9fc2-ca5d8c0b6b44",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:e01a45e3-ad49-4f96-9631-2f6dd357429d",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:b9baba5a-2d42-408e-9de0-0187a8ac78e1",
+      "endNodeId": "MethodDeclaration:c100af20-6280-49a0-b649-90eb2eb7b01c",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:c3cc4566-2c25-4a4a-b429-dd8fd5e4d1be",
+      "type": "DECORATED_WITH",
+      "startNodeId": "MethodDeclaration:c100af20-6280-49a0-b649-90eb2eb7b01c",
+      "endNodeId": "Decorator:7ac13215-1d9a-4060-8c3d-0b65019a0e0e",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "CONTAINS:9bafe913-ac1f-40d5-ab96-2509bf52d333",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:21074107-8340-4666-9448-e391bc1c26a6",
+      "endNodeId": "ImportDeclaration:421770fa-4936-45ed-942d-22ecf678e15b",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "CONTAINS:37d9ce2d-0084-4d04-b2c7-6b74525343f7",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:21074107-8340-4666-9448-e391bc1c26a6",
+      "endNodeId": "ImportDeclaration:89f63da4-4279-42ae-a711-7412e126c76f",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "CONTAINS:93bb9393-a729-4536-948f-d44587378407",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:89ad1954-0415-4324-88b9-f8b4055d796b",
+      "endNodeId": "ClassDeclaration:1646eead-3315-4a0f-af9c-fe065402a35f",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:f0b2482c-c0f9-4761-8c43-0c70aa46e327",
+      "type": "DECORATED_WITH",
+      "startNodeId": "ClassDeclaration:1646eead-3315-4a0f-af9c-fe065402a35f",
+      "endNodeId": "Decorator:433a168c-e305-4047-a647-2072d786cbf4",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "CONTAINS:6659b150-5a28-42f9-8ec8-1566cfe3b964",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:89ad1954-0415-4324-88b9-f8b4055d796b",
+      "endNodeId": "ImportDeclaration:3ee2010e-0038-4084-aaaf-11898361aea9",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "CONTAINS:c7369aaa-560d-4ec8-b5ff-1c87ea61c009",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:89ad1954-0415-4324-88b9-f8b4055d796b",
+      "endNodeId": "ImportDeclaration:f543e3d8-dc60-4fa7-87ad-f6948fbe7f4d",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "CONTAINS:f8002740-ed72-4f97-bae7-a6aec526f8c8",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:89ad1954-0415-4324-88b9-f8b4055d796b",
+      "endNodeId": "ImportDeclaration:6f7f7861-8da5-4195-a4f0-681d4e1fb817",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "CONTAINS:de5ac620-1bfb-47f5-a940-2ac3fb7d4898",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:89ad1954-0415-4324-88b9-f8b4055d796b",
+      "endNodeId": "ImportDeclaration:358700c1-7f9a-4824-8098-57451d183eb0",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "CONTAINS:9acc461f-d339-4728-8ba9-bdb026756f5b",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:89ad1954-0415-4324-88b9-f8b4055d796b",
+      "endNodeId": "ImportDeclaration:fd3e963b-ae69-43c3-96ea-2dcbd97860c5",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "CONTAINS:a186b4ab-1248-4dff-9d69-d61414b0ec46",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:fb3a215d-fe6c-401a-97ae-aade3aa24b95",
+      "endNodeId": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:fef95d43-5de9-44ea-b31b-b95109f81c09",
+      "type": "DECORATED_WITH",
+      "startNodeId": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+      "endNodeId": "Decorator:78b23cdc-e824-4d33-80f2-6bb17fc00da3",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.953Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:91c72fbd-c4d0-4116-a001-868f8d399dc7",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+      "endNodeId": "MethodDeclaration:b672cb87-6294-453f-9f2c-2c6fb07a05c3",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:4f60ddd4-3e1c-4fa7-92ca-42cdfa166c66",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+      "endNodeId": "MethodDeclaration:a3e6fa71-1898-4d93-9fba-09bf7e16ea0c",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "HAS_PARAMETER:a8053146-b800-428f-8cf8-a8e566146d8c",
+      "type": "HAS_PARAMETER",
+      "startNodeId": "MethodDeclaration:a3e6fa71-1898-4d93-9fba-09bf7e16ea0c",
+      "endNodeId": "ParameterDeclaration:a572451f-617a-4959-9bbf-a18519f8f014",
+      "properties": {
+        "coreType": "HAS_PARAMETER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:907596ca-9cc8-4133-a51b-9d0a5ca079d1",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+      "endNodeId": "MethodDeclaration:cdbfd074-f0ee-449b-a989-2bbc83c53014",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "HAS_PARAMETER:b48d634a-bb83-4d29-b1c0-fab64bc01f65",
+      "type": "HAS_PARAMETER",
+      "startNodeId": "MethodDeclaration:cdbfd074-f0ee-449b-a989-2bbc83c53014",
+      "endNodeId": "ParameterDeclaration:9f56b188-4aa5-4b40-9b78-a3f953f6d5a1",
+      "properties": {
+        "coreType": "HAS_PARAMETER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:e8a750fe-d5f9-4406-a1ef-0e31a88e704c",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+      "endNodeId": "MethodDeclaration:f34c6e44-ed32-4f32-85c9-a4c14def8ea3",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "HAS_PARAMETER:6c0c2190-5094-48b0-8031-bbb270d05002",
+      "type": "HAS_PARAMETER",
+      "startNodeId": "MethodDeclaration:f34c6e44-ed32-4f32-85c9-a4c14def8ea3",
+      "endNodeId": "ParameterDeclaration:3f75a6b7-afa5-4a5d-8f45-9f6217849673",
+      "properties": {
+        "coreType": "HAS_PARAMETER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "HAS_PARAMETER:54977fc8-a165-444a-a270-47aa0be55bc6",
+      "type": "HAS_PARAMETER",
+      "startNodeId": "MethodDeclaration:f34c6e44-ed32-4f32-85c9-a4c14def8ea3",
+      "endNodeId": "ParameterDeclaration:66fcab99-4e31-4792-b326-dce12a3ded7a",
+      "properties": {
+        "coreType": "HAS_PARAMETER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:645006bf-cf65-4c4e-b517-fce952308aae",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+      "endNodeId": "MethodDeclaration:afa14116-5322-423c-83ae-befe3edde6f4",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "HAS_PARAMETER:6370b624-24de-47d4-9b71-5f92825022dd",
+      "type": "HAS_PARAMETER",
+      "startNodeId": "MethodDeclaration:afa14116-5322-423c-83ae-befe3edde6f4",
+      "endNodeId": "ParameterDeclaration:66b01262-4e03-410b-a975-d85db87d762d",
+      "properties": {
+        "coreType": "HAS_PARAMETER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "CONTAINS:ce6021b6-8e05-4534-b36a-c20735a7fff4",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:fb3a215d-fe6c-401a-97ae-aade3aa24b95",
+      "endNodeId": "ImportDeclaration:3ff3293b-4cb3-4766-97a3-d42d788a4270",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "CONTAINS:53f64c6b-ea9a-477f-8582-f716fed2bcea",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:fb3a215d-fe6c-401a-97ae-aade3aa24b95",
+      "endNodeId": "ImportDeclaration:68dfd14a-8765-4239-8554-95183af986ea",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "CONTAINS:8eea1fd4-8a68-44c8-a1fe-e3cc288efc93",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:fb3a215d-fe6c-401a-97ae-aade3aa24b95",
+      "endNodeId": "ImportDeclaration:10858fc5-3e97-4dd1-942e-f03b06a4b722",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "CONTAINS:cd79dbaf-3264-47e6-9ee9-adca89fdefbc",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:fb3a215d-fe6c-401a-97ae-aade3aa24b95",
+      "endNodeId": "ImportDeclaration:0d5dabb6-0560-4a66-9ae2-01ce557b91e3",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "CONTAINS:be4572ea-e52d-44da-99d0-ea4c489de3f2",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:fb3a215d-fe6c-401a-97ae-aade3aa24b95",
+      "endNodeId": "ImportDeclaration:d3611d28-8287-4925-a31f-2746785b77bd",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "CONTAINS:d55b92cd-95d5-4a52-b22b-1f39dce03ae3",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:fb3a215d-fe6c-401a-97ae-aade3aa24b95",
+      "endNodeId": "ImportDeclaration:0f48f9d8-980d-47f8-ac41-eb58984f9211",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.954Z"
+      }
+    },
+    {
+      "id": "CONTAINS:32cd151d-360c-4457-80c2-2d1d06c02b6a",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:b4cf8b2d-981f-405d-8f73-c0bd11b4b737",
+      "endNodeId": "ClassDeclaration:60e2e33d-ce05-4ee1-9b23-57184f3998ae",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:127ef471-b8dc-4016-b7cc-17937a31ce29",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:60e2e33d-ce05-4ee1-9b23-57184f3998ae",
+      "endNodeId": "PropertyDeclaration:e6800d8f-19d3-4043-88a1-4587b71f5b73",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:21a26600-1e80-41d9-92ac-72ad94ceddbc",
+      "type": "DECORATED_WITH",
+      "startNodeId": "PropertyDeclaration:e6800d8f-19d3-4043-88a1-4587b71f5b73",
+      "endNodeId": "Decorator:1038780a-8da3-4260-8a2d-cc72650cb6fe",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:6d368570-577c-4763-af6b-835b3ec90b2d",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:60e2e33d-ce05-4ee1-9b23-57184f3998ae",
+      "endNodeId": "PropertyDeclaration:8d355785-b1c6-442c-8b85-599a988242bd",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:28c4a321-56d6-4982-ad68-d90488d7c638",
+      "type": "DECORATED_WITH",
+      "startNodeId": "PropertyDeclaration:8d355785-b1c6-442c-8b85-599a988242bd",
+      "endNodeId": "Decorator:d64c30c1-ec28-4b0f-bfde-011d352b0cf4",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:ae684c88-a8ff-401c-ba6f-781fe0627be2",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:60e2e33d-ce05-4ee1-9b23-57184f3998ae",
+      "endNodeId": "PropertyDeclaration:1754dc18-b03d-4c87-921e-276150d4a8a1",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:304a78eb-472d-41c0-9932-14d4d060614c",
+      "type": "DECORATED_WITH",
+      "startNodeId": "PropertyDeclaration:1754dc18-b03d-4c87-921e-276150d4a8a1",
+      "endNodeId": "Decorator:aedc580b-d763-48cb-a105-10923c7ac07b",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "CONTAINS:38a9b00d-fe3d-4df1-bb61-3856df033a02",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:b4cf8b2d-981f-405d-8f73-c0bd11b4b737",
+      "endNodeId": "ImportDeclaration:313e4fc4-7e39-41fd-8887-649507792261",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "CONTAINS:f18c5fdd-05d4-421a-9087-5636c9a142c0",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:c968a502-8e92-464f-ab48-e4a98c2a9004",
+      "endNodeId": "ClassDeclaration:04c2ef52-36e4-4d1e-ad61-cc7626a8d16b",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "CONTAINS:287d4165-4b82-4095-958d-f2cb5c4538a2",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:c968a502-8e92-464f-ab48-e4a98c2a9004",
+      "endNodeId": "ImportDeclaration:7ea1a5f1-f9bf-4fc9-a288-b229036ad8c3",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "CONTAINS:2dc1a59c-a28b-4f77-baad-e23b1db799f2",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:c968a502-8e92-464f-ab48-e4a98c2a9004",
+      "endNodeId": "ImportDeclaration:2d2b58cb-e111-4c9e-aa01-13dc94377669",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "CONTAINS:79961c81-d519-45ed-b219-f51fd23b2e8e",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:f017b8c4-24bf-4f2b-a257-ca05c49e91ae",
+      "endNodeId": "ClassDeclaration:9b0ceeca-868a-4bda-809b-c926f1e57978",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:4514dcc0-014c-46f1-b485-1851536d2342",
+      "type": "DECORATED_WITH",
+      "startNodeId": "ClassDeclaration:9b0ceeca-868a-4bda-809b-c926f1e57978",
+      "endNodeId": "Decorator:784f1de2-9efe-4aab-a976-84a37d825181",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:b98530c3-8ad7-49fa-8661-090f01d7b215",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:9b0ceeca-868a-4bda-809b-c926f1e57978",
+      "endNodeId": "PropertyDeclaration:7aa5eb05-1479-454d-9521-2030b61dbd29",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:56539e10-4bf8-4ba0-8d4e-0c2aa5b6876a",
+      "type": "DECORATED_WITH",
+      "startNodeId": "PropertyDeclaration:7aa5eb05-1479-454d-9521-2030b61dbd29",
+      "endNodeId": "Decorator:2b6cf87e-4462-41a9-8c72-0f1823ccba5c",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:bf6e3496-86c1-4bee-be71-a736abf6f5f7",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:9b0ceeca-868a-4bda-809b-c926f1e57978",
+      "endNodeId": "PropertyDeclaration:8e3c7bd6-b485-4ef8-8481-0ed1f3d7a6d9",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:1991e49e-2206-47d7-afca-6cad539c93c9",
+      "type": "DECORATED_WITH",
+      "startNodeId": "PropertyDeclaration:8e3c7bd6-b485-4ef8-8481-0ed1f3d7a6d9",
+      "endNodeId": "Decorator:b1a152d7-db4d-40f4-b02b-796d20e228f1",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:02970a66-a0c8-4bfb-a47d-881351d8ceaf",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:9b0ceeca-868a-4bda-809b-c926f1e57978",
+      "endNodeId": "PropertyDeclaration:d2189df3-efcb-4dca-86a2-aa42bbafa2ce",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:3f2a72bd-b6c3-48f1-b6b5-1ae53b35e29e",
+      "type": "DECORATED_WITH",
+      "startNodeId": "PropertyDeclaration:d2189df3-efcb-4dca-86a2-aa42bbafa2ce",
+      "endNodeId": "Decorator:57b7ffbf-caca-4138-bb3a-f1f812f52620",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "HAS_MEMBER:b98a1234-442c-474d-8cf0-7893b90bcaa6",
+      "type": "HAS_MEMBER",
+      "startNodeId": "ClassDeclaration:9b0ceeca-868a-4bda-809b-c926f1e57978",
+      "endNodeId": "PropertyDeclaration:07fa7a69-b42a-4bd6-a49d-dffe561abea5",
+      "properties": {
+        "coreType": "HAS_MEMBER",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "DECORATED_WITH:b42c8678-3884-437d-85cf-c52092da8aef",
+      "type": "DECORATED_WITH",
+      "startNodeId": "PropertyDeclaration:07fa7a69-b42a-4bd6-a49d-dffe561abea5",
+      "endNodeId": "Decorator:82179c07-70ad-41f8-a0c3-62ae861e6297",
+      "properties": {
+        "coreType": "DECORATED_WITH",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "CONTAINS:f651d88d-a37c-4ea1-afc2-dac156a82a56",
+      "type": "CONTAINS",
+      "startNodeId": "SourceFile:f017b8c4-24bf-4f2b-a257-ca05c49e91ae",
+      "endNodeId": "ImportDeclaration:ba744b2f-1a96-4751-bf91-fe92b1ad2beb",
+      "properties": {
+        "coreType": "CONTAINS",
+        "source": "ast",
+        "confidence": 1,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:47.958Z"
+      }
+    },
+    {
+      "id": "INJECTS:77cd98b4-d20c-40ec-bf85-fc47e8c6edd9",
+      "type": "INJECTS",
+      "startNodeId": "ClassDeclaration:01d55b57-6be5-451e-9ae6-4b07e3b11462",
+      "endNodeId": "ClassDeclaration:b21ebadb-4cd3-4963-83cc-63a9285f29c0",
+      "properties": {
+        "coreType": "INJECTS",
+        "semanticType": "INJECTS",
+        "source": "pattern",
+        "confidence": 0.8,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:48.000Z",
+        "context": {
+          "injectionType": "constructor",
+          "injectionToken": null,
+          "parameterIndex": 0
+        }
+      }
+    },
+    {
+      "id": "INJECTS:7d6a7c18-5a17-4c4a-95c2-3737fe86b334",
+      "type": "INJECTS",
+      "startNodeId": "ClassDeclaration:b9baba5a-2d42-408e-9de0-0187a8ac78e1",
+      "endNodeId": "ClassDeclaration:711367b0-352d-4bd3-b6d0-09f0d5d92422",
+      "properties": {
+        "coreType": "INJECTS",
+        "semanticType": "INJECTS",
+        "source": "pattern",
+        "confidence": 0.8,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:48.000Z",
+        "context": {
+          "injectionType": "constructor",
+          "injectionToken": null,
+          "parameterIndex": 0
+        }
+      }
+    },
+    {
+      "id": "EXPOSES:58c8670a-7c76-45c4-8c9c-35bd53874721",
+      "type": "EXPOSES",
+      "startNodeId": "ClassDeclaration:01d55b57-6be5-451e-9ae6-4b07e3b11462",
+      "endNodeId": "MethodDeclaration:97262a67-eb5e-482b-a79b-33b58cb7c989",
+      "properties": {
+        "coreType": "EXPOSES",
+        "semanticType": "EXPOSES",
+        "source": "pattern",
+        "confidence": 0.8,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:48.001Z",
+        "context": {
+          "httpMethod": "GET",
+          "fullPath": "/",
+          "statusCode": 200
+        }
+      }
+    },
+    {
+      "id": "EXPOSES:99ff741a-7d67-483f-8337-a9beace0c201",
+      "type": "EXPOSES",
+      "startNodeId": "ClassDeclaration:01d55b57-6be5-451e-9ae6-4b07e3b11462",
+      "endNodeId": "MethodDeclaration:c100af20-6280-49a0-b649-90eb2eb7b01c",
+      "properties": {
+        "coreType": "EXPOSES",
+        "semanticType": "EXPOSES",
+        "source": "pattern",
+        "confidence": 0.8,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:48.001Z",
+        "context": {
+          "httpMethod": "GET",
+          "fullPath": "/",
+          "statusCode": 200
+        }
+      }
+    },
+    {
+      "id": "EXPOSES:9dcde0ee-a262-4f9b-939a-beb988e8a19f",
+      "type": "EXPOSES",
+      "startNodeId": "ClassDeclaration:b9baba5a-2d42-408e-9de0-0187a8ac78e1",
+      "endNodeId": "MethodDeclaration:97262a67-eb5e-482b-a79b-33b58cb7c989",
+      "properties": {
+        "coreType": "EXPOSES",
+        "semanticType": "EXPOSES",
+        "source": "pattern",
+        "confidence": 0.8,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:48.001Z",
+        "context": {
+          "httpMethod": "GET",
+          "fullPath": "coffees",
+          "statusCode": 200
+        }
+      }
+    },
+    {
+      "id": "EXPOSES:508b2813-b22e-4afe-8139-7137e5665572",
+      "type": "EXPOSES",
+      "startNodeId": "ClassDeclaration:b9baba5a-2d42-408e-9de0-0187a8ac78e1",
+      "endNodeId": "MethodDeclaration:c100af20-6280-49a0-b649-90eb2eb7b01c",
+      "properties": {
+        "coreType": "EXPOSES",
+        "semanticType": "EXPOSES",
+        "source": "pattern",
+        "confidence": 0.8,
+        "filePath": "",
+        "createdAt": "2025-06-27T07:24:48.002Z",
+        "context": {
+          "httpMethod": "GET",
+          "fullPath": "coffees",
+          "statusCode": 200
+        }
+      }
+    }
+  ]
+}
