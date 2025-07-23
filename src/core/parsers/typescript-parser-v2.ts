@@ -24,7 +24,7 @@ import {
   PropertyDefinition,
   CoreEdgeType,
   SemanticEdgeType,
-} from '../config/graph-v2';
+} from '../config/graph-v2.js';
 
 export interface ParsedNode {
   id: string;
@@ -33,6 +33,7 @@ export interface ParsedNode {
   labels: string[];
   properties: Neo4jNodeProperties; // ✅ Neo4j properties
   sourceNode?: Node;
+  skipEmbedding?: boolean; // Skip embedding for certain nodes
 }
 
 export interface ParsedEdge {
@@ -286,6 +287,7 @@ export class TypeScriptParser {
       labels: [...(coreNodeDef?.neo4j.labels || [])],
       properties,
       sourceNode: astNode,
+      skipEmbedding: coreNodeDef?.neo4j.skipEmbedding ?? false,
     };
   }
 
@@ -310,9 +312,7 @@ export class TypeScriptParser {
         const context = extractor.extractor(node.sourceNode);
         if (context && Object.keys(context).length > 0) {
           // Merge context into node properties
-          if (!node.properties.context) {
-            node.properties.context = {};
-          }
+          node.properties.context ??= {};
           Object.assign(node.properties.context, context);
         }
       } catch (error) {
@@ -640,6 +640,7 @@ export class TypeScriptParser {
       id: parsedNode.id,
       labels: parsedNode.labels,
       properties: parsedNode.properties,
+      skipEmbedding: parsedNode.skipEmbedding ?? false,
     };
   }
 
@@ -692,6 +693,7 @@ export class TypeScriptParser {
       id: node.id,
       labels: node.labels,
       properties: node.properties,
+      skipEmbedding: node.skipEmbedding ?? false,
     }));
 
     const edges = Array.from(this.parsedEdges.values()).map((edge) => ({

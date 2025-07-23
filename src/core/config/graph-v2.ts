@@ -75,6 +75,7 @@ export enum SemanticNodeType {
 
   // HTTP & API Types
   HTTP_ENDPOINT = 'HttpEndpoint',
+  MESSAGE_HANDLER = 'MessageHandler',
 
   // Data Types
   DTO_CLASS = 'DTOClass',
@@ -102,6 +103,7 @@ export enum SemanticEdgeType {
   EXPOSES = 'EXPOSES',
   ACCEPTS = 'ACCEPTS',
   RESPONDS_WITH = 'RESPONDS_WITH',
+  CONSUMES_MESSAGE = 'CONSUMES_MESSAGE',
 
   // Security & Middleware
   GUARDED_BY = 'GUARDED_BY',
@@ -177,6 +179,7 @@ export interface Neo4jNode {
   id: string;
   labels: string[]; // Neo4j labels
   properties: Neo4jNodeProperties;
+  skipEmbedding?: boolean;
 }
 
 /**
@@ -260,6 +263,7 @@ export interface CoreNode {
     labels: string[];
     primaryLabel: string;
     indexed: string[]; // Which properties to index
+    skipEmbedding?: boolean; // Skip embedding for this node type
   };
 }
 
@@ -372,6 +376,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['SourceFile', 'TypeScript'],
         primaryLabel: 'SourceFile',
         indexed: ['name', 'filePath', 'isExported'],
+        skipEmbedding: true,
       },
     },
 
@@ -488,6 +493,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Property', 'TypeScript'],
         primaryLabel: 'Property',
         indexed: ['name', 'visibility'],
+        skipEmbedding: true,
       },
     },
 
@@ -507,6 +513,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Parameter', 'TypeScript'],
         primaryLabel: 'Parameter',
         indexed: ['name'],
+        skipEmbedding: true,
       },
     },
 
@@ -526,6 +533,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Import', 'TypeScript'],
         primaryLabel: 'Import',
         indexed: ['name'],
+        skipEmbedding: true,
       },
     },
 
@@ -545,6 +553,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Decorator'],
         primaryLabel: 'Decorator',
         indexed: ['name'],
+        skipEmbedding: true,
       },
     },
 
@@ -596,6 +605,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Enum', 'TypeScript'],
         primaryLabel: 'Enum',
         indexed: ['name', 'isExported'],
+        skipEmbedding: true,
       },
     },
 
@@ -640,6 +650,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Variable', 'TypeScript'],
         primaryLabel: 'Variable',
         indexed: ['name'],
+        skipEmbedding: true,
       },
     },
 
@@ -659,6 +670,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Constructor', 'TypeScript'],
         primaryLabel: 'Constructor',
         indexed: ['name'],
+        skipEmbedding: true,
       },
     },
 
@@ -678,6 +690,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Export', 'TypeScript'],
         primaryLabel: 'Export',
         indexed: ['name'],
+        skipEmbedding: true,
       },
     },
   },
@@ -1004,7 +1017,7 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
       name: 'NestService',
       targetCoreType: CoreNodeType.CLASS_DECLARATION,
       semanticType: SemanticNodeType.NEST_SERVICE,
-      detectionPatterns: [ 
+      detectionPatterns: [
         {
           type: 'filename',
           pattern: /\.service\.ts$/,
@@ -1079,6 +1092,54 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
       },
       priority: 95,
     },
+    MessageHandler: {
+      name: 'MessageHandler',
+      targetCoreType: CoreNodeType.METHOD_DECLARATION,
+      semanticType: SemanticNodeType.MESSAGE_HANDLER,
+      detectionPatterns: [
+        {
+          type: 'function',
+          pattern: (node: any) => {
+            const decorators = node.getDecorators?.() ?? [];
+            const messageDecorators = ['MessagePattern', 'EventPattern'];
+            return decorators.some((d: any) => messageDecorators.includes(d.getName()));
+          },
+          confidence: 0.98,
+          priority: 15,
+        },
+      ],
+      contextExtractors: [
+        {
+          nodeType: CoreNodeType.METHOD_DECLARATION,
+          semanticType: SemanticNodeType.MESSAGE_HANDLER,
+          extractor: (node: any) => {
+            return {
+              messageQueueName: extractMessagePattern(node),
+              isAsync: node.isAsync(),
+              returnType: node.getReturnTypeNode()?.getText() ?? 'void',
+              pattern: getPatternType(node),
+              hasAuth: hasAuthDecorators(node),
+              hasValidation: hasValidationDecorators(node),
+              guardNames: extractGuardNames(node),
+              pipeNames: extractPipeNames(node),
+              interceptorNames: extractInterceptorNames(node),
+              endpointType: 'RPC',
+            };
+          },
+          priority: 1,
+        },
+      ],
+      additionalRelationships: [
+        SemanticEdgeType.CONSUMES_MESSAGE,
+        SemanticEdgeType.RESPONDS_WITH,
+        SemanticEdgeType.GUARDED_BY,
+      ],
+      neo4j: {
+        additionalLabels: ['MessageHandler', 'NestJS', 'Microservice'],
+        primaryLabel: 'MessageHandler',
+      },
+      priority: 88,
+    },
 
     HttpEndpoint: {
       name: 'HttpEndpoint',
@@ -1088,7 +1149,7 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         {
           type: 'function',
           pattern: (node: any) => {
-            const decorators = node.getDecorators?.() || [];
+            const decorators = node.getDecorators?.() ?? [];
             const httpDecorators = ['Get', 'Post', 'Put', 'Delete', 'Patch', 'Head', 'Options'];
             return decorators.some((d: any) => httpDecorators.includes(d.getName()));
           },
@@ -1184,7 +1245,7 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
           semanticType: SemanticNodeType.DTO_CLASS,
           extractor: (node: any) => ({
             validationDecorators: extractValidationDecorators(node),
-            isRequestDto: node.getName()?.toLowerCase().includes('request') || false,
+            isRequestDto: node.getName()?.toLowerCase().includes('request') ?? false,
             isResponseDto: node.getName()?.toLowerCase().includes('response') || false,
             isPartialDto: extendsPartialType(node),
             baseClass: extractBaseClass(node),
@@ -1219,19 +1280,74 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
       },
     },
 
+    MessageHandlerExposure: {
+      name: 'MessageHandlerExposure',
+      semanticType: SemanticEdgeType.EXPOSES,
+      detectionPattern: (sourceNode: any, targetNode: any) => {
+        if (
+          sourceNode.properties?.semanticType !== SemanticNodeType.NEST_CONTROLLER ||
+          targetNode.properties?.semanticType !== SemanticNodeType.MESSAGE_HANDLER
+        ) {
+          return false;
+        }
+
+        if (sourceNode.properties?.filePath !== targetNode.properties?.filePath) {
+          return false;
+        }
+
+        if (sourceNode.sourceNode && targetNode.sourceNode) {
+          const controllerClass = sourceNode.sourceNode;
+          const methodNode = targetNode.sourceNode;
+
+          const methodParent = methodNode.getParent();
+          if (methodParent === controllerClass) {
+            return true;
+          }
+        }
+
+        return false;
+      },
+      contextExtractor: (sourceNode: any, targetNode: any) => ({
+        endpointType: 'RPC',
+      }),
+      neo4j: {
+        relationshipType: 'EXPOSES',
+        direction: 'OUTGOING',
+      },
+    },
+
     HttpEndpointExposure: {
       name: 'HttpEndpointExposure',
       semanticType: SemanticEdgeType.EXPOSES,
       detectionPattern: (sourceNode: any, targetNode: any) => {
-        return (
-          sourceNode.properties?.semanticType === SemanticNodeType.NEST_CONTROLLER &&
-          targetNode.properties?.semanticType === SemanticNodeType.HTTP_ENDPOINT
-        );
+        // Check if source is controller and target is HTTP endpoint
+        if (
+          sourceNode.properties?.semanticType !== SemanticNodeType.NEST_CONTROLLER ||
+          targetNode.properties?.semanticType !== SemanticNodeType.HTTP_ENDPOINT
+        ) {
+          return false;
+        }
+
+        if (sourceNode.properties?.filePath !== targetNode.properties?.filePath) {
+          return false;
+        }
+
+        if (sourceNode.sourceNode && targetNode.sourceNode) {
+          const controllerClass = sourceNode.sourceNode;
+          const methodNode = targetNode.sourceNode;
+
+          const methodParent = methodNode.getParent();
+          if (methodParent === controllerClass) {
+            return true;
+          }
+        }
+
+        return false;
       },
       contextExtractor: (sourceNode: any, targetNode: any) => ({
-        httpMethod: targetNode.properties?.context?.httpMethod || '',
+        httpMethod: targetNode.properties?.context?.httpMethod ?? '',
         fullPath: computeFullPathFromNodes(sourceNode, targetNode),
-        statusCode: targetNode.properties?.context?.statusCode || 200,
+        statusCode: targetNode.properties?.context?.statusCode ?? 200,
       }),
       neo4j: {
         relationshipType: 'EXPOSES',
@@ -1241,7 +1357,6 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
   },
 
   contextExtractors: [
-    // Global context extractors that apply to all nodes
     {
       nodeType: CoreNodeType.SOURCE_FILE,
       extractor: (node: any) => ({
@@ -1340,6 +1455,31 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+function extractMessagePattern(node: any): string {
+  // Check for @EventPattern first
+  let decorator = node.getDecorator('EventPattern');
+  if (!decorator) {
+    // Check for @MessagePattern
+    decorator = node.getDecorator('MessagePattern');
+  }
+
+  if (!decorator) return '';
+
+  const args = decorator.getArguments();
+  if (args.length === 0) return '';
+
+  // Get the raw text of the first argument
+  const rawPattern = args[0].getText();
+
+  return rawPattern;
+}
+
+function getPatternType(node: any): 'event' | 'message' {
+  if (node.getDecorator('EventPattern')) return 'event';
+  if (node.getDecorator('MessagePattern')) return 'message';
+  return 'event'; // default
+}
 
 function extractControllerPath(node: any): string {
   const decorator = node.getDecorator('Controller');
@@ -1457,10 +1597,16 @@ function extractRoutePath(node: any): string {
 
 function computeFullPath(node: any): string {
   const methodPath = extractRoutePath(node);
-  // TODO: Would need to traverse up to controller to get base path
-  return methodPath;
-}
 
+  // Get the parent controller's base path
+  const parentClass = node.getParent();
+  const controllerPath = extractControllerPath(parentClass);
+
+  // Combine paths properly
+  const fullPath = `${controllerPath}/${methodPath}`.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+
+  return fullPath;
+}
 function extractStatusCode(node: any): number | null {
   const decorator = node.getDecorator('HttpCode');
   if (!decorator) return null;
@@ -1642,11 +1788,14 @@ function findParameterIndex(sourceNode: any, targetNode: any): number {
 }
 
 function computeFullPathFromNodes(sourceNode: any, targetNode: any): string {
-  const basePath = sourceNode.properties?.context?.basePath || '';
-  const methodPath = targetNode.properties?.context?.path || '';
-  return `${basePath}/${methodPath}`.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
-}
+  const basePath = sourceNode.properties?.context?.basePath ?? '';
+  const methodPath = targetNode.properties?.context?.path ?? '';
 
+  // Properly combine paths
+  const fullPath = `${basePath}/${methodPath}`.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+
+  return fullPath;
+}
 function extractRelativePath(node: any): string {
   const filePath = node.getFilePath();
   const parts = filePath.split('/');
