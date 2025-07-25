@@ -1,6 +1,6 @@
 # Code Graph Context MCP Server
 
-[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
+[![All Rights Reserved](https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://typescriptlang.org/)
 [![Neo4j](https://img.shields.io/badge/Neo4j-018bff?logo=neo4j&logoColor=white)](https://neo4j.com/)
 
@@ -595,7 +595,7 @@ npm run format
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is proprietary software. All rights reserved - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
