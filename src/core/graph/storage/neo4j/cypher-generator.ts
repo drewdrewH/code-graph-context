@@ -6,7 +6,7 @@ export class CypherGenerator {
   // Create relationship with properties
   static createRelationship(edge: CodeGraphEdge): string {
     const props = JSON.stringify(edge.properties);
-    
+
     if (edge.direction === 'OUTGOING') {
       return `
         MATCH (source {id: '${edge.sourceNodeId}'}), (target {id: '${edge.targetNodeId}'})
@@ -17,19 +17,17 @@ export class CypherGenerator {
         MATCH (source {id: '${edge.sourceNodeId}'}), (target {id: '${edge.targetNodeId}'})
         CREATE (source)<-[:${edge.relationshipType} ${props}]-(target)
       `;
-    } else { // BIDIRECTIONAL
+    } else {
+      // BIDIRECTIONAL
       return `
         MATCH (source {id: '${edge.sourceNodeId}'}), (target {id: '${edge.targetNodeId}'})
         CREATE (source)-[:${edge.relationshipType} ${props}]-(target)
       `;
     }
   }
-  
+
   // Query with direction awareness
-  static queryWithDirection(
-    relationshipType: string,
-    direction: 'OUTGOING' | 'INCOMING' | 'BOTH' = 'BOTH'
-  ): string {
+  static queryWithDirection(relationshipType: string, direction: 'OUTGOING' | 'INCOMING' | 'BOTH' = 'BOTH'): string {
     switch (direction) {
       case 'OUTGOING':
         return `MATCH (source)-[:${relationshipType}]->(target)`;
@@ -41,5 +39,3 @@ export class CypherGenerator {
     }
   }
 }
-
-

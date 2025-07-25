@@ -1,4 +1,6 @@
 import neo4j from 'neo4j-driver';
+
+import { MAX_TRAVERSAL_DEPTH } from '../../constants.js';
 export class Neo4jService {
   private driver: any;
 
@@ -30,9 +32,25 @@ export class Neo4jService {
   public getDriver() {
     return this.driver;
   }
+
+  public async getSchema() {
+    const session = this.driver.session();
+    try {
+      return await session.run(QUERIES.APOC_SCHEMA);
+    } catch (error) {
+      console.error('Error fetching schema:', error);
+      throw error;
+    } finally {
+      await session.close();
+    }
+  }
 }
 
 export const QUERIES = {
+  APOC_SCHEMA: `
+    CALL apoc.meta.schema() YIELD value
+      RETURN value as schema
+    `,
   CLEAR_DATABASE: 'MATCH (n) DETACH DELETE n',
 
   CREATE_NODE: `
@@ -70,7 +88,11 @@ export const QUERIES = {
   VECTOR_SEARCH: `
   CALL db.index.vector.queryNodes('embedded_nodes_idx', $limit, $embedding)
   YIELD node, score
-  RETURN node, score
+  RETURN {
+    id: node.id,
+    labels: labels(node),
+    properties: apoc.map.removeKeys(properties(node), ['embedding'])
+  } as node, score
   ORDER BY score DESC
 `,
 
@@ -80,37 +102,59 @@ export const QUERIES = {
     WHERE name = 'node_embedding_idx' AND type = 'VECTOR'
     RETURN count(*) > 0 as exists
   `,
-  EXPLORE_ALL_CONNECTIONS: (maxDepth: number = 3) => {
-    const depthClauses: string[] = [];
-    for (let i = 1; i <= Math.min(maxDepth, 10); i++) {
-      if (i === 1) {
-        depthClauses.push(`
-          WITH start
-          MATCH (start)-[*${i}]-(d${i}) 
-          WHERE d${i} <> start
-          RETURN d${i} as connected, ${i} as depth
-        `);
-      } else {
-        depthClauses.push(`
-          WITH start
-          MATCH (start)-[*${i}]-(d${i}) 
-          WHERE d${i} <> start AND NOT (start)-[*1..${i - 1}]-(d${i})
-          RETURN d${i} as connected, ${i} as depth
-        `);
-      }
-    }
+  EXPLORE_ALL_CONNECTIONS: (maxDepth: number = MAX_TRAVERSAL_DEPTH) => {
+    const safeMaxDepth = Math.min(Math.max(maxDepth, 1), MAX_TRAVERSAL_DEPTH); // Ensure between 1-MAX_TRAVERSAL_DEPTH
 
     return `
       MATCH (start) WHERE start.id = $nodeId
+
       CALL {
-        ${depthClauses.join('\nUNION ALL\n')}
+        WITH start
+        MATCH path = (start)-[*1..${safeMaxDepth}]-(connected)
+        WHERE connected <> start
+        WITH path, connected, length(path) as depth
+        
+        RETURN {
+          id: connected.id,
+          labels: labels(connected),
+          properties: apoc.map.removeKeys(properties(connected), ['embedding'])
+        } as node,
+        depth,
+        [rel in relationships(path) | {
+          type: type(rel),
+          start: startNode(rel).id,
+          end: endNode(rel).id,
+          properties: properties(rel)
+        }] as relationshipChain
+        
       }
-      RETURN start,
-             collect(DISTINCT {
-               node: connected,
-               depth: depth
-             }) as connections
-      LIMIT 50
+
+      WITH start, collect({
+        node: node,
+        depth: depth,
+        relationshipChain: relationshipChain
+      }) as allConnections
+
+      WITH start, allConnections,
+           allConnections[$skip..] as connections
+
+      RETURN {
+        startNode: {
+          id: start.id,
+          labels: labels(start),
+          properties: apoc.map.removeKeys(properties(start), ['embedding'])
+        },
+        connections: connections,
+        totalConnections: size(allConnections),
+        graph: {
+          nodes: [conn in connections | conn.node] + [{
+            id: start.id,
+            labels: labels(start),
+            properties: apoc.map.removeKeys(properties(start), ['embedding'])
+          }],
+          relationships: reduce(rels = [], conn in connections | rels + conn.relationshipChain)
+        }
+      } as result
     `;
   },
 };

@@ -13,9 +13,10 @@ services:
       - NEO4J_AUTH=neo4j/PASSWORD
       
       # Memory configuration
-      - NEO4J_server_memory_heap_initial__size=1G
-      - NEO4J_server_memory_heap_max__size=2G
-      - NEO4J_server_memory_pagecache_size=512M
+      - NEO4J_server_memory_heap_initial__size=2G
+      - NEO4J_server_memory_heap_max__size=4G
+      - NEO4J_server_memory_pagecache_size=2G
+      - NEO4J_dbms_memory_transaction_total_max=4G
       
       # Enable APOC procedures
       - NEO4J_PLUGINS=["apoc"]

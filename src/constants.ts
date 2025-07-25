@@ -1,0 +1,1 @@
+export const MAX_TRAVERSAL_DEPTH = 10;
