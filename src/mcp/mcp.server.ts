@@ -8,12 +8,12 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
+import { MAX_TRAVERSAL_DEPTH } from '../constants.js';
 import { CORE_TYPESCRIPT_SCHEMA, NESTJS_FRAMEWORK_SCHEMA } from '../core/config/graph-v2.js';
 import { EmbeddingsService } from '../core/embeddings/embeddings.service.js';
 import { NaturalLanguageToCypherService } from '../core/embeddings/natural-language-to-cypher.service.js';
 import { TypeScriptParser } from '../core/parsers/typescript-parser-v2.js';
 import { Neo4jService, QUERIES } from '../storage/neo4j/neo4j.service.js';
-import { MAX_TRAVERSAL_DEPTH } from '../constants.js';
 
 import { GraphGeneratorHandler } from './handlers/graph-generator.handler.js';
 import { TraversalHandler } from './handlers/traversal.handler.js';
@@ -251,13 +251,13 @@ server.registerTool(
       'Traverse the graph starting from a specific node ID to explore its connections and relationships. This tool is useful for doing targeted exploration after finding a significant node through search_codebase.',
     inputSchema: {
       nodeId: z.string().describe('The node ID to start traversal from'),
-      maxDepth: z.number().int().optional().describe(`Maximum depth to traverse (default: 3, max: ${MAX_TRAVERSAL_DEPTH})`).default(3),
-      skip: z
+      maxDepth: z
         .number()
         .int()
         .optional()
-        .describe('Number of results to skip for pagination (default: 0)')
-        .default(0),
+        .describe(`Maximum depth to traverse (default: 3, max: ${MAX_TRAVERSAL_DEPTH})`)
+        .default(3),
+      skip: z.number().int().optional().describe('Number of results to skip for pagination (default: 0)').default(0),
     },
   },
   async ({ nodeId, maxDepth = 3, skip = 0 }) => {
