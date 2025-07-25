@@ -85,7 +85,14 @@ npm run build
 
 ### Adding to Claude Code
 
-To use this MCP server with Claude Code, add it to your MCP configuration:
+To use this MCP server with Claude Code, you can use the transport command with the debug shell file:
+
+```bash
+# Add the MCP server to Claude Code using transport
+claude mcp add code-graph-context --transport stdio --command node --args /path/to/code-graph-context/debug-mcp.sh
+```
+
+Or add it directly to your MCP configuration:
 
 ```bash
 # Add the MCP server to Claude Code
