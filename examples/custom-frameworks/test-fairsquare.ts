@@ -1,11 +1,15 @@
-import { TypeScriptParser } from './dist/core/parsers/typescript-parser-v2.js';
-import { FAIRSQUARE_FRAMEWORK_SCHEMA } from './dist/core/config/fairsquare-framework-schema.js';
-import { CORE_TYPESCRIPT_SCHEMA } from './dist/core/config/graph-v2.js';
+import { TypeScriptParser } from '../../dist/core/parsers/typescript-parser.js';
+import { FAIRSQUARE_FRAMEWORK_SCHEMA } from '../../dist/core/config/fairsquare-framework-schema.js';
+import { CORE_TYPESCRIPT_SCHEMA } from '../../dist/core/config/schema.js';
 
 async function test() {
+  // Update these paths to point to your FairSquare project
+  const workspacePath = '/path/to/your/fairsquare/project/src';
+  const tsconfigPath = '/path/to/your/fairsquare/project/tsconfig.json';
+
   const parser = new TypeScriptParser(
-    '/Users/ahernandez/develop/fairsquare/src',
-    '/Users/ahernandez/develop/fairsquare/tsconfig.base.json',
+    workspacePath,
+    tsconfigPath,
     CORE_TYPESCRIPT_SCHEMA,
     [FAIRSQUARE_FRAMEWORK_SCHEMA],
     {
