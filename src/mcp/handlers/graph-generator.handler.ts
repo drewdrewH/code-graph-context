@@ -5,10 +5,10 @@
 
 import fs from 'fs/promises';
 
+import { Neo4jNode, Neo4jEdge } from '../../core/config/graph-v2.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
-import { Neo4jNode, Neo4jEdge } from '../../core/config/graph-v2.js';
-import { DEFAULTS, LOG_CONFIG } from '../constants.js';
+import { DEFAULTS } from '../constants.js';
 import { debugLog } from '../utils.js';
 
 interface GraphData {
@@ -28,12 +28,12 @@ export class GraphGeneratorHandler {
 
   constructor(
     private readonly neo4jService: Neo4jService,
-    private readonly embeddingsService: EmbeddingsService
+    private readonly embeddingsService: EmbeddingsService,
   ) {}
   async generateGraph(
-    graphJsonPath: string, 
-    batchSize = DEFAULTS.batchSize, 
-    clearExisting = true
+    graphJsonPath: string,
+    batchSize = DEFAULTS.batchSize,
+    clearExisting = true,
   ): Promise<ImportResult> {
     console.log(`Generating graph from JSON file: ${graphJsonPath}`);
     await debugLog('Starting graph generation', { graphJsonPath, batchSize, clearExisting });
@@ -41,7 +41,7 @@ export class GraphGeneratorHandler {
     try {
       const graphData = await this.loadGraphData(graphJsonPath);
       const { nodes, edges, metadata } = graphData;
-      
+
       console.log(`Generating graph with ${nodes.length} nodes and ${edges.length} edges`);
       await debugLog('Graph data loaded', { nodeCount: nodes.length, edgeCount: edges.length });
 
@@ -85,14 +85,14 @@ export class GraphGeneratorHandler {
     for (let i = 0; i < nodes.length; i += batchSize) {
       const batch = await this.processNodeBatch(nodes.slice(i, i + batchSize));
       const result = await this.neo4jService.run(QUERIES.CREATE_NODE, { nodes: batch });
-      
+
       const batchEnd = Math.min(i + batchSize, nodes.length);
       console.log(`Created ${result[0].created} nodes in batch ${i + 1}-${batchEnd}`);
-      
-      await debugLog('Node batch imported', { 
-        batchStart: i + 1, 
-        batchEnd, 
-        created: result[0].created 
+
+      await debugLog('Node batch imported', {
+        batchStart: i + 1,
+        batchEnd,
+        created: result[0].created,
       });
     }
   }
@@ -109,7 +109,7 @@ export class GraphGeneratorHandler {
             embedding,
           },
         };
-      })
+      }),
     );
   }
 
@@ -123,14 +123,14 @@ export class GraphGeneratorHandler {
       }));
 
       const result = await this.neo4jService.run(QUERIES.CREATE_RELATIONSHIP, { edges: batch });
-      
+
       const batchEnd = Math.min(i + batchSize, edges.length);
       console.log(`Created ${result[0].created} edges in batch ${i + 1}-${batchEnd}`);
-      
-      await debugLog('Edge batch imported', { 
-        batchStart: i + 1, 
-        batchEnd, 
-        created: result[0].created 
+
+      await debugLog('Edge batch imported', {
+        batchStart: i + 1,
+        batchEnd,
+        created: result[0].created,
       });
     }
   }
@@ -185,4 +185,3 @@ export class GraphGeneratorHandler {
     return Array.isArray(value) && value.some((item) => typeof item === 'object');
   }
 }
-

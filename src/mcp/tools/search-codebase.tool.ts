@@ -6,11 +6,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { MAX_TRAVERSAL_DEPTH } from '../../constants.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
-import { TraversalHandler } from '../handlers/traversal.handler.js';
 import { TOOL_NAMES, TOOL_METADATA, DEFAULTS, MESSAGES } from '../constants.js';
+import { TraversalHandler } from '../handlers/traversal.handler.js';
 import { createErrorResponse, createSuccessResponse, debugLog } from '../utils.js';
 
 export const createSearchCodebaseTool = (server: McpServer): void => {
@@ -52,9 +51,9 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         const startNode = vectorResults[0].node;
         const nodeId = startNode.properties.id;
 
-        await debugLog('Vector search completed, starting traversal', { 
-          nodeId, 
-          resultsCount: vectorResults.length 
+        await debugLog('Vector search completed, starting traversal', {
+          nodeId,
+          resultsCount: vectorResults.length,
         });
 
         return await traversalHandler.traverseFromNode(nodeId, {
@@ -70,6 +69,6 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         await debugLog('Search codebase error', error);
         return createErrorResponse(error);
       }
-    }
+    },
   );
 };

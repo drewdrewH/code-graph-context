@@ -24,7 +24,6 @@ const startServer = async (): Promise<void> => {
 
   // Create MCP server instance
   const server = new McpServer({
-  
     name: MCP_SERVER_CONFIG.name,
     version: MCP_SERVER_CONFIG.version,
   });

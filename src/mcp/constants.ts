@@ -3,7 +3,6 @@
  * All constants used throughout the MCP server implementation
  */
 
-
 // Server Configuration
 export const MCP_SERVER_CONFIG = {
   name: 'codebase-graph',
@@ -47,7 +46,8 @@ Use this for initial exploration. For detailed code inspection, use traverse_fro
   },
   [TOOL_NAMES.naturalLanguageToCypher]: {
     title: 'Natural Language to Cypher',
-    description: 'Convert natural language queries into Cypher queries for Neo4j. This tool is useful for generating specific queries based on user requests about the codebase.',
+    description:
+      'Convert natural language queries into Cypher queries for Neo4j. This tool is useful for generating specific queries based on user requests about the codebase.',
   },
   [TOOL_NAMES.traverseFromNode]: {
     title: 'Traverse from Node',
@@ -94,7 +94,8 @@ export const DEFAULTS = {
 export const MESSAGES = {
   errors: {
     noRelevantCode: 'No relevant code found.',
-    serviceNotInitialized: '❌ ERROR: Natural Language to Cypher service is not initialized yet. Please try again in a few moments.',
+    serviceNotInitialized:
+      '❌ ERROR: Natural Language to Cypher service is not initialized yet. Please try again in a few moments.',
     connectionTestFailed: 'Connection test failed',
     neo4jRequirement: 'Note: This server requires Neo4j with APOC plugin installed',
     genericError: '❌ ERROR:',

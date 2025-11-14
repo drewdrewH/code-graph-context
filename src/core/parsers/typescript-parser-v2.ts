@@ -1,13 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import path from 'node:path';
 
+import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
 import { v4 as uuidv4 } from 'uuid';
-import { minimatch } from 'minimatch';
 
 import {
   CoreNodeType,
-  SemanticNodeType,
   Neo4jNodeProperties,
   Neo4jEdgeProperties,
   Neo4jNode,
@@ -24,7 +23,6 @@ import {
   NESTJS_FRAMEWORK_SCHEMA,
   PropertyDefinition,
   CoreEdgeType,
-  SemanticEdgeType,
   ParsingContext,
   ParsedNode,
 } from '../config/graph-v2.js';

@@ -4,6 +4,7 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
 import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA, MESSAGES } from '../constants.js';
 import { createErrorResponse, createSuccessResponse } from '../utils.js';
@@ -18,7 +19,7 @@ export const createTestNeo4jConnectionTool = (server: McpServer): void => {
     },
     async () => {
       const driver = new Neo4jService().getDriver();
-      
+
       try {
         const session = driver.session();
 
@@ -42,6 +43,6 @@ export const createTestNeo4jConnectionTool = (server: McpServer): void => {
       } finally {
         await driver.close();
       }
-    }
+    },
   );
 };

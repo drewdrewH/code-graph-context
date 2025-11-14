@@ -105,7 +105,7 @@ export const QUERIES = {
   EXPLORE_ALL_CONNECTIONS: (
     maxDepth: number = MAX_TRAVERSAL_DEPTH,
     direction: 'OUTGOING' | 'INCOMING' | 'BOTH' = 'BOTH',
-    relationshipTypes?: string[]
+    relationshipTypes?: string[],
   ) => {
     const safeMaxDepth = Math.min(Math.max(maxDepth, 1), MAX_TRAVERSAL_DEPTH);
 
@@ -122,7 +122,7 @@ export const QUERIES = {
     // Build relationship type filter if specified
     let relTypeFilter = '';
     if (relationshipTypes && relationshipTypes.length > 0) {
-      const types = relationshipTypes.map(t => `'${t}'`).join(', ');
+      const types = relationshipTypes.map((t) => `'${t}'`).join(', ');
       relTypeFilter = `AND all(rel in relationships(path) WHERE type(rel) IN [${types}])`;
     }
 

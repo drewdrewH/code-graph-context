@@ -72,4 +72,3 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
     },
   );
 };
-

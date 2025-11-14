@@ -4,6 +4,7 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
 import { TOOL_NAMES, TOOL_METADATA, MESSAGES } from '../constants.js';
 import { createSuccessResponse } from '../utils.js';
 
@@ -15,6 +16,6 @@ export const createHelloTool = (server: McpServer): void => {
       description: TOOL_METADATA[TOOL_NAMES.hello].description,
       inputSchema: {},
     },
-    async () => createSuccessResponse(MESSAGES.success.hello)
+    async () => createSuccessResponse(MESSAGES.success.hello),
   );
 };

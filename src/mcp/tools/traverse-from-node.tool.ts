@@ -8,8 +8,8 @@ import { z } from 'zod';
 
 import { MAX_TRAVERSAL_DEPTH } from '../../constants.js';
 import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
-import { TraversalHandler } from '../handlers/traversal.handler.js';
 import { TOOL_NAMES, TOOL_METADATA, DEFAULTS } from '../constants.js';
+import { TraversalHandler } from '../handlers/traversal.handler.js';
 import { createErrorResponse, sanitizeNumericInput, debugLog } from '../utils.js';
 
 export const createTraverseFromNodeTool = (server: McpServer): void => {
@@ -35,12 +35,16 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
         direction: z
           .enum(['OUTGOING', 'INCOMING', 'BOTH'])
           .optional()
-          .describe('Filter by relationship direction: OUTGOING (what this calls), INCOMING (who calls this), BOTH (default)')
+          .describe(
+            'Filter by relationship direction: OUTGOING (what this calls), INCOMING (who calls this), BOTH (default)',
+          )
           .default('BOTH'),
         relationshipTypes: z
           .array(z.string())
           .optional()
-          .describe('Filter by specific relationship types (e.g., ["INJECTS", "USES_REPOSITORY"]). If not specified, shows all relationships.'),
+          .describe(
+            'Filter by specific relationship types (e.g., ["INJECTS", "USES_REPOSITORY"]). If not specified, shows all relationships.',
+          ),
         includeCode: z
           .boolean()
           .optional()
@@ -74,7 +78,7 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
       includeCode = false,
       maxNodesPerChain = 8,
       summaryOnly = false,
-      snippetLength = DEFAULTS.codeSnippetLength
+      snippetLength = DEFAULTS.codeSnippetLength,
     }) => {
       try {
         const sanitizedMaxDepth = sanitizeNumericInput(maxDepth, DEFAULTS.traversalDepth, MAX_TRAVERSAL_DEPTH);
@@ -89,7 +93,7 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
           includeCode,
           maxNodesPerChain,
           summaryOnly,
-          snippetLength
+          snippetLength,
         });
 
         const neo4jService = new Neo4jService();
@@ -112,6 +116,6 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
         await debugLog('Node traversal error', { nodeId, error });
         return createErrorResponse(error);
       }
-    }
+    },
   );
 };

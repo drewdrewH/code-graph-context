@@ -3,15 +3,16 @@
  * Creates TypeScript parsers with appropriate framework schemas
  */
 
-import { TypeScriptParser } from './typescript-parser-v2.js';
-import { CORE_TYPESCRIPT_SCHEMA, NESTJS_FRAMEWORK_SCHEMA, FrameworkSchema } from '../config/graph-v2.js';
 import { FAIRSQUARE_FRAMEWORK_SCHEMA } from '../config/fairsquare-framework-schema.js';
+import { CORE_TYPESCRIPT_SCHEMA, NESTJS_FRAMEWORK_SCHEMA, FrameworkSchema } from '../config/graph-v2.js';
+
+import { TypeScriptParser } from './typescript-parser-v2.js';
 
 export enum ProjectType {
   NESTJS = 'nestjs',
   FAIRSQUARE = 'fairsquare',
   BOTH = 'both', // For codebases with mixed patterns
-  VANILLA = 'vanilla' // Plain TypeScript, no frameworks
+  VANILLA = 'vanilla', // Plain TypeScript, no frameworks
 }
 
 export interface ParserFactoryOptions {
@@ -23,7 +24,6 @@ export interface ParserFactoryOptions {
 }
 
 export class ParserFactory {
-
   /**
    * Create a parser with appropriate framework schemas
    */
@@ -33,31 +33,24 @@ export class ParserFactory {
       tsConfigPath = 'tsconfig.json',
       projectType = ProjectType.NESTJS, // Default to NestJS (use auto-detect for best results)
       customFrameworkSchemas = [],
-      excludePatterns = ['node_modules', 'dist', 'build', '.spec.', '.test.']
+      excludePatterns = ['node_modules', 'dist', 'build', '.spec.', '.test.'],
     } = options;
 
     // Select framework schemas based on project type
     const frameworkSchemas = this.selectFrameworkSchemas(projectType, customFrameworkSchemas);
 
     console.log(`📦 Creating parser for ${projectType} project`);
-    console.log(`📚 Framework schemas: ${frameworkSchemas.map(s => s.name).join(', ')}`);
+    console.log(`📚 Framework schemas: ${frameworkSchemas.map((s) => s.name).join(', ')}`);
 
-    return new TypeScriptParser(
-      workspacePath,
-      tsConfigPath,
-      CORE_TYPESCRIPT_SCHEMA,
-      frameworkSchemas,
-      { excludePatterns }
-    );
+    return new TypeScriptParser(workspacePath, tsConfigPath, CORE_TYPESCRIPT_SCHEMA, frameworkSchemas, {
+      excludePatterns,
+    });
   }
 
   /**
    * Select framework schemas based on project type
    */
-  private static selectFrameworkSchemas(
-    projectType: ProjectType,
-    customSchemas: FrameworkSchema[]
-  ): FrameworkSchema[] {
+  private static selectFrameworkSchemas(projectType: ProjectType, customSchemas: FrameworkSchema[]): FrameworkSchema[] {
     const schemas: FrameworkSchema[] = [];
 
     switch (projectType) {
@@ -99,7 +92,7 @@ export class ParserFactory {
 
       const deps = {
         ...packageJson.dependencies,
-        ...packageJson.devDependencies
+        ...packageJson.devDependencies,
       };
 
       const hasNestJS = '@nestjs/common' in deps || '@nestjs/core' in deps;
@@ -123,17 +116,14 @@ export class ParserFactory {
   /**
    * Create parser with auto-detection
    */
-  static async createParserWithAutoDetection(
-    workspacePath: string,
-    tsConfigPath?: string
-  ): Promise<TypeScriptParser> {
+  static async createParserWithAutoDetection(workspacePath: string, tsConfigPath?: string): Promise<TypeScriptParser> {
     const projectType = await this.detectProjectType(workspacePath);
     console.log(`🔍 Auto-detected project type: ${projectType}`);
 
     return this.createParser({
       workspacePath,
       tsConfigPath,
-      projectType
+      projectType,
     });
   }
 }
