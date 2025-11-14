@@ -134,3 +134,15 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Temporary and backup files
+*.bak
+*.tmp
+*.swp
+*.swo
+*~
+
+# Debug and generated files
+debug-search.log
+neo4j-apoc-schema.json
+graph-output.json

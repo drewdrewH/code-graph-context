@@ -14,12 +14,22 @@
     "context",
     "typescript"
   ],
-  "author": "Your Name",
+  "author": "Andrew Hernandez",
   "license": "MIT",
-  "main": "dist/index.js",
+  "main": "dist/mcp/mcp.server.js",
+  "bin": {
+    "code-graph-context": "./dist/mcp/mcp.server.js"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
+    "prepare": "npm run build",
+    "mcp": "node dist/mcp/mcp.server.js",
     "dev": "tsc --watch",
     "graph:print": "npm run build && node dist/utils/test.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
@@ -28,6 +38,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.15.1",
     "commander": "^14.0.0",
+    "dotenv": "^17.2.3",
     "glob": "^11.0.3",
     "neo4j": "^2.0.0-RC2",
     "neo4j-driver": "^5.28.1",
