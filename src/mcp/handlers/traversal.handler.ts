@@ -4,7 +4,7 @@
  */
 
 import { MAX_TRAVERSAL_DEPTH } from '../../constants.js';
-import { Neo4jNode } from '../../core/config/graph-v2.js';
+import { Neo4jNode } from '../../core/config/schema.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { EMOJIS, DEFAULTS } from '../constants.js';
 import { createErrorResponse, createSuccessResponse, debugLog } from '../utils.js';

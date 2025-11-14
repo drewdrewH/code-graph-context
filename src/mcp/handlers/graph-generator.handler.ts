@@ -5,7 +5,7 @@
 
 import fs from 'fs/promises';
 
-import { Neo4jNode, Neo4jEdge } from '../../core/config/graph-v2.js';
+import { Neo4jNode, Neo4jEdge } from '../../core/config/schema.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { DEFAULTS } from '../constants.js';

@@ -10,7 +10,7 @@
 
 import { Node } from 'ts-morph';
 
-import { FrameworkSchema, CoreNodeType, ParsedNode, ParsingContext } from './graph-v2.js';
+import { FrameworkSchema, CoreNodeType, ParsedNode, ParsingContext } from './schema.js';
 
 // ============================================================================
 // FAIRSQUARE SEMANTIC TYPES

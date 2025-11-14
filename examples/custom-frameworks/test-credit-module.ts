@@ -1,6 +1,6 @@
-import { TypeScriptParser } from './dist/core/parsers/typescript-parser-v2.js';
+import { TypeScriptParser } from './dist/core/parsers/typescript-parser.js';
 import { FAIRSQUARE_FRAMEWORK_SCHEMA } from './dist/core/config/fairsquare-framework-schema.js';
-import { CORE_TYPESCRIPT_SCHEMA } from './dist/core/config/graph-v2.js';
+import { CORE_TYPESCRIPT_SCHEMA } from './dist/core/config/graph.js';
 
 async function test() {
   const parser = new TypeScriptParser(
@@ -10,7 +10,7 @@ async function test() {
     [FAIRSQUARE_FRAMEWORK_SCHEMA],
     {
       excludePatterns: ['node_modules/', 'dist/', '.spec.ts', '.test.ts', '.d.ts'],
-    }
+    },
   );
 
   console.log('Starting parse of credit module...');
@@ -21,7 +21,7 @@ async function test() {
   console.log(`Total edges: ${result.edges.length}`);
 
   // Check Services
-  const services = result.nodes.filter(n => n.properties.semanticType === 'Service');
+  const services = result.nodes.filter((n) => n.properties.semanticType === 'Service');
   console.log(`\n=== SERVICES (${services.length}) ===`);
   for (const service of services) {
     const deps = service.properties.context?.dependencies || [];
@@ -30,7 +30,7 @@ async function test() {
   }
 
   // Check Repositories
-  const repos = result.nodes.filter(n => n.properties.semanticType === 'Repository');
+  const repos = result.nodes.filter((n) => n.properties.semanticType === 'Repository');
   console.log(`\n=== REPOSITORIES (${repos.length}) ===`);
   for (const repo of repos) {
     console.log(`${repo.properties.name}`);
@@ -51,11 +51,11 @@ async function test() {
     });
 
   // Check USES_REPOSITORY edges specifically
-  const usesRepoEdges = result.edges.filter(e => e.type === 'USES_REPOSITORY');
+  const usesRepoEdges = result.edges.filter((e) => e.type === 'USES_REPOSITORY');
   console.log(`\n=== USES_REPOSITORY EDGES (${usesRepoEdges.length}) ===`);
   for (const edge of usesRepoEdges) {
-    const source = result.nodes.find(n => n.id === edge.startNodeId);
-    const target = result.nodes.find(n => n.id === edge.endNodeId);
+    const source = result.nodes.find((n) => n.id === edge.startNodeId);
+    const target = result.nodes.find((n) => n.id === edge.endNodeId);
     console.log(`${source?.properties.name} --> ${target?.properties.name}`);
     console.log(`  context:`, edge.properties.context);
   }

@@ -9,7 +9,7 @@ import { join } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { CORE_TYPESCRIPT_SCHEMA } from '../../core/config/graph-v2.js';
+import { CORE_TYPESCRIPT_SCHEMA } from '../../core/config/schema.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { ParserFactory, ProjectType } from '../../core/parsers/parser-factory.js';
 import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';

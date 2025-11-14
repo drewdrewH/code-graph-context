@@ -25,7 +25,7 @@ import {
   CoreEdgeType,
   ParsingContext,
   ParsedNode,
-} from '../config/graph-v2.js';
+} from '../config/schema.js';
 
 // Re-export ParsedNode for convenience
 export type { ParsedNode };
@@ -35,7 +35,7 @@ export interface ParsedEdge {
   relationshipType: string;
   sourceNodeId: string;
   targetNodeId: string;
-  properties: Neo4jEdgeProperties; // ✅ Neo4j properties
+  properties: Neo4jEdgeProperties;
 }
 
 export interface ParseResult {
@@ -79,35 +79,24 @@ export class TypeScriptParser {
   }
 
   async parseWorkspace(): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
-    console.log('added', this.project.getSourceFiles().length, 'files to project');
-    console.log('🚀 Starting workspace parsing v2...');
-
     const sourceFiles = this.project.getSourceFiles();
-    console.log(`📁 Found ${sourceFiles.length} TypeScript files`);
 
     // Phase 1: Core parsing for ALL files
     for (const sourceFile of sourceFiles) {
       if (this.shouldSkipFile(sourceFile)) continue;
-
-      console.log(`📄 Parsing file: ${sourceFile.getFilePath()}`);
       await this.parseCoreTypeScript(sourceFile);
     }
 
     // Phase 2: Apply context extractors
-    console.log('🔧 Applying context extractors...');
     await this.applyContextExtractors();
 
     // Phase 3: Framework enhancements
     if (this.frameworkSchemas.length > 0) {
-      console.log('🎯 Applying framework enhancements...');
       await this.applyFrameworkEnhancements();
     }
 
     // Phase 4: Edge enhancements
-    console.log('🔗 Applying edge enhancements...');
     await this.applyEdgeEnhancements();
-
-    console.log(`✅ Parsing complete: ${this.parsedNodes.size} nodes, ${this.parsedEdges.size} edges`);
 
     // Convert to Neo4j format
     const neo4jNodes = Array.from(this.parsedNodes.values()).map(this.toNeo4jNode);

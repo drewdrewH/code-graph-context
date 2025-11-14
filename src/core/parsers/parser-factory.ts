@@ -4,9 +4,9 @@
  */
 
 import { FAIRSQUARE_FRAMEWORK_SCHEMA } from '../config/fairsquare-framework-schema.js';
-import { CORE_TYPESCRIPT_SCHEMA, NESTJS_FRAMEWORK_SCHEMA, FrameworkSchema } from '../config/graph-v2.js';
+import { CORE_TYPESCRIPT_SCHEMA, NESTJS_FRAMEWORK_SCHEMA, FrameworkSchema } from '../config/schema.js';
 
-import { TypeScriptParser } from './typescript-parser-v2.js';
+import { TypeScriptParser } from './typescript-parser.js';
 
 export enum ProjectType {
   NESTJS = 'nestjs',
