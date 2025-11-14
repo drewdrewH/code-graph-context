@@ -4,9 +4,11 @@ export class EmbeddingsService {
   private readonly openai: OpenAI;
   private readonly model: string;
   constructor(model: string = 'text-embedding-3-large') {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY environment variable is required');
+    }
+    this.openai = new OpenAI({ apiKey });
     this.model = model;
   }
 

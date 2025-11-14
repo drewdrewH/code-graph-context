@@ -1,7 +1,12 @@
 /**
+ *
  * MCP Server - Main Entry Point
  * Clean, modular architecture for the Code Graph Context MCP Server
  */
+
+// Load environment variables from .env file
+import dotenv from 'dotenv';
+dotenv.config();
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -19,6 +24,7 @@ const startServer = async (): Promise<void> => {
 
   // Create MCP server instance
   const server = new McpServer({
+  
     name: MCP_SERVER_CONFIG.name,
     version: MCP_SERVER_CONFIG.version,
   });
@@ -42,5 +48,5 @@ const startServer = async (): Promise<void> => {
 };
 
 // Start the server
-console.log(MESSAGES.server.startingServer);
+console.error(MESSAGES.server.startingServer);
 await startServer();

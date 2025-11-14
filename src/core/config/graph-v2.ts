@@ -130,7 +130,7 @@ export interface Neo4jNodeProperties {
   id: string;
   name: string;
   coreType: CoreNodeType;
-  semanticType?: SemanticNodeType; // Single semantic type
+  semanticType?: string; // Can be SemanticNodeType or framework-specific semantic type
 
   // === FREQUENTLY INDEXED ===
   filePath: string;
@@ -153,7 +153,7 @@ export interface Neo4jNodeProperties {
 export interface Neo4jEdgeProperties {
   // === ALWAYS INDEXED ===
   coreType: CoreEdgeType;
-  semanticType?: SemanticEdgeType; // Single semantic type
+  semanticType?: string; // Can be SemanticEdgeType or framework-specific edge type
 
   // === FREQUENTLY INDEXED ===
   source: 'ast' | 'decorator' | 'pattern' | 'inference';
@@ -235,19 +235,47 @@ export interface PropertyDefinition {
  */
 export interface DetectionPattern {
   type: 'decorator' | 'filename' | 'import' | 'classname' | 'function';
-  pattern: string | RegExp | ((node: any) => boolean);
+  pattern: string | RegExp | ((parsedNode: ParsedNode) => boolean);
   confidence: number;
   priority: number;
 }
 
 /**
+ * Parsing Context - Shared state across all parsing phases
+ * Simple map for custom data that can be shared between extractors and enhancements
+ * e.g., store vendorClients: Map<string, ParsedNode> by project name
+ */
+export type ParsingContext = Map<string, any>;
+
+/**
+ * Parsed node representation (after parsing, not the raw AST node)
+ * This is the structure stored in the parser's parsedNodes map
+ */
+export interface ParsedNode {
+  id: string;
+  coreType: CoreNodeType;
+  semanticType?: string; // Can be SemanticNodeType or framework-specific semantic type
+  labels: string[];
+  properties: Neo4jNodeProperties;
+  sourceNode?: any; // The original ts-morph AST Node
+  skipEmbedding?: boolean;
+}
+
+/**
  * Context Extractor for Framework-Specific Properties
+ * Receives the parsed node, all parsed nodes, and shared context
+ * Access the AST node via parsedNode.sourceNode if needed
  */
 export interface ContextExtractor {
   nodeType: CoreNodeType;
   edgeType?: CoreEdgeType;
   semanticType?: SemanticNodeType;
-  extractor: (node: any, edge?: any) => Record<string, any>;
+  extractor: (
+    parsedNode: ParsedNode,
+    allParsedNodes: Map<string, ParsedNode>,
+    sharedContext: ParsingContext,
+    edge?: any,
+  ) => Record<string, any>;
   priority: number;
 }
 
@@ -297,10 +325,10 @@ export interface CoreTypeScriptSchema {
 export interface FrameworkEnhancement {
   name: string;
   targetCoreType: CoreNodeType;
-  semanticType: SemanticNodeType;
+  semanticType: string; // Can be SemanticNodeType or framework-specific semantic type
   detectionPatterns: DetectionPattern[];
   contextExtractors: ContextExtractor[];
-  additionalRelationships: SemanticEdgeType[];
+  additionalRelationships: string[]; // Can be SemanticEdgeType or framework-specific edge type
   neo4j: {
     additionalLabels: string[];
     primaryLabel?: string;
@@ -313,9 +341,19 @@ export interface FrameworkEnhancement {
  */
 export interface EdgeEnhancement {
   name: string;
-  semanticType: SemanticEdgeType;
-  detectionPattern: (sourceNode: any, targetNode: any) => boolean;
-  contextExtractor?: (sourceNode: any, targetNode: any) => Record<string, any>;
+  semanticType: string; // Can be SemanticEdgeType or framework-specific edge type
+  detectionPattern: (
+    parsedSourceNode: ParsedNode,
+    parsedTargetNode: ParsedNode,
+    allParsedNodes: Map<string, ParsedNode>,
+    sharedContext: ParsingContext,
+  ) => boolean;
+  contextExtractor?: (
+    parsedSourceNode: ParsedNode,
+    parsedTargetNode: ParsedNode,
+    allParsedNodes: Map<string, ParsedNode>,
+    sharedContext: ParsingContext,
+  ) => Record<string, any>;
   neo4j: {
     relationshipType: string;
     direction: 'OUTGOING' | 'INCOMING' | 'BIDIRECTIONAL';
@@ -336,6 +374,7 @@ export interface FrameworkSchema {
   metadata: {
     targetLanguages: string[];
     dependencies?: string[];
+    parseVariablesFrom?: string[]; // Glob patterns for files to parse variable declarations from
   };
 }
 
@@ -994,14 +1033,18 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         {
           nodeType: CoreNodeType.CLASS_DECLARATION,
           semanticType: SemanticNodeType.NEST_CONTROLLER,
-          extractor: (node: any) => ({
-            basePath: extractControllerPath(node),
-            endpointCount: countHttpEndpoints(node),
-            hasGlobalGuards: hasDecorator(node, 'UseGuards'),
-            hasGlobalPipes: hasDecorator(node, 'UsePipes'),
-            hasGlobalInterceptors: hasDecorator(node, 'UseInterceptors'),
-            version: extractVersion(node),
-          }),
+          extractor: (parsedNode: ParsedNode) => {
+            const node = parsedNode.sourceNode;
+            if (!node) return {};
+            return {
+              basePath: extractControllerPath(node),
+              endpointCount: countHttpEndpoints(node),
+              hasGlobalGuards: hasDecorator(node, 'UseGuards'),
+              hasGlobalPipes: hasDecorator(node, 'UsePipes'),
+              hasGlobalInterceptors: hasDecorator(node, 'UseInterceptors'),
+              version: extractVersion(node),
+            };
+          },
           priority: 1,
         },
       ],
@@ -1035,12 +1078,16 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         {
           nodeType: CoreNodeType.CLASS_DECLARATION,
           semanticType: SemanticNodeType.NEST_SERVICE,
-          extractor: (node: any) => ({
-            scope: extractScope(node),
-            isAsync: hasAsyncMethods(node),
-            dependencyCount: countConstructorParameters(node),
-            injectionToken: extractInjectionToken(node),
-          }),
+          extractor: (parsedNode: ParsedNode) => {
+            const node = parsedNode.sourceNode;
+            if (!node) return {};
+            return {
+              scope: extractScope(node),
+              isAsync: hasAsyncMethods(node),
+              dependencyCount: countConstructorParameters(node),
+              injectionToken: extractInjectionToken(node),
+            };
+          },
           priority: 1,
         },
       ],
@@ -1074,14 +1121,18 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         {
           nodeType: CoreNodeType.CLASS_DECLARATION,
           semanticType: SemanticNodeType.NEST_MODULE,
-          extractor: (node: any) => ({
-            isGlobal: hasDecorator(node, 'Global'),
-            isDynamic: hasDynamicMethods(node),
-            imports: extractModuleImports(node),
-            providers: extractModuleProviders(node),
-            controllers: extractModuleControllers(node),
-            exports: extractModuleExports(node),
-          }),
+          extractor: (parsedNode: ParsedNode) => {
+            const node = parsedNode.sourceNode;
+            if (!node) return {};
+            return {
+              isGlobal: hasDecorator(node, 'Global'),
+              isDynamic: hasDynamicMethods(node),
+              imports: extractModuleImports(node),
+              providers: extractModuleProviders(node),
+              controllers: extractModuleControllers(node),
+              exports: extractModuleExports(node),
+            };
+          },
           priority: 1,
         },
       ],
@@ -1112,7 +1163,9 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         {
           nodeType: CoreNodeType.METHOD_DECLARATION,
           semanticType: SemanticNodeType.MESSAGE_HANDLER,
-          extractor: (node: any) => {
+          extractor: (parsedNode: ParsedNode) => {
+            const node = parsedNode.sourceNode;
+            if (!node) return {};
             return {
               messageQueueName: extractMessagePattern(node),
               isAsync: node.isAsync(),
@@ -1161,17 +1214,21 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         {
           nodeType: CoreNodeType.METHOD_DECLARATION,
           semanticType: SemanticNodeType.HTTP_ENDPOINT,
-          extractor: (node: any) => ({
-            httpMethod: extractHttpMethod(node),
-            path: extractRoutePath(node),
-            fullPath: computeFullPath(node),
-            statusCode: extractStatusCode(node),
-            hasAuth: hasAuthDecorators(node),
-            hasValidation: hasValidationDecorators(node),
-            guardNames: extractGuardNames(node),
-            pipeNames: extractPipeNames(node),
-            interceptorNames: extractInterceptorNames(node),
-          }),
+          extractor: (parsedNode: ParsedNode) => {
+            const node = parsedNode.sourceNode;
+            if (!node) return {};
+            return {
+              httpMethod: extractHttpMethod(node),
+              path: extractRoutePath(node),
+              fullPath: computeFullPath(node),
+              statusCode: extractStatusCode(node),
+              hasAuth: hasAuthDecorators(node),
+              hasValidation: hasValidationDecorators(node),
+              guardNames: extractGuardNames(node),
+              pipeNames: extractPipeNames(node),
+              interceptorNames: extractInterceptorNames(node),
+            };
+          },
           priority: 1,
         },
       ],
@@ -1205,11 +1262,15 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         {
           nodeType: CoreNodeType.CLASS_DECLARATION,
           semanticType: SemanticNodeType.ENTITY_CLASS,
-          extractor: (node: any) => ({
-            tableName: extractTableName(node),
-            columnCount: countColumns(node),
-            hasRelations: hasRelationDecorators(node),
-          }),
+          extractor: (parsedNode: ParsedNode) => {
+            const node = parsedNode.sourceNode;
+            if (!node) return {};
+            return {
+              tableName: extractTableName(node),
+              columnCount: countColumns(node),
+              hasRelations: hasRelationDecorators(node),
+            };
+          },
           priority: 1,
         },
       ],
@@ -1243,13 +1304,17 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         {
           nodeType: CoreNodeType.CLASS_DECLARATION,
           semanticType: SemanticNodeType.DTO_CLASS,
-          extractor: (node: any) => ({
-            validationDecorators: extractValidationDecorators(node),
-            isRequestDto: node.getName()?.toLowerCase().includes('request') ?? false,
-            isResponseDto: node.getName()?.toLowerCase().includes('response') || false,
-            isPartialDto: extendsPartialType(node),
-            baseClass: extractBaseClass(node),
-          }),
+          extractor: (parsedNode: ParsedNode) => {
+            const node = parsedNode.sourceNode;
+            if (!node) return {};
+            return {
+              validationDecorators: extractValidationDecorators(node),
+              isRequestDto: node.getName()?.toLowerCase().includes('request') ?? false,
+              isResponseDto: node.getName()?.toLowerCase().includes('response') || false,
+              isPartialDto: extendsPartialType(node),
+              baseClass: extractBaseClass(node),
+            };
+          },
           priority: 1,
         },
       ],
@@ -1266,13 +1331,13 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
     DependencyInjection: {
       name: 'DependencyInjection',
       semanticType: SemanticEdgeType.INJECTS,
-      detectionPattern: (sourceNode: any, targetNode: any) => {
-        return detectDependencyInjection(sourceNode, targetNode);
+      detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => {
+        return detectDependencyInjection(parsedSourceNode, parsedTargetNode);
       },
-      contextExtractor: (sourceNode: any, targetNode: any) => ({
+      contextExtractor: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => ({
         injectionType: 'constructor',
-        injectionToken: extractInjectionTokenFromRelation(sourceNode, targetNode),
-        parameterIndex: findParameterIndex(sourceNode, targetNode),
+        injectionToken: extractInjectionTokenFromRelation(parsedSourceNode, parsedTargetNode),
+        parameterIndex: findParameterIndex(parsedSourceNode, parsedTargetNode),
       }),
       neo4j: {
         relationshipType: 'INJECTS',
@@ -1283,31 +1348,32 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
     MessageHandlerExposure: {
       name: 'MessageHandlerExposure',
       semanticType: SemanticEdgeType.EXPOSES,
-      detectionPattern: (sourceNode: any, targetNode: any) => {
+      detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => {
         if (
-          sourceNode.properties?.semanticType !== SemanticNodeType.NEST_CONTROLLER ||
-          targetNode.properties?.semanticType !== SemanticNodeType.MESSAGE_HANDLER
+          parsedSourceNode.properties?.semanticType !== SemanticNodeType.NEST_CONTROLLER ||
+          parsedTargetNode.properties?.semanticType !== SemanticNodeType.MESSAGE_HANDLER
         ) {
           return false;
         }
 
-        if (sourceNode.properties?.filePath !== targetNode.properties?.filePath) {
+        if (parsedSourceNode.properties?.filePath !== parsedTargetNode.properties?.filePath) {
           return false;
         }
 
-        if (sourceNode.sourceNode && targetNode.sourceNode) {
-          const controllerClass = sourceNode.sourceNode;
-          const methodNode = targetNode.sourceNode;
+        // Access AST nodes to check parent relationship
+        const sourceNode = parsedSourceNode.sourceNode;
+        const targetNode = parsedTargetNode.sourceNode;
 
-          const methodParent = methodNode.getParent();
-          if (methodParent === controllerClass) {
+        if (sourceNode && targetNode) {
+          const methodParent = targetNode.getParent();
+          if (methodParent === sourceNode) {
             return true;
           }
         }
 
         return false;
       },
-      contextExtractor: (sourceNode: any, targetNode: any) => ({
+      contextExtractor: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => ({
         endpointType: 'RPC',
       }),
       neo4j: {
@@ -1319,35 +1385,36 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
     HttpEndpointExposure: {
       name: 'HttpEndpointExposure',
       semanticType: SemanticEdgeType.EXPOSES,
-      detectionPattern: (sourceNode: any, targetNode: any) => {
+      detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => {
         // Check if source is controller and target is HTTP endpoint
         if (
-          sourceNode.properties?.semanticType !== SemanticNodeType.NEST_CONTROLLER ||
-          targetNode.properties?.semanticType !== SemanticNodeType.HTTP_ENDPOINT
+          parsedSourceNode.properties?.semanticType !== SemanticNodeType.NEST_CONTROLLER ||
+          parsedTargetNode.properties?.semanticType !== SemanticNodeType.HTTP_ENDPOINT
         ) {
           return false;
         }
 
-        if (sourceNode.properties?.filePath !== targetNode.properties?.filePath) {
+        if (parsedSourceNode.properties?.filePath !== parsedTargetNode.properties?.filePath) {
           return false;
         }
 
-        if (sourceNode.sourceNode && targetNode.sourceNode) {
-          const controllerClass = sourceNode.sourceNode;
-          const methodNode = targetNode.sourceNode;
+        // Access AST nodes to check parent relationship
+        const sourceNode = parsedSourceNode.sourceNode;
+        const targetNode = parsedTargetNode.sourceNode;
 
-          const methodParent = methodNode.getParent();
-          if (methodParent === controllerClass) {
+        if (sourceNode && targetNode) {
+          const methodParent = targetNode.getParent();
+          if (methodParent === sourceNode) {
             return true;
           }
         }
 
         return false;
       },
-      contextExtractor: (sourceNode: any, targetNode: any) => ({
-        httpMethod: targetNode.properties?.context?.httpMethod ?? '',
-        fullPath: computeFullPathFromNodes(sourceNode, targetNode),
-        statusCode: targetNode.properties?.context?.statusCode ?? 200,
+      contextExtractor: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => ({
+        httpMethod: parsedTargetNode.properties?.context?.httpMethod ?? '',
+        fullPath: computeFullPathFromNodes(parsedSourceNode, parsedTargetNode),
+        statusCode: parsedTargetNode.properties?.context?.statusCode ?? 200,
       }),
       neo4j: {
         relationshipType: 'EXPOSES',
@@ -1359,89 +1426,117 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
   contextExtractors: [
     {
       nodeType: CoreNodeType.SOURCE_FILE,
-      extractor: (node: any) => ({
-        extension: node.getFilePath().substring(node.getFilePath().lastIndexOf('.')),
-        relativePath: extractRelativePath(node),
-        isTestFile: /\.(test|spec)\./.test(node.getFilePath()),
-        isDeclarationFile: node.getFilePath().endsWith('.d.ts'),
-        moduleKind: 'ES6',
-        importCount: node.getImportDeclarations().length,
-        exportCount: node.getExportDeclarations().length,
-        declarationCount: countDeclarations({ node }),
-      }),
+      extractor: (parsedNode: ParsedNode) => {
+        const node = parsedNode.sourceNode;
+        if (!node) return {};
+        return {
+          extension: node.getFilePath().substring(node.getFilePath().lastIndexOf('.')),
+          relativePath: extractRelativePath(node),
+          isTestFile: /\.(test|spec)\./.test(node.getFilePath()),
+          isDeclarationFile: node.getFilePath().endsWith('.d.ts'),
+          moduleKind: 'ES6',
+          importCount: node.getImportDeclarations().length,
+          exportCount: node.getExportDeclarations().length,
+          declarationCount: countDeclarations({ node }),
+        };
+      },
       priority: 1,
     },
     {
       nodeType: CoreNodeType.CLASS_DECLARATION,
-      extractor: (node: any) => ({
-        isAbstract: node.getAbstractKeyword() != null,
-        isDefaultExport: node.isDefaultExport(),
-        extendsClause: node.getExtends()?.getText(),
-        implementsClauses: node.getImplements().map((i: any) => i.getText()),
-        decoratorNames: node.getDecorators().map((d: any) => d.getName()),
-        methodCount: node.getMethods().length,
-        propertyCount: node.getProperties().length,
-        constructorParameterCount: countConstructorParameters(node),
-      }),
+      extractor: (parsedNode: ParsedNode) => {
+        const node = parsedNode.sourceNode;
+        if (!node) return {};
+        return {
+          isAbstract: node.getAbstractKeyword() != null,
+          isDefaultExport: node.isDefaultExport(),
+          extendsClause: node.getExtends()?.getText(),
+          implementsClauses: node.getImplements().map((i: any) => i.getText()),
+          decoratorNames: node.getDecorators().map((d: any) => d.getName()),
+          methodCount: node.getMethods().length,
+          propertyCount: node.getProperties().length,
+          constructorParameterCount: countConstructorParameters(node),
+        };
+      },
       priority: 1,
     },
     {
       nodeType: CoreNodeType.METHOD_DECLARATION,
-      extractor: (node: any) => ({
-        isStatic: node.isStatic(),
-        isAsync: node.isAsync(),
-        isAbstract: node.isAbstract(),
-        returnType: node.getReturnTypeNode()?.getText() || 'void',
-        parameterCount: node.getParameters().length,
-        decoratorNames: node.getDecorators().map((d: any) => d.getName()),
-        isGetter: node.getKind() === 177,
-        isSetter: node.getKind() === 178,
-        overloadCount: 1, // Simplified
-      }),
+      extractor: (parsedNode: ParsedNode) => {
+        const node = parsedNode.sourceNode;
+        if (!node) return {};
+        return {
+          isStatic: node.isStatic(),
+          isAsync: node.isAsync(),
+          isAbstract: node.isAbstract(),
+          returnType: node.getReturnTypeNode()?.getText() || 'void',
+          parameterCount: node.getParameters().length,
+          decoratorNames: node.getDecorators().map((d: any) => d.getName()),
+          isGetter: node.getKind() === 177,
+          isSetter: node.getKind() === 178,
+          overloadCount: 1, // Simplified
+        };
+      },
       priority: 1,
     },
     {
       nodeType: CoreNodeType.PROPERTY_DECLARATION,
-      extractor: (node: any) => ({
-        isStatic: node.isStatic(),
-        isReadonly: node.isReadonly(),
-        type: node.getTypeNode()?.getText() || 'any',
-        hasInitializer: node.hasInitializer(),
-        decoratorNames: node.getDecorators().map((d: any) => d.getName()),
-        isOptional: node.hasQuestionToken(),
-      }),
+      extractor: (parsedNode: ParsedNode) => {
+        const node = parsedNode.sourceNode;
+        if (!node) return {};
+        return {
+          isStatic: node.isStatic(),
+          isReadonly: node.isReadonly(),
+          type: node.getTypeNode()?.getText() || 'any',
+          hasInitializer: node.hasInitializer(),
+          decoratorNames: node.getDecorators().map((d: any) => d.getName()),
+          isOptional: node.hasQuestionToken(),
+        };
+      },
       priority: 1,
     },
     {
       nodeType: CoreNodeType.PARAMETER_DECLARATION,
-      extractor: (node: any) => ({
-        type: node.getTypeNode()?.getText() || 'any',
-        isOptional: node.hasQuestionToken(),
-        isRestParameter: node.isRestParameter(),
-        hasDefaultValue: node.hasInitializer(),
-        decoratorNames: node.getDecorators().map((d: any) => d.getName()),
-        parameterIndex: node.getChildIndex(),
-      }),
+      extractor: (parsedNode: ParsedNode) => {
+        const node = parsedNode.sourceNode;
+        if (!node) return {};
+        return {
+          type: node.getTypeNode()?.getText() || 'any',
+          isOptional: node.hasQuestionToken(),
+          isRestParameter: node.isRestParameter(),
+          hasDefaultValue: node.hasInitializer(),
+          decoratorNames: node.getDecorators().map((d: any) => d.getName()),
+          parameterIndex: node.getChildIndex(),
+        };
+      },
       priority: 1,
     },
     {
       nodeType: CoreNodeType.IMPORT_DECLARATION,
-      extractor: (node: any) => ({
-        moduleSpecifier: node.getModuleSpecifierValue(),
-        isTypeOnly: node.isTypeOnly(),
-        importKind: determineImportKind(node),
-        namedImports: node.getNamedImports().map((ni: any) => ni.getName()),
-        defaultImport: node.getDefaultImport()?.getText() || null,
-        namespaceImport: node.getNamespaceImport()?.getText() || null,
-      }),
+      extractor: (parsedNode: ParsedNode) => {
+        const node = parsedNode.sourceNode;
+        if (!node) return {};
+        return {
+          moduleSpecifier: node.getModuleSpecifierValue(),
+          isTypeOnly: node.isTypeOnly(),
+          importKind: determineImportKind(node),
+          namedImports: node.getNamedImports().map((ni: any) => ni.getName()),
+          defaultImport: node.getDefaultImport()?.getText() || null,
+          namespaceImport: node.getNamespaceImport()?.getText() || null,
+        };
+      },
       priority: 1,
     },
     {
       nodeType: CoreNodeType.DECORATOR,
-      extractor: (node: any) => ({
-        arguments: node.getArguments().map((arg: any) => arg.getText()),
-        target: determineDecoratorTarget(node),
-      }),
+      extractor: (parsedNode: ParsedNode) => {
+        const node = parsedNode.sourceNode;
+        if (!node) return {};
+        return {
+          arguments: node.getArguments().map((arg: any) => arg.getText()),
+          target: determineDecoratorTarget(node),
+        };
+      },
       priority: 1,
     },
   ],
@@ -1459,10 +1554,8 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
 function extractMessagePattern(node: any): string {
   // Check for @EventPattern first
   let decorator = node.getDecorator('EventPattern');
-  if (!decorator) {
-    // Check for @MessagePattern
-    decorator = node.getDecorator('MessagePattern');
-  }
+  // Check for @MessagePattern
+  decorator ??= node.getDecorator('MessagePattern');
 
   if (!decorator) return '';
 

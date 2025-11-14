@@ -102,18 +102,40 @@ export const QUERIES = {
     WHERE name = 'node_embedding_idx' AND type = 'VECTOR'
     RETURN count(*) > 0 as exists
   `,
-  EXPLORE_ALL_CONNECTIONS: (maxDepth: number = MAX_TRAVERSAL_DEPTH) => {
-    const safeMaxDepth = Math.min(Math.max(maxDepth, 1), MAX_TRAVERSAL_DEPTH); // Ensure between 1-MAX_TRAVERSAL_DEPTH
+  EXPLORE_ALL_CONNECTIONS: (
+    maxDepth: number = MAX_TRAVERSAL_DEPTH,
+    direction: 'OUTGOING' | 'INCOMING' | 'BOTH' = 'BOTH',
+    relationshipTypes?: string[]
+  ) => {
+    const safeMaxDepth = Math.min(Math.max(maxDepth, 1), MAX_TRAVERSAL_DEPTH);
+
+    // Build relationship pattern based on direction
+    let relPattern = '';
+    if (direction === 'OUTGOING') {
+      relPattern = `-[*1..${safeMaxDepth}]->`;
+    } else if (direction === 'INCOMING') {
+      relPattern = `<-[*1..${safeMaxDepth}]-`;
+    } else {
+      relPattern = `-[*1..${safeMaxDepth}]-`;
+    }
+
+    // Build relationship type filter if specified
+    let relTypeFilter = '';
+    if (relationshipTypes && relationshipTypes.length > 0) {
+      const types = relationshipTypes.map(t => `'${t}'`).join(', ');
+      relTypeFilter = `AND all(rel in relationships(path) WHERE type(rel) IN [${types}])`;
+    }
 
     return `
       MATCH (start) WHERE start.id = $nodeId
 
       CALL {
         WITH start
-        MATCH path = (start)-[*1..${safeMaxDepth}]-(connected)
+        MATCH path = (start)${relPattern}(connected)
         WHERE connected <> start
+        ${relTypeFilter}
         WITH path, connected, length(path) as depth
-        
+
         RETURN {
           id: connected.id,
           labels: labels(connected),
@@ -126,7 +148,7 @@ export const QUERIES = {
           end: endNode(rel).id,
           properties: properties(rel)
         }] as relationshipChain
-        
+
       }
 
       WITH start, collect({

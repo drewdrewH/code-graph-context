@@ -10,8 +10,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { CORE_TYPESCRIPT_SCHEMA, NESTJS_FRAMEWORK_SCHEMA } from '../../core/config/graph-v2.js';
+import { FAIRSQUARE_FRAMEWORK_SCHEMA } from '../../core/config/fairsquare-framework-schema.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
-import { TypeScriptParser } from '../../core/parsers/typescript-parser-v2.js';
+import { ParserFactory, ProjectType } from '../../core/parsers/parser-factory.js';
 import { GraphGeneratorHandler } from '../handlers/graph-generator.handler.js';
 import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA, DEFAULTS, FILE_PATHS, LOG_CONFIG } from '../constants.js';
@@ -33,23 +34,29 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
         projectPath: z.string().describe('Path to the TypeScript project root directory'),
         tsconfigPath: z.string().describe('Path to TypeScript project tsconfig.json file'),
         clearExisting: z.boolean().optional().describe('Clear existing graph data first'),
+        projectType: z.enum(['nestjs', 'fairsquare', 'both', 'vanilla', 'auto']).optional().default('auto').describe('Project framework type (auto-detect by default)'),
       },
     },
-    async ({ tsconfigPath, projectPath, clearExisting }) => {
+    async ({ tsconfigPath, projectPath, clearExisting, projectType = 'auto' }) => {
       try {
-        await debugLog('TypeScript project parsing started', { 
-          projectPath, 
-          tsconfigPath, 
-          clearExisting 
+        await debugLog('TypeScript project parsing started', {
+          projectPath,
+          tsconfigPath,
+          clearExisting,
+          projectType
         });
 
-        // Initialize parser with NestJS framework schema
-        const parser = new TypeScriptParser(
-          projectPath, 
-          tsconfigPath, 
-          undefined, 
-          [NESTJS_FRAMEWORK_SCHEMA]
-        );
+        // Create parser with auto-detection or specified type
+        let parser;
+        if (projectType === 'auto') {
+          parser = await ParserFactory.createParserWithAutoDetection(projectPath, tsconfigPath);
+        } else {
+          parser = ParserFactory.createParser({
+            workspacePath: projectPath,
+            tsConfigPath: tsconfigPath,
+            projectType: projectType as ProjectType
+          });
+        }
 
         // Parse the workspace
         const { nodes, edges } = await parser.parseWorkspace();
@@ -63,12 +70,17 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
 
         // Create graph JSON output
         const outputPath = join(projectPath, FILE_PATHS.graphOutput);
+
+        // Get detected framework schemas from parser
+        const frameworkSchemas = parser['frameworkSchemas']?.map((s: any) => s.name) || ['Auto-detected'];
+
         const graphData = {
           nodes: cleanNodes,
           edges: cleanEdges,
           metadata: {
             coreSchema: CORE_TYPESCRIPT_SCHEMA.name,
-            frameworkSchemas: [NESTJS_FRAMEWORK_SCHEMA.name],
+            frameworkSchemas,
+            projectType,
             generated: new Date().toISOString(),
           },
         };

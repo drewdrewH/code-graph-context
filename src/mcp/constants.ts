@@ -3,6 +3,7 @@
  * All constants used throughout the MCP server implementation
  */
 
+
 // Server Configuration
 export const MCP_SERVER_CONFIG = {
   name: 'codebase-graph',
@@ -34,7 +35,15 @@ export const TOOL_METADATA = {
   },
   [TOOL_NAMES.searchCodebase]: {
     title: 'Search Codebase',
-    description: 'Search the codebase using semantic similarity to find relevant code, functions, classes, and implementations based on natural language descriptions. Use this when the user asks about specific functionality, code patterns, or wants to understand how something works in the project.',
+    description: `Search the codebase using semantic similarity to find relevant code, functions, classes, and implementations.
+
+IMPORTANT: This tool returns a COMPACT view (no code snippets, maxDepth: 3, maxNodesPerChain: 4) to avoid context overflow. It shows file paths, node IDs, and relationship chains.
+
+Parameters:
+- query: Natural language description of what you're looking for
+- limit (default: 10): Number of initial vector search results to consider
+
+Use this for initial exploration. For detailed code inspection, use traverse_from_node with the returned node IDs and set includeCode: true.`,
   },
   [TOOL_NAMES.naturalLanguageToCypher]: {
     title: 'Natural Language to Cypher',
@@ -42,7 +51,23 @@ export const TOOL_METADATA = {
   },
   [TOOL_NAMES.traverseFromNode]: {
     title: 'Traverse from Node',
-    description: 'Traverse the graph starting from a specific node ID to explore its connections and relationships. This tool is useful for doing targeted exploration after finding a significant node through search_codebase.',
+    description: `Traverse the graph starting from a specific node ID to explore its connections and relationships in detail.
+
+Parameters:
+- nodeId (required): The node ID to start traversal from (obtained from search_codebase)
+- maxDepth (default: 3): How many relationship hops to traverse (1-10)
+- skip (default: 0): Number of results to skip for pagination
+
+Advanced options (use when needed):
+- includeCode: Set to true to see actual source code snippets (WARNING: uses more context)
+- maxNodesPerChain: Limit nodes shown per relationship chain (default: varies)
+- summaryOnly: Set to true for just file paths and statistics without detailed traversal
+
+Best practices:
+- Start with search_codebase to find initial nodes
+- Use this tool with default params for detailed exploration
+- Only set includeCode: true when you need to see actual code
+- Use summaryOnly: true for a quick overview of many connections`,
   },
   [TOOL_NAMES.parseTypescriptProject]: {
     title: 'Parse TypeScript Project',
@@ -61,7 +86,8 @@ export const DEFAULTS = {
   skipOffset: 0,
   batchSize: 500,
   maxResultsDisplayed: 20,
-  codeSnippetLength: 150,
+  codeSnippetLength: 800,
+  chainSnippetLength: 800,
 } as const;
 
 // Messages

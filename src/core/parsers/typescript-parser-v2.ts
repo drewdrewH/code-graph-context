@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { Project, SourceFile, Node } from 'ts-morph';
 import { v4 as uuidv4 } from 'uuid';
+import { minimatch } from 'minimatch';
 
 import {
   CoreNodeType,
@@ -24,17 +25,12 @@ import {
   PropertyDefinition,
   CoreEdgeType,
   SemanticEdgeType,
+  ParsingContext,
+  ParsedNode,
 } from '../config/graph-v2.js';
 
-export interface ParsedNode {
-  id: string;
-  coreType: CoreNodeType;
-  semanticType?: SemanticNodeType; // ✅ Single semantic type
-  labels: string[];
-  properties: Neo4jNodeProperties; // ✅ Neo4j properties
-  sourceNode?: Node;
-  skipEmbedding?: boolean; // Skip embedding for certain nodes
-}
+// Re-export ParsedNode for convenience
+export type { ParsedNode };
 
 export interface ParsedEdge {
   id: string;
@@ -56,6 +52,7 @@ export class TypeScriptParser {
   private frameworkSchemas: FrameworkSchema[];
   private parsedNodes: Map<string, ParsedNode> = new Map();
   private parsedEdges: Map<string, ParsedEdge> = new Map();
+  private sharedContext: ParsingContext = new Map(); // Shared context for custom data
 
   constructor(
     private workspacePath: string,
@@ -119,6 +116,24 @@ export class TypeScriptParser {
     const neo4jEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
 
     return { nodes: neo4jNodes, edges: neo4jEdges };
+  }
+
+  /**
+   * Check if variable declarations should be parsed for this file
+   * based on framework schema configurations
+   */
+  private shouldParseVariables(filePath: string): boolean {
+    for (const schema of this.frameworkSchemas) {
+      const parsePatterns = schema.metadata.parseVariablesFrom;
+      if (parsePatterns) {
+        for (const pattern of parsePatterns) {
+          if (minimatch(filePath, pattern)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   private async parseCoreTypeScript(sourceFile: SourceFile): Promise<void> {
@@ -246,6 +261,20 @@ export class TypeScriptParser {
         const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, importNode.id);
         this.addEdge(containsEdge);
       }
+
+      // Parse variable declarations if framework schema specifies this file should have them parsed
+      if (this.shouldParseVariables(sourceFile.getFilePath())) {
+        for (const varStatement of sourceFile.getVariableStatements()) {
+          for (const varDecl of varStatement.getDeclarations()) {
+            const variableNode = this.createCoreNode(varDecl, CoreNodeType.VARIABLE_DECLARATION);
+            this.addNode(variableNode);
+
+            // File contains variable relationship
+            const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, variableNode.id);
+            this.addEdge(containsEdge);
+          }
+        }
+      }
     } catch (error) {
       console.error(`Error parsing file ${sourceFile.getFilePath()}:`, error);
     }
@@ -309,7 +338,7 @@ export class TypeScriptParser {
       if (extractor.semanticType && node.semanticType !== extractor.semanticType) continue;
 
       try {
-        const context = extractor.extractor(node.sourceNode);
+        const context = extractor.extractor(node, this.parsedNodes as any, this.sharedContext);
         if (context && Object.keys(context).length > 0) {
           // Merge context into node properties
           node.properties.context ??= {};
@@ -382,7 +411,7 @@ export class TypeScriptParser {
             }
           case 'function':
             if (typeof pattern.pattern === 'function') {
-              return pattern.pattern(node.sourceNode);
+              return pattern.pattern(node);
             }
             return false;
           case 'classname':
@@ -437,11 +466,9 @@ export class TypeScriptParser {
       // Apply context extractors specific to this enhancement
       for (const extractor of enhancement.contextExtractors) {
         try {
-          const context = extractor.extractor(coreNode.sourceNode!);
+          const context = extractor.extractor(coreNode, this.parsedNodes as any, this.sharedContext);
           if (context && Object.keys(context).length > 0) {
-            if (!coreNode.properties.context) {
-              coreNode.properties.context = {};
-            }
+            coreNode.properties.context ??= {};
             Object.assign(coreNode.properties.context, context);
           }
         } catch (error) {
@@ -469,11 +496,16 @@ export class TypeScriptParser {
         for (const [targetId, targetNode] of this.parsedNodes) {
           if (sourceId === targetId) continue;
 
-          if (edgeEnhancement.detectionPattern(sourceNode, targetNode)) {
+          if (edgeEnhancement.detectionPattern(sourceNode, targetNode, this.parsedNodes as any, this.sharedContext)) {
             // Extract context for this edge
             let context = {};
             if (edgeEnhancement.contextExtractor) {
-              context = edgeEnhancement.contextExtractor(sourceNode, targetNode);
+              context = edgeEnhancement.contextExtractor(
+                sourceNode,
+                targetNode,
+                this.parsedNodes as any,
+                this.sharedContext,
+              );
             }
 
             const edge = this.createFrameworkEdge(
@@ -493,7 +525,7 @@ export class TypeScriptParser {
   }
 
   private createFrameworkEdge(
-    semanticType: SemanticEdgeType,
+    semanticType: string,
     relationshipType: string,
     sourceNodeId: string,
     targetNodeId: string,
@@ -623,7 +655,7 @@ export class TypeScriptParser {
 
   private shouldSkipFile(sourceFile: SourceFile): boolean {
     const filePath = sourceFile.getFilePath();
-    const excludedPatterns = this.parseConfig.excludePatterns || [];
+    const excludedPatterns = this.parseConfig.excludePatterns ?? [];
 
     for (const pattern of excludedPatterns) {
       if (filePath.includes(pattern) || filePath.match(new RegExp(pattern))) {

@@ -21,10 +21,10 @@ export const initializeNaturalLanguageService = async (): Promise<void> => {
   try {
     const service = new NaturalLanguageToCypherService();
     const schemaPath = 'neo4j-apoc-schema.json';
-    
+
     await service.getOrCreateAssistant(schemaPath);
     naturalLanguageToCypherService = service;
-    
+
     await debugLog('Natural Language to Cypher service initialized successfully');
   } catch (error) {
     await debugLog('Failed to initialize Natural Language to Cypher service', error);
@@ -57,9 +57,9 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
         // Execute the generated Cypher query
         const results = await neo4jService.run(cypherResult.cypher, cypherResult.parameters || {});
 
-        await debugLog('Cypher query executed', { 
-          cypher: cypherResult.cypher, 
-          resultsCount: results.length 
+        await debugLog('Cypher query executed', {
+          cypher: cypherResult.cypher,
+          resultsCount: results.length,
         });
 
         const formattedResponse = formatQueryResults(results, query, cypherResult);
@@ -69,6 +69,7 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
         await debugLog('Natural language to Cypher error', { query, error });
         return createErrorResponse(error);
       }
-    }
+    },
   );
 };
+

@@ -66,8 +66,8 @@ export const formatNodeInfo = (value: any, key: string): string => {
     }
 
     if (value.properties.sourceCode) {
-      const code = value.properties.sourceCode.substring(0, 150);
-      const hasMore = value.properties.sourceCode.length > 150;
+      const code = value.properties.sourceCode.substring(0, 500);
+      const hasMore = value.properties.sourceCode.length > 500;
       info += `- **Code:** \`\`\`typescript\n${code}${hasMore ? '...' : ''}\n\`\`\`\n`;
     }
 

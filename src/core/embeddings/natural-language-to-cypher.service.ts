@@ -1,15 +1,19 @@
 import fs from 'fs';
 
 import OpenAI from 'openai';
+import type { TextContentBlock } from 'openai/resources/beta/threads/messages';
 
 export class NaturalLanguageToCypherService {
   private assistantId: string;
   private readonly openai: OpenAI;
   private readonly MODEL = 'gpt-4o-mini'; // Using GPT-4 Turbo
   private readonly messageInstructions = `
-Analyze the Neo4j database schema provided in the neo4j-apoc-schema.json file and convert natural language requests into valid Cypher queries.
-
-The schema contains node types like Service, Class, Method, Property, Interface, Enum, Function, Variable, Import, Export, Decorator, and File with their properties and relationships.
+The schema file (neo4j-apoc-schema.json) contains two sections:
+1. rawSchema: Complete Neo4j APOC schema with all node labels, properties, and relationships in the graph
+2. domainContext: Framework-specific semantics including:
+   - nodeTypes: Descriptions and example queries for each node type
+   - relationships: How nodes connect with context about relationship properties
+   - commonQueryPatterns: Pre-built example queries for common use cases
 
 Your response must be a valid JSON object with this exact structure:
 {
@@ -18,25 +22,31 @@ Your response must be a valid JSON object with this exact structure:
   "explanation": "Concise explanation of what the query does and why it matches the user's request"
 }
 
-Cypher query formatting requirements:
-1. SCHEMA: Use only node labels and properties that exist in the provided schema
-2. SYNTAX: Follow proper Cypher syntax with correct keywords (MATCH, WHERE, RETURN, etc.)
-3. PARAMETERS: Use parameterized queries with $ syntax for dynamic values
-4. PATTERNS: Use appropriate relationship patterns when traversing the graph
-5. FILTERING: Include proper WHERE clauses for filtering based on user requirements
-6. RETURN: Select only the data relevant to the user's request
-7. PERFORMANCE: Consider using indexes and efficient query patterns
+Query Generation Process:
+1. CHECK DOMAIN CONTEXT: Look at domainContext.nodeTypes to understand available node types and their properties
+2. REVIEW EXAMPLES: Check domainContext.commonQueryPatterns for similar query examples
+3. CHECK RELATIONSHIPS: Look at domainContext.relationships to understand how nodes connect
+4. EXAMINE NODE PROPERTIES: Use rawSchema to see exact property names and types
+5. HANDLE JSON PROPERTIES: If properties or relationship context are stored as JSON strings, use apoc.convert.fromJsonMap() to parse them
+6. GENERATE QUERY: Write the Cypher query using only node labels, relationships, and properties that exist in the schema
 
-Available node types: Service, Class, Method, Property, Interface, Enum, Function, Variable, Import, Export, Decorator, File
-Common properties: id, name, filePath, startLine, endLine, sourceCode, visibility, semanticType
+Critical Rules:
+- Use the schema information from the file_search tool - do not guess node labels or relationships
+- Use ONLY node labels and properties found in rawSchema
+- For nested JSON data in properties, use: apoc.convert.fromJsonMap(node.propertyName) or apoc.convert.fromJsonMap(relationship.context)
+- Check domainContext for parsing instructions specific to certain node types (e.g., some nodes may store arrays of objects in JSON format)
+- Follow the example queries in commonQueryPatterns for proper syntax patterns
+- Use parameterized queries with $ syntax for any dynamic values
+- Return only the data relevant to the user's request
 
 Provide ONLY the JSON response with no additional text, markdown formatting, or explanations outside the JSON structure.
 `;
   constructor() {
-    // TODO: share with embedding service
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY environment variable is required');
+    }
+    this.openai = new OpenAI({ apiKey });
   }
 
   public async getOrCreateAssistant(schemaPath: string): Promise<string> {
@@ -115,18 +125,44 @@ Provide ONLY the JSON response with no additional text, markdown formatting, or 
     });
 
     const threadId = run.thread_id;
-    console.log(`Thread ID: ${threadId} `);
-    console.log('run status:', run.status);
+    console.log(`Thread ID: ${threadId}`);
+    console.log('Run status:', run.status);
+    console.log('Required actions:', run.required_action);
+    console.log('Last error:', run.last_error);
 
-    console.log('actions:', run.required_action);
-    console.log('action typpe:', run.required_action?.type);
+    // Validate run completed successfully
+    if (run.status !== 'completed') {
+      console.error('Full run object:', JSON.stringify(run, null, 2));
+      throw new Error(
+        `Assistant run did not complete. Status: ${run.status}. ` +
+          `Last error: ${run.last_error ? JSON.stringify(run.last_error) : 'none'}`,
+      );
+    }
+
     const messages = await this.openai.beta.threads.messages.list(threadId);
-    const latestMessage = messages.data[0].content[0]; // Most recent message first
-    console.log('Latest message:', latestMessage);
-    const status = run.status;
-    console.log('text:', (latestMessage as any).text);
-    console.log('latest messagae text type:', typeof (latestMessage as any).text);
-    return JSON.parse((latestMessage as any).text.value);
+
+    // Find the first text content in the latest message
+    const latestMessage = messages.data[0];
+    console.log('Latest message:', JSON.stringify(latestMessage, null, 2));
+
+    const textContent = latestMessage.content.find((content): content is TextContentBlock => content.type === 'text');
+
+    if (!textContent) {
+      throw new Error(`No text content found in assistant response. Run status: ${run.status}`);
+    }
+
+    // Validate that the text property exists and extract the value safely
+    const textValue = textContent.text?.value;
+    if (!textValue) {
+      throw new Error(
+        `Invalid text content structure in assistant response. Run status: ${run.status}. ` +
+          `Text content: ${JSON.stringify(textContent)}`,
+      );
+    }
+
+    console.log('text value:', textValue);
+
+    return JSON.parse(textValue);
   }
 
   /**
