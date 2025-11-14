@@ -9,10 +9,21 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "code-graph",
+    "code-analysis",
+    "neo4j",
+    "graph-database",
+    "typescript",
+    "nestjs",
+    "ast-parser",
+    "semantic-search",
+    "openai",
+    "embeddings",
+    "graph-rag",
     "llm",
-    "context",
-    "typescript"
+    "claude"
   ],
   "author": "Andrew Hernandez",
   "license": "MIT",

@@ -55,7 +55,7 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
         const neo4jService = new Neo4jService();
 
         // Execute the generated Cypher query
-        const results = await neo4jService.run(cypherResult.cypher, cypherResult.parameters || {});
+        const results = await neo4jService.run(cypherResult.cypher, cypherResult.parameters ?? {});
 
         await debugLog('Cypher query executed', {
           cypher: cypherResult.cypher,
