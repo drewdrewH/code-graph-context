@@ -1,6 +1,6 @@
 # Code Graph Context MCP Server
 
-[![All Rights Reserved](https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg)](LICENSE)
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://typescriptlang.org/)
 [![Neo4j](https://img.shields.io/badge/Neo4j-018bff?logo=neo4j&logoColor=white)](https://neo4j.com/)
 
@@ -85,21 +85,19 @@ npm run build
 
 ### Adding to Claude Code
 
-To use this MCP server with Claude Code, you can use the transport command with the debug shell file:
-
+**Method 1: Direct (Recommended)**
 ```bash
-# Add the MCP server to Claude Code using transport
-claude mcp add code-graph-context --transport stdio --command node --args /path/to/code-graph-context/debug-mcp.sh
+claude mcp add code-graph-context node /absolute/path/to/code-graph-context/dist/mcp/mcp.server.js
 ```
 
-Or add it directly to your MCP configuration:
-
+**Method 2: With Debug Shell** (useful for troubleshooting)
 ```bash
-# Add the MCP server to Claude Code
-claude mcp add code-graph-context /path/to/code-graph-context/dist/mcp/mcp.server.js
+claude mcp add code-graph-context /absolute/path/to/code-graph-context/debug-mcp.sh
 ```
 
-Or manually add to your Claude Code MCP configuration file:
+**Method 3: Manual Configuration**
+
+Add to your Claude Code MCP configuration file:
 
 ```json
 {
