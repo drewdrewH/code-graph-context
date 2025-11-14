@@ -66,8 +66,8 @@ export enum FairSquareLabel {
  */
 const extractInjectableDependencies = (
   parsedNode: ParsedNode,
-  allNodes?: Map<string, ParsedNode>,
-  sharedContext?: ParsingContext,
+  _allNodes?: Map<string, ParsedNode>,
+  _sharedContext?: ParsingContext,
 ): Record<string, any> => {
   const node = parsedNode.sourceNode;
   if (!node || !Node.isClassDeclaration(node)) return {};
@@ -100,8 +100,8 @@ const extractInjectableDependencies = (
  */
 const extractRepositoryDals = (
   parsedNode: ParsedNode,
-  allNodes?: Map<string, ParsedNode>,
-  sharedContext?: ParsingContext,
+  _allNodes?: Map<string, ParsedNode>,
+  _sharedContext?: ParsingContext,
 ): Record<string, any> => {
   const dependencies = parsedNode.properties.context?.dependencies ?? [];
 
@@ -123,8 +123,8 @@ const extractRepositoryDals = (
  */
 const extractPermissionManager = (
   parsedNode: ParsedNode,
-  allNodes?: Map<string, ParsedNode>,
-  sharedContext?: ParsingContext,
+  _allNodes?: Map<string, ParsedNode>,
+  _sharedContext?: ParsingContext,
 ): Record<string, any> => {
   const dependencies = parsedNode.properties.context?.dependencies ?? [];
 
@@ -147,8 +147,8 @@ const extractPermissionManager = (
  */
 const extractMonorepoProject = (
   parsedNode: ParsedNode,
-  allNodes?: Map<string, ParsedNode>,
-  sharedContext?: ParsingContext,
+  _allNodes?: Map<string, ParsedNode>,
+  _sharedContext?: ParsingContext,
 ): Record<string, any> => {
   const node = parsedNode.sourceNode;
   if (!node || !Node.isClassDeclaration(node)) return {};
@@ -182,8 +182,8 @@ const extractMonorepoProject = (
  */
 const extractRouteDefinitions = (
   parsedNode: ParsedNode,
-  allNodes?: Map<string, ParsedNode>,
-  sharedContext?: ParsingContext,
+  _allNodes?: Map<string, ParsedNode>,
+  _sharedContext?: ParsingContext,
 ): Record<string, any> => {
   const node = parsedNode.sourceNode;
   if (!node || !Node.isVariableDeclaration(node)) return {};
@@ -637,7 +637,7 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
     //       },
     //     ],
     //
-//     additionalRelationships: [FairSquareSemanticEdgeType.FS_EXPOSES_HTTP as any],
+    //     additionalRelationships: [FairSquareSemanticEdgeType.FS_EXPOSES_HTTP as any],
     //
     //     neo4j: {
     //       additionalLabels: ['FairSquare', 'HttpEndpoint', 'API'],
