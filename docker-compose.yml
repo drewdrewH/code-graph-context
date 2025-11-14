@@ -11,7 +11,7 @@ services:
     environment:
       # Authentication
       - NEO4J_AUTH=neo4j/PASSWORD
-      
+
       # Memory configuration
       - NEO4J_server_memory_heap_initial__size=2G
       - NEO4J_server_memory_heap_max__size=4G
