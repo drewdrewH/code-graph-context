@@ -36,13 +36,13 @@ export const TOOL_METADATA = {
     title: 'Search Codebase',
     description: `Search the codebase using semantic similarity to find relevant code, functions, classes, and implementations.
 
-IMPORTANT: This tool returns a COMPACT view (no code snippets, maxDepth: 3, maxNodesPerChain: 4) to avoid context overflow. It shows file paths, node IDs, and relationship chains.
+Returns normalized JSON with source code snippets (maxDepth: 3, maxNodesPerChain: 4). Uses JSON:API pattern to deduplicate nodes.
 
 Parameters:
 - query: Natural language description of what you're looking for
 - limit (default: 10): Number of initial vector search results to consider
 
-Use this for initial exploration. For detailed code inspection, use traverse_from_node with the returned node IDs and set includeCode: true.`,
+Response includes both relationship chains and actual source code for immediate understanding.`,
   },
   [TOOL_NAMES.naturalLanguageToCypher]: {
     title: 'Natural Language to Cypher',
@@ -59,14 +59,14 @@ Parameters:
 - skip (default: 0): Number of results to skip for pagination
 
 Advanced options (use when needed):
-- includeCode: Set to true to see actual source code snippets (WARNING: uses more context)
-- maxNodesPerChain: Limit nodes shown per relationship chain (default: varies)
+- includeCode (default: true): Set to false for structure-only view without source code
+- maxNodesPerChain: Limit nodes shown per relationship chain (default: 8)
 - summaryOnly: Set to true for just file paths and statistics without detailed traversal
 
 Best practices:
 - Start with search_codebase to find initial nodes
-- Use this tool with default params for detailed exploration
-- Only set includeCode: true when you need to see actual code
+- Default includes source code snippets for immediate context
+- Set includeCode: false for high-level architecture view only
 - Use summaryOnly: true for a quick overview of many connections`,
   },
   [TOOL_NAMES.parseTypescriptProject]: {

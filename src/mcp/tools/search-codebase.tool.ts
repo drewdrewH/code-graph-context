@@ -59,7 +59,7 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         return await traversalHandler.traverseFromNode(nodeId, {
           maxDepth: 3,
           direction: 'BOTH', // Show both incoming (who calls this) and outgoing (what this calls)
-          includeCode: false,
+          includeCode: true,
           maxNodesPerChain: 4,
           summaryOnly: false,
           title: `Exploration from Node: ${nodeId}`,

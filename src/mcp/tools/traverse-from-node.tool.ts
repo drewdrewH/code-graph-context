@@ -48,8 +48,8 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
         includeCode: z
           .boolean()
           .optional()
-          .describe('Include source code snippets in results (default: false, WARNING: uses more context)')
-          .default(false),
+          .describe('Include source code snippets in results (default: true, set to false for structure-only view)')
+          .default(true),
         maxNodesPerChain: z
           .number()
           .int()
@@ -75,7 +75,7 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
       skip = DEFAULTS.skipOffset,
       direction = 'BOTH',
       relationshipTypes,
-      includeCode = false,
+      includeCode = true,
       maxNodesPerChain = 8,
       summaryOnly = false,
       snippetLength = DEFAULTS.codeSnippetLength,
