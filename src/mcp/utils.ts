@@ -100,8 +100,7 @@ export const formatNodeInfo = (value: any, key: string): any => {
  * Format results for the natural language to cypher tool
  */
 export const formatQueryResults = (results: any[], query: string, cypherResult: any): any => {
-  const maxResults = Math.min(results.length, 20);
-  const formattedResults = results.slice(0, maxResults).map((record) => formatNodeInfo(record, 'result'));
+  const formattedResults = results.map((record) => formatNodeInfo(record, 'result'));
 
   return {
     query,
@@ -109,8 +108,6 @@ export const formatQueryResults = (results: any[], query: string, cypherResult: 
     parameters: cypherResult.parameters ?? {},
     explanation: cypherResult.explanation,
     totalResults: results.length,
-    displayedResults: maxResults,
-    hasMore: results.length > 20,
     results: formattedResults,
   };
 };

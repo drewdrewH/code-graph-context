@@ -187,26 +187,33 @@ export class TraversalHandler {
     maxNodesPerChain: number,
     snippetLength: number,
   ): any {
-    const result: any = {
-      totalConnections: traversalData.connections.length,
-      uniqueFiles: this.getUniqueFileCount(traversalData.connections),
-    };
+    // JSON:API normalization - collect all unique nodes
+    const nodeMap = new Map<string, any>();
 
+    // Add start node to map
     if (includeStartNodeDetails) {
-      result.start = this.formatNodeJSON(startNode, includeCode, snippetLength);
+      const startNodeData = this.formatNodeJSON(startNode, includeCode, snippetLength);
+      nodeMap.set(startNode.properties.id, startNodeData);
     }
 
-    const byDepth = this.groupConnectionsByDepth(traversalData.connections);
-    result.maxDepth = Object.keys(byDepth).length > 0 ? Math.max(...Object.keys(byDepth).map((d) => parseInt(d))) : 0;
-    result.depths = this.formatConnectionsByDepthJSON(
-      byDepth,
-      includeCode,
-      maxNodesPerChain,
-      snippetLength,
-      startNode.properties.id,
-    );
+    // Collect all unique nodes from connections
+    traversalData.connections.forEach((conn) => {
+      const nodeId = conn.node.properties.id;
+      if (!nodeMap.has(nodeId)) {
+        nodeMap.set(nodeId, this.formatNodeJSON(conn.node, includeCode, snippetLength));
+      }
+    });
 
-    return result;
+    const byDepth = this.groupConnectionsByDepth(traversalData.connections);
+
+    return {
+      totalConnections: traversalData.connections.length,
+      uniqueFiles: this.getUniqueFileCount(traversalData.connections),
+      maxDepth: Object.keys(byDepth).length > 0 ? Math.max(...Object.keys(byDepth).map((d) => parseInt(d))) : 0,
+      startNodeId: includeStartNodeDetails ? startNode.properties.id : undefined,
+      nodes: Object.fromEntries(nodeMap),
+      depths: this.formatConnectionsByDepthWithReferences(byDepth, maxNodesPerChain, startNode.properties.id),
+    };
   }
 
   private formatSummaryOnlyJSON(
@@ -233,7 +240,10 @@ export class TraversalHandler {
       .map(([file, count]) => ({ file, nodeCount: count }));
 
     return {
-      start: this.formatNodeJSON(startNode, false, 0),
+      startNodeId: startNode.properties.id,
+      nodes: {
+        [startNode.properties.id]: this.formatNodeJSON(startNode, false, 0),
+      },
       totalConnections,
       maxDepth: maxDepthFound,
       uniqueFiles,
@@ -263,11 +273,9 @@ export class TraversalHandler {
     return result;
   }
 
-  private formatConnectionsByDepthJSON(
+  private formatConnectionsByDepthWithReferences(
     byDepth: Record<number, Connection[]>,
-    includeCode: boolean,
     maxNodesPerChain: number,
-    snippetLength: number,
     startNodeId: string,
   ): any[] {
     return Object.keys(byDepth)
@@ -285,7 +293,7 @@ export class TraversalHandler {
             via: chain,
             direction,
             count: nodes.length,
-            nodes: displayNodes.map((conn) => this.formatNodeJSON(conn.node, includeCode, snippetLength)),
+            nodeIds: displayNodes.map((conn) => conn.node.properties.id),
           };
 
           if (nodes.length > maxNodesPerChain) {
