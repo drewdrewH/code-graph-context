@@ -5,6 +5,7 @@ import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
 import { v4 as uuidv4 } from 'uuid';
 
+import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
 import {
   CoreNodeType,
   Neo4jNodeProperties,
@@ -20,11 +21,11 @@ import {
   ContextExtractor,
   ParseOptions,
   DEFAULT_PARSE_OPTIONS,
-  NESTJS_FRAMEWORK_SCHEMA,
   PropertyDefinition,
   CoreEdgeType,
   ParsingContext,
   ParsedNode,
+  CoreNode,
 } from '../config/schema.js';
 
 // Re-export ParsedNode for convenience
@@ -84,7 +85,7 @@ export class TypeScriptParser {
     // Phase 1: Core parsing for ALL files
     for (const sourceFile of sourceFiles) {
       if (this.shouldSkipFile(sourceFile)) continue;
-      await this.parseCoreTypeScript(sourceFile);
+      await this.parseCoreTypeScriptV2(sourceFile);
     }
 
     // Phase 2: Apply context extractors
@@ -121,6 +122,69 @@ export class TypeScriptParser {
       }
     }
     return false;
+  }
+
+  private async parseCoreTypeScriptV2(sourceFile: SourceFile): Promise<void> {
+    const sourceFileNode = this.createCoreNode(sourceFile, CoreNodeType.SOURCE_FILE);
+    this.addNode(sourceFileNode);
+
+    // Parse configured children
+    this.parseChildNodes(this.coreSchema.nodeTypes[CoreNodeType.SOURCE_FILE], sourceFileNode, sourceFile);
+
+    // Special handling: Parse variable declarations if framework schema specifies patterns
+    if (this.shouldParseVariables(sourceFile.getFilePath())) {
+      for (const varStatement of sourceFile.getVariableStatements()) {
+        for (const varDecl of varStatement.getDeclarations()) {
+          if (this.shouldSkipChildNode(varDecl)) continue;
+
+          const variableNode = this.createCoreNode(varDecl, CoreNodeType.VARIABLE_DECLARATION);
+          this.addNode(variableNode);
+
+          const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, variableNode.id);
+          this.addEdge(containsEdge);
+        }
+      }
+    }
+  }
+
+  private async parseChildNodes(parentNodeConfig: CoreNode, parentNode: ParsedNode, astNode: Node): Promise<void> {
+    if (!parentNodeConfig.children) return;
+
+    for (const [childType, edgeType] of Object.entries(parentNodeConfig.children)) {
+      const type = childType as CoreNodeType;
+      const astGetterName = this.coreSchema.astGetters[type];
+      if (!astGetterName) {
+        console.warn(`No AST getter defined for child type ${type}`);
+        continue;
+      }
+
+      const astGetter = astNode[astGetterName];
+
+      if (typeof astGetter !== 'function') {
+        console.warn(`AST getter for child type ${type} is not a function`);
+        continue;
+      }
+
+      const children = astGetter.call(astNode);
+
+      if (!Array.isArray(children)) {
+        console.warn(`AST getter ${astGetterName} did not return an array for ${type}`);
+        continue;
+      }
+
+      for (const child of children) {
+        if (this.shouldSkipChildNode(child)) continue;
+        const coreNode = this.createCoreNode(child, type);
+        this.addNode(coreNode);
+        const coreEdge = this.createCoreEdge(edgeType as CoreEdgeType, parentNode.id, coreNode.id);
+        this.addEdge(coreEdge);
+
+        const childNodeConfig = this.coreSchema.nodeTypes[type];
+        if (childNodeConfig) {
+          await this.parseChildNodes(childNodeConfig, coreNode, child);
+        }
+      }
+    }
   }
 
   private async parseCoreTypeScript(sourceFile: SourceFile): Promise<void> {
@@ -584,7 +648,7 @@ export class TypeScriptParser {
 
         case CoreNodeType.CLASS_DECLARATION:
           if (Node.isClassDeclaration(astNode)) {
-            return astNode.getName() || 'AnonymousClass';
+            return astNode.getName() ?? 'AnonymousClass';
           }
           break;
 
@@ -596,7 +660,7 @@ export class TypeScriptParser {
 
         case CoreNodeType.FUNCTION_DECLARATION:
           if (Node.isFunctionDeclaration(astNode)) {
-            return astNode.getName() || 'AnonymousFunction';
+            return astNode.getName() ?? 'AnonymousFunction';
           }
           break;
 
@@ -638,6 +702,11 @@ export class TypeScriptParser {
     }
 
     return 'Unknown';
+  }
+
+  private shouldSkipChildNode(node: Node): boolean {
+    const excludedNodeTypes = this.parseConfig.excludedNodeTypes ?? [];
+    return excludedNodeTypes.includes(node.getKindName() as CoreNodeType);
   }
 
   private shouldSkipFile(sourceFile: SourceFile): boolean {
