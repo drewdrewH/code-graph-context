@@ -4,7 +4,8 @@
  */
 
 import { FAIRSQUARE_FRAMEWORK_SCHEMA } from '../config/fairsquare-framework-schema.js';
-import { CORE_TYPESCRIPT_SCHEMA, NESTJS_FRAMEWORK_SCHEMA, FrameworkSchema } from '../config/schema.js';
+import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
+import { CORE_TYPESCRIPT_SCHEMA, FrameworkSchema, CoreNodeType } from '../config/schema.js';
 
 import { TypeScriptParser } from './typescript-parser.js';
 
@@ -21,6 +22,7 @@ export interface ParserFactoryOptions {
   projectType?: ProjectType;
   customFrameworkSchemas?: FrameworkSchema[];
   excludePatterns?: string[];
+  excludedNodeTypes?: CoreNodeType[];
 }
 
 export class ParserFactory {
@@ -34,6 +36,7 @@ export class ParserFactory {
       projectType = ProjectType.NESTJS, // Default to NestJS (use auto-detect for best results)
       customFrameworkSchemas = [],
       excludePatterns = ['node_modules', 'dist', 'build', '.spec.', '.test.'],
+      excludedNodeTypes = [CoreNodeType.PARAMETER_DECLARATION],
     } = options;
 
     // Select framework schemas based on project type
@@ -44,6 +47,7 @@ export class ParserFactory {
 
     return new TypeScriptParser(workspacePath, tsConfigPath, CORE_TYPESCRIPT_SCHEMA, frameworkSchemas, {
       excludePatterns,
+      excludedNodeTypes,
     });
   }
 
