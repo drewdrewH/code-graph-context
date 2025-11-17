@@ -58,8 +58,8 @@ export const formatNodeInfo = (value: any, key: string): string => {
   if (value && typeof value === 'object' && value.labels && value.properties) {
     // This is a node
     let info = `**${key}** (${value.labels.join(', ')}):\n`;
-    info += `- **ID:** ${value.properties.id || 'N/A'}\n`;
-    info += `- **File:** ${value.properties.filePath || 'N/A'}\n`;
+    info += `- **ID:** ${value.properties.id ?? 'N/A'}\n`;
+    info += `- **File:** ${value.properties.filePath ?? 'N/A'}\n`;
 
     if (value.properties.name) {
       info += `- **Name:** ${value.properties.name}\n`;

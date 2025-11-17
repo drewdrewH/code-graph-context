@@ -33,6 +33,10 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
         projectPath: z.string().describe('Path to the TypeScript project root directory'),
         tsconfigPath: z.string().describe('Path to TypeScript project tsconfig.json file'),
         clearExisting: z.boolean().optional().describe('Clear existing graph data first'),
+        excludeNodeTypes: z
+          .array(z.string())
+          .optional()
+          .describe('Node types to skip during parsing, e.g. ["TestFile", "Parameter"]'),
         projectType: z
           .enum(['nestjs', 'fairsquare', 'both', 'vanilla', 'auto'])
           .optional()
@@ -75,7 +79,7 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
         const outputPath = join(projectPath, FILE_PATHS.graphOutput);
 
         // Get detected framework schemas from parser
-        const frameworkSchemas = parser['frameworkSchemas']?.map((s: any) => s.name) || ['Auto-detected'];
+        const frameworkSchemas = parser['frameworkSchemas']?.map((s: any) => s.name) ?? ['Auto-detected'];
 
         const graphData = {
           nodes: cleanNodes,

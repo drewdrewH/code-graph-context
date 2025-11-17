@@ -6,7 +6,14 @@
 
 // Load environment variables from .env file
 import dotenv from 'dotenv';
-dotenv.config();
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+// Go up two levels from dist/mcp/mcp.server.js to the root
+const rootDir = join(__dirname, '..', '..');
+dotenv.config({ path: join(rootDir, '.env') });
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -20,7 +27,7 @@ import { debugLog } from './utils.js';
  * Main server initialization and startup
  */
 const startServer = async (): Promise<void> => {
-  console.error(MESSAGES.server.starting);
+  console.error(JSON.stringify({ level: 'info', message: MESSAGES.server.starting }));
 
   // Create MCP server instance
   const server = new McpServer({
@@ -37,15 +44,15 @@ const startServer = async (): Promise<void> => {
   });
 
   // Create and connect transport
-  console.error(MESSAGES.server.creatingTransport);
+  console.error(JSON.stringify({ level: 'info', message: MESSAGES.server.creatingTransport }));
   const transport = new StdioServerTransport();
 
-  console.error(MESSAGES.server.connectingTransport);
+  console.error(JSON.stringify({ level: 'info', message: MESSAGES.server.connectingTransport }));
   await server.connect(transport);
 
-  console.error(MESSAGES.server.connected);
+  console.error(JSON.stringify({ level: 'info', message: MESSAGES.server.connected }));
 };
 
 // Start the server
-console.error(MESSAGES.server.startingServer);
+console.error(JSON.stringify({ level: 'info', message: MESSAGES.server.startingServer }));
 await startServer();
