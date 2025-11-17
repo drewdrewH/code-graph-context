@@ -95,21 +95,21 @@ export const MESSAGES = {
   errors: {
     noRelevantCode: 'No relevant code found.',
     serviceNotInitialized:
-      '❌ ERROR: Natural Language to Cypher service is not initialized yet. Please try again in a few moments.',
+      'ERROR: Natural Language to Cypher service is not initialized yet. Please try again in a few moments.',
     connectionTestFailed: 'Connection test failed',
     neo4jRequirement: 'Note: This server requires Neo4j with APOC plugin installed',
-    genericError: '❌ ERROR:',
+    genericError: 'ERROR:',
   },
   success: {
     hello: 'Hello from codebase MCP!',
-    parseSuccess: '✅ SUCCESS:',
-    partialSuccess: '⚠️ PARTIAL SUCCESS:',
+    parseSuccess: 'SUCCESS:',
+    partialSuccess: 'PARTIAL SUCCESS:',
   },
   queries: {
-    naturalLanguagePrefix: '# 🔍 Natural Language Query:',
-    cypherQueryHeader: '## 📝 Generated Cypher Query',
-    queryResultsHeader: '## 📊 Query Results',
-    noResultsFound: '⚠️ No results found for this query.',
+    naturalLanguagePrefix: 'Natural Language Query:',
+    cypherQueryHeader: 'Generated Cypher Query',
+    queryResultsHeader: 'Query Results',
+    noResultsFound: 'No results found for this query.',
     moreResultsIndicator: '_... and {} more results_',
     summaryPrefix: '**Summary:** Executed query and found {} results.',
   },
@@ -125,16 +125,6 @@ export const MESSAGES = {
     connectingTransport: 'Connecting server to transport...',
     startingServer: 'Starting MCP server...',
   },
-} as const;
-
-// Emojis for consistent formatting
-export const EMOJIS = {
-  search: '🔍',
-  query: '📝',
-  results: '📊',
-  success: '✅',
-  warning: '⚠️',
-  error: '❌',
 } as const;
 
 // Logging Configuration

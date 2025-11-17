@@ -1,0 +1,79 @@
+{
+  "name": "code-graph-context",
+  "displayName": "Code Graph Context",
+  "description": "Build rich code graphs with Neo4j to provide deep contextual understanding of TypeScript/NestJS codebases. Features semantic search, natural language querying, and framework-aware parsing with extensible schema system.",
+  "author": {
+    "name": "Andrew Hernandez",
+    "url": "https://github.com/drewdrewH"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drewdrewH/code-graph-context"
+  },
+  "homepage": "https://github.com/drewdrewH/code-graph-context#readme",
+  "license": "MIT",
+  "version": "0.1.0",
+  "keywords": [
+    "mcp",
+    "code-analysis",
+    "neo4j",
+    "graph-database",
+    "typescript",
+    "nestjs",
+    "semantic-search",
+    "ast-parser",
+    "embeddings",
+    "graph-rag"
+  ],
+  "categories": [
+    "developer-tools",
+    "code-analysis",
+    "database"
+  ],
+  "capabilities": {
+    "tools": [
+      "search_codebase",
+      "traverse_from_node",
+      "natural_language_to_cypher",
+      "parse_typescript_project"
+    ],
+    "resources": false,
+    "prompts": false
+  },
+  "runtime": {
+    "type": "node",
+    "command": "node",
+    "args": ["dist/mcp/mcp.server.js"]
+  },
+  "installation": {
+    "npm": "code-graph-context"
+  },
+  "documentation": {
+    "quickStart": "https://github.com/drewdrewH/code-graph-context#getting-started",
+    "examples": "https://github.com/drewdrewH/code-graph-context/tree/main/examples"
+  },
+  "requirements": {
+    "neo4j": ">=5.0",
+    "node": ">=18",
+    "openai": "API key required"
+  },
+  "features": [
+    "Framework-aware parsing with extensible schema system",
+    "Vector-based semantic search using OpenAI embeddings",
+    "Natural language to Cypher query conversion",
+    "Deep NestJS pattern recognition",
+    "Graph traversal with configurable depth",
+    "AST-level code analysis"
+  ],
+  "tags": [
+    "code-graph",
+    "neo4j",
+    "typescript",
+    "nestjs",
+    "semantic-search",
+    "code-analysis",
+    "graph-rag",
+    "ast",
+    "embeddings"
+  ]
+}

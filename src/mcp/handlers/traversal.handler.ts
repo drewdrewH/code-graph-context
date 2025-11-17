@@ -6,7 +6,7 @@
 import { MAX_TRAVERSAL_DEPTH } from '../../constants.js';
 import { Neo4jNode } from '../../core/config/schema.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
-import { EMOJIS, DEFAULTS } from '../constants.js';
+import { DEFAULTS } from '../constants.js';
 import { createErrorResponse, createSuccessResponse, debugLog } from '../utils.js';
 
 export interface TraversalResult {
@@ -66,9 +66,9 @@ export class TraversalHandler {
         return createSuccessResponse(`No connections found for node "${nodeId}".`);
       }
 
-      const response = summaryOnly
-        ? this.formatSummaryOnlyResponse(startNode, traversalData, title)
-        : this.formatTraversalResponse(
+      const result = summaryOnly
+        ? this.formatSummaryOnlyJSON(startNode, traversalData, title)
+        : this.formatTraversalJSON(
             startNode,
             traversalData,
             title,
@@ -83,35 +83,8 @@ export class TraversalHandler {
         uniqueFiles: this.getUniqueFileCount(traversalData.connections),
       });
 
-      // Sanitize graph data by removing sourceCode to prevent JSON serialization issues
-      const sanitizedNodes =
-        traversalData.graph.nodes?.map((node: Neo4jNode) => ({
-          ...node,
-          properties: {
-            ...node.properties,
-            sourceCode: undefined, // Remove sourceCode from graph data
-          },
-        })) ?? [];
-
-      const sanitizedConnections =
-        traversalData.connections?.map((conn: Connection) => ({
-          ...conn,
-          node: {
-            ...conn.node,
-            properties: {
-              ...conn.node.properties,
-              sourceCode: undefined, // Remove sourceCode from graph data
-            },
-          },
-        })) ?? [];
-
       return {
-        content: [{ type: 'text', text: response }],
-        graph: {
-          nodes: sanitizedNodes,
-          relationships: traversalData.graph.relationships,
-          connections: sanitizedConnections,
-        },
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
     } catch (error) {
       console.error('Node traversal error:', error);
@@ -152,48 +125,6 @@ export class TraversalHandler {
     };
   }
 
-  private formatTraversalResponse(
-    startNode: Neo4jNode,
-    traversalData: { connections: Connection[]; graph: any },
-    title: string,
-    includeStartNodeDetails: boolean,
-    includeCode: boolean,
-    maxNodesPerChain: number,
-    snippetLength: number,
-  ): string {
-    let response = `# ${EMOJIS.search} ${title}\n\n`;
-
-    if (includeStartNodeDetails) {
-      response += this.formatStartNode(startNode, includeCode, snippetLength);
-    }
-
-    const startNodeId = startNode.properties.id;
-    const byDepth = this.groupConnectionsByDepth(traversalData.connections);
-    response += this.formatConnectionsByDepth(byDepth, includeCode, maxNodesPerChain, snippetLength, startNodeId);
-    response += this.formatSummary(traversalData.connections, byDepth);
-
-    return response;
-  }
-
-  private formatStartNode(startNode: Neo4jNode, includeCode: boolean, snippetLength: number): string {
-    const properties = startNode.properties;
-    let codeDisplay = '';
-
-    if (includeCode) {
-      const sourceCode = properties.sourceCode;
-      codeDisplay = sourceCode
-        ? `\`\`\`typescript\n${sourceCode.substring(0, snippetLength)}${sourceCode.length > snippetLength ? '...' : ''}\n\`\`\`\n`
-        : '_No source code available_\n';
-    }
-
-    return `## 🎯 Starting Node
-**Type:** ${startNode.labels[0] ?? 'Unknown'}
-**ID:** ${properties.id}
-**File:** ${properties.filePath}
-${properties.name ? `**Name:** ${properties.name}\n` : ''}${codeDisplay}
-`;
-  }
-
   private groupConnectionsByDepth(connections: Connection[]): Record<number, Connection[]> {
     return connections.reduce(
       (acc, conn) => {
@@ -204,34 +135,6 @@ ${properties.name ? `**Name:** ${properties.name}\n` : ''}${codeDisplay}
       },
       {} as Record<number, Connection[]>,
     );
-  }
-
-  private formatConnectionsByDepth(
-    byDepth: Record<number, Connection[]>,
-    includeCode: boolean,
-    maxNodesPerChain: number,
-    snippetLength: number,
-    startNodeId: string,
-  ): string {
-    let response = '';
-
-    Object.keys(byDepth)
-      .sort((a, b) => parseInt(a) - parseInt(b))
-      .forEach((depth) => {
-        const depthConnections = byDepth[parseInt(depth)];
-        response += `## 🔗 Depth ${depth} Connections (${depthConnections.length} found)\n\n`;
-
-        const byRelChain = this.groupConnectionsByRelationshipChain(depthConnections);
-        response += this.formatConnectionsByChain(
-          byRelChain,
-          includeCode,
-          maxNodesPerChain,
-          snippetLength,
-          startNodeId,
-        );
-      });
-
-    return response;
   }
 
   private groupConnectionsByRelationshipChain(connections: Connection[]): Record<string, Connection[]> {
@@ -253,31 +156,6 @@ ${properties.name ? `**Name:** ${properties.name}\n` : ''}${codeDisplay}
     );
   }
 
-  private formatConnectionsByChain(
-    byRelChain: Record<string, Connection[]>,
-    includeCode: boolean,
-    maxNodesPerChain: number,
-    snippetLength: number,
-    startNodeId: string,
-  ): string {
-    let response = '';
-
-    Object.entries(byRelChain).forEach(([chain, nodes]) => {
-      if (nodes.length > 0) {
-        // Determine direction based on first node's relationship chain
-        const firstNode = nodes[0];
-        const direction = this.getRelationshipDirection(firstNode, startNodeId);
-        const directionLabel =
-          direction === 'OUTGOING' ? '(outgoing →)' : direction === 'INCOMING' ? '(incoming ←)' : '';
-
-        response += `### via \`${chain}\` ${directionLabel} (${nodes.length} nodes)\n\n`;
-        response += this.formatChainNodes(nodes, includeCode, maxNodesPerChain, snippetLength);
-      }
-    });
-
-    return response;
-  }
-
   private getRelationshipDirection(connection: Connection, startNodeId: string): 'OUTGOING' | 'INCOMING' | 'UNKNOWN' {
     // Check the first relationship in the chain to determine direction from start node
     const firstRel = connection.relationshipChain?.[0] as any;
@@ -296,99 +174,132 @@ ${properties.name ? `**Name:** ${properties.name}\n` : ''}${codeDisplay}
     return 'UNKNOWN';
   }
 
-  private formatChainNodes(
-    nodes: Connection[],
-    includeCode: boolean,
-    maxNodesPerChain: number,
-    snippetLength: number,
-  ): string {
-    let response = '';
-    const displayNodes = nodes.slice(0, maxNodesPerChain);
-
-    displayNodes.forEach((conn, index) => {
-      const node = conn.node;
-      const properties = node.properties;
-      let codeDisplay = '';
-
-      if (includeCode) {
-        const sourceCode = properties.sourceCode;
-        codeDisplay = sourceCode
-          ? `\`\`\`typescript\n${sourceCode.substring(0, snippetLength)}${sourceCode.length > snippetLength ? '...' : ''}\n\`\`\`\n`
-          : '_No source code_\n';
-      }
-
-      response += `**${index + 1}.** ${node.labels[0] ?? 'Code'}
-- **ID:** ${properties.id}
-- **File:** ${properties.filePath}
-${properties.name ? `- **Name:** ${properties.name}\n` : ''}${codeDisplay}
-`;
-    });
-
-    if (nodes.length > maxNodesPerChain) {
-      response += `_... and ${nodes.length - maxNodesPerChain} more nodes via this path_\n\n`;
-    }
-
-    return response;
+  private getUniqueFileCount(connections: Connection[]): number {
+    return new Set(connections.map((c) => c.node.properties.filePath).filter(Boolean)).size;
   }
 
-  private formatSummaryOnlyResponse(
+  private formatTraversalJSON(
     startNode: Neo4jNode,
     traversalData: { connections: Connection[]; graph: any },
     title: string,
-  ): string {
-    const properties = startNode.properties;
-    let response = `# ${EMOJIS.search} ${title}\n\n`;
+    includeStartNodeDetails: boolean,
+    includeCode: boolean,
+    maxNodesPerChain: number,
+    snippetLength: number,
+  ): any {
+    const result: any = {
+      totalConnections: traversalData.connections.length,
+      uniqueFiles: this.getUniqueFileCount(traversalData.connections),
+    };
 
-    response += `## 🎯 Starting Node\n`;
-    response += `**Type:** ${startNode.labels[0] ?? 'Unknown'} | **ID:** ${properties.id}\n`;
-    response += `**File:** ${properties.filePath}\n`;
-    if (properties.name) response += `**Name:** ${properties.name}\n`;
+    if (includeStartNodeDetails) {
+      result.start = this.formatNodeJSON(startNode, includeCode, snippetLength);
+    }
 
-    response += `\n## 📊 Summary\n`;
+    const byDepth = this.groupConnectionsByDepth(traversalData.connections);
+    result.maxDepth = Object.keys(byDepth).length > 0 ? Math.max(...Object.keys(byDepth).map((d) => parseInt(d))) : 0;
+    result.depths = this.formatConnectionsByDepthJSON(
+      byDepth,
+      includeCode,
+      maxNodesPerChain,
+      snippetLength,
+      startNode.properties.id,
+    );
+
+    return result;
+  }
+
+  private formatSummaryOnlyJSON(
+    startNode: Neo4jNode,
+    traversalData: { connections: Connection[]; graph: any },
+    title: string,
+  ): any {
     const byDepth = this.groupConnectionsByDepth(traversalData.connections);
     const totalConnections = traversalData.connections.length;
     const maxDepthFound =
       Object.keys(byDepth).length > 0 ? Math.max(...Object.keys(byDepth).map((d) => parseInt(d))) : 0;
     const uniqueFiles = this.getUniqueFileCount(traversalData.connections);
 
-    response += `- **Total Connections:** ${totalConnections}\n`;
-    response += `- **Max Depth:** ${maxDepthFound}\n`;
-    response += `- **Unique Files:** ${uniqueFiles}\n\n`;
-
-    // List unique files with node counts
     const fileMap = new Map<string, number>();
     traversalData.connections.forEach((conn) => {
       const filePath = conn.node.properties.filePath;
       if (filePath) {
-        fileMap.set(filePath, (fileMap.get(filePath) || 0) + 1);
+        fileMap.set(filePath, (fileMap.get(filePath) ?? 0) + 1);
       }
     });
 
-    response += `### Connected Files\n`;
-    Array.from(fileMap.entries())
+    const connectedFiles = Array.from(fileMap.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
-      .forEach(([file, count]) => {
-        response += `- ${file} (${count} nodes)\n`;
-      });
+      .map(([file, count]) => ({ file, nodeCount: count }));
 
-    if (fileMap.size > 20) {
-      response += `\n_... and ${fileMap.size - 20} more files_\n`;
+    return {
+      start: this.formatNodeJSON(startNode, false, 0),
+      totalConnections,
+      maxDepth: maxDepthFound,
+      uniqueFiles,
+      files: connectedFiles.slice(0, 20),
+      ...(fileMap.size > 20 && { hasMore: fileMap.size - 20 }),
+    };
+  }
+
+  private formatNodeJSON(node: Neo4jNode, includeCode: boolean, snippetLength: number): any {
+    const result: any = {
+      id: node.properties.id,
+      type: node.labels[0] ?? 'Unknown',
+      filePath: node.properties.filePath,
+    };
+
+    if (node.properties.name) {
+      result.name = node.properties.name;
     }
 
-    return response;
+    if (includeCode && node.properties.sourceCode && node.properties.coreType !== 'SourceFile') {
+      result.sourceCode = node.properties.sourceCode.substring(0, snippetLength);
+      if (node.properties.sourceCode.length > snippetLength) {
+        result.hasMore = true;
+      }
+    }
+
+    return result;
   }
 
-  private formatSummary(connections: Connection[], byDepth: Record<number, Connection[]>): string {
-    const totalConnections = connections.length;
-    const maxDepthFound =
-      Object.keys(byDepth).length > 0 ? Math.max(...Object.keys(byDepth).map((d) => parseInt(d))) : 0;
-    const uniqueFiles = this.getUniqueFileCount(connections);
+  private formatConnectionsByDepthJSON(
+    byDepth: Record<number, Connection[]>,
+    includeCode: boolean,
+    maxNodesPerChain: number,
+    snippetLength: number,
+    startNodeId: string,
+  ): any[] {
+    return Object.keys(byDepth)
+      .sort((a, b) => parseInt(a) - parseInt(b))
+      .map((depth) => {
+        const depthConnections = byDepth[parseInt(depth)];
+        const byRelChain = this.groupConnectionsByRelationshipChain(depthConnections);
 
-    return `\n---\n\n**Summary:** Found ${totalConnections} connected nodes across ${maxDepthFound} depth levels, spanning ${uniqueFiles} files.`;
-  }
+        const chains = Object.entries(byRelChain).map(([chain, nodes]) => {
+          const firstNode = nodes[0];
+          const direction = this.getRelationshipDirection(firstNode, startNodeId);
+          const displayNodes = nodes.slice(0, maxNodesPerChain);
 
-  private getUniqueFileCount(connections: Connection[]): number {
-    return new Set(connections.map((c) => c.node.properties.filePath).filter(Boolean)).size;
+          const chainResult: any = {
+            via: chain,
+            direction,
+            count: nodes.length,
+            nodes: displayNodes.map((conn) => this.formatNodeJSON(conn.node, includeCode, snippetLength)),
+          };
+
+          if (nodes.length > maxNodesPerChain) {
+            chainResult.hasMore = nodes.length - maxNodesPerChain;
+          }
+
+          return chainResult;
+        });
+
+        return {
+          depth: parseInt(depth),
+          count: depthConnections.length,
+          chains,
+        };
+      });
   }
 }

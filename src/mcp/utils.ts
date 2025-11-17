@@ -52,77 +52,67 @@ export const createSuccessResponse = (text: string): { content: Array<{ type: 't
 };
 
 /**
- * Format node information for display
+ * Format node information as structured data
  */
-export const formatNodeInfo = (value: any, key: string): string => {
+export const formatNodeInfo = (value: any, key: string): any => {
   if (value && typeof value === 'object' && value.labels && value.properties) {
-    // This is a node
-    let info = `**${key}** (${value.labels.join(', ')}):\n`;
-    info += `- **ID:** ${value.properties.id ?? 'N/A'}\n`;
-    info += `- **File:** ${value.properties.filePath ?? 'N/A'}\n`;
+    // Return structured node data
+    const result: any = {
+      id: value.properties.id,
+      type: value.labels[0] ?? 'Unknown',
+      filePath: value.properties.filePath,
+    };
 
     if (value.properties.name) {
-      info += `- **Name:** ${value.properties.name}\n`;
+      result.name = value.properties.name;
     }
 
-    if (value.properties.sourceCode) {
-      const code = value.properties.sourceCode.substring(0, 500);
-      const hasMore = value.properties.sourceCode.length > 500;
-      info += `- **Code:** \`\`\`typescript\n${code}${hasMore ? '...' : ''}\n\`\`\`\n`;
+    // Include source code if available and not a SourceFile
+    if (value.properties.sourceCode && value.properties.coreType !== 'SourceFile') {
+      result.sourceCode = value.properties.sourceCode.substring(0, 500);
+      if (value.properties.sourceCode.length > 500) {
+        result.hasMore = true;
+        result.hint = 'Source code truncated. Use traverse_from_node with includeCode for full code.';
+      }
     }
 
-    return info;
+    return result;
   } else if (value && typeof value === 'object' && value.type) {
-    // This is a relationship
-    let info = `**${key}** (${value.type}):\n`;
-    if (value.properties && Object.keys(value.properties).length > 0) {
-      info += `- **Properties:** ${JSON.stringify(value.properties, null, LOG_CONFIG.jsonIndentation)}\n`;
-    }
-    return info;
+    // Return structured relationship data
+    return {
+      relationshipType: value.type,
+      properties: value.properties,
+    };
+  } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+    // Handle record objects (e.g., {rd.filePath: "...", rd.name: "..."})
+    const formatted: any = {};
+    Object.keys(value).forEach((k) => {
+      formatted[k] = formatNodeInfo(value[k], k);
+    });
+    return formatted;
   } else {
-    // Simple value
-    return `**${key}:** ${JSON.stringify(value, null, LOG_CONFIG.jsonIndentation)}\n`;
+    // Return primitive as-is
+    return value;
   }
 };
 
 /**
  * Format results for the natural language to cypher tool
  */
-export const formatQueryResults = (results: any[], query: string, cypherResult: any): string => {
-  let response = `${MESSAGES.queries.naturalLanguagePrefix} "${query}"\n\n`;
-  response += `${MESSAGES.queries.cypherQueryHeader}\n\`\`\`cypher\n${cypherResult.cypher}\n\`\`\`\n\n`;
+export const formatQueryResults = (results: any[], query: string, cypherResult: any): any => {
+  const maxResults = Math.min(results.length, 20);
+  const formattedResults = results.slice(0, maxResults).map((record) => formatNodeInfo(record, 'result'));
 
-  if (cypherResult.parameters && Object.keys(cypherResult.parameters).length > 0) {
-    response += `**Parameters:** ${JSON.stringify(cypherResult.parameters, null, LOG_CONFIG.jsonIndentation)}\n\n`;
-  }
-
-  response += `**Explanation:** ${cypherResult.explanation}\n\n`;
-  response += `${MESSAGES.queries.queryResultsHeader} (${results.length} records)\n\n`;
-
-  if (results.length === 0) {
-    response += `${MESSAGES.queries.noResultsFound}\n\n`;
-  } else {
-    // Format results based on the structure
-    const maxResults = Math.min(results.length, 20);
-
-    for (let i = 0; i < maxResults; i++) {
-      const record = results[i];
-      response += `### Result ${i + 1}\n`;
-
-      // Handle different types of results
-      Object.keys(record).forEach((key) => {
-        response += formatNodeInfo(record[key], key);
-      });
-      response += '\n';
-    }
-
-    if (results.length > 20) {
-      response += MESSAGES.queries.moreResultsIndicator.replace('{}', (results.length - 20).toString()) + '\n\n';
-    }
-  }
-
-  response += `\n---\n${MESSAGES.queries.summaryPrefix.replace('{}', results.length.toString())}`;
-  return response;
+  return {
+    query,
+    cypher: cypherResult.cypher,
+    parameters: cypherResult.parameters ?? {},
+    explanation: cypherResult.explanation,
+    totalResults: results.length,
+    displayedResults: maxResults,
+    hasMore: results.length > 20,
+    results: formattedResults,
+  };
 };
 
 /**

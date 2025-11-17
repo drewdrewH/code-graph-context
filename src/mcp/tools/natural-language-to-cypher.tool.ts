@@ -63,7 +63,7 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
         });
 
         const formattedResponse = formatQueryResults(results, query, cypherResult);
-        return createSuccessResponse(formattedResponse);
+        return createSuccessResponse(JSON.stringify(formattedResponse, null, 2));
       } catch (error) {
         console.error('Natural language to Cypher error:', error);
         await debugLog('Natural language to Cypher error', { query, error });
