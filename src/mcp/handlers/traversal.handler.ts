@@ -264,9 +264,17 @@ export class TraversalHandler {
     }
 
     if (includeCode && node.properties.sourceCode && node.properties.coreType !== 'SourceFile') {
-      result.sourceCode = node.properties.sourceCode.substring(0, snippetLength);
-      if (node.properties.sourceCode.length > snippetLength) {
+      const code = node.properties.sourceCode;
+      const maxLength = 1000; // Show max 1000 chars total
+
+      if (code.length <= maxLength) {
+        result.sourceCode = code;
+      } else {
+        // Show first 500 and last 500 characters
+        const half = Math.floor(maxLength / 2);
+        result.sourceCode = code.substring(0, half) + '\n\n... [truncated] ...\n\n' + code.substring(code.length - half);
         result.hasMore = true;
+        result.truncated = code.length - maxLength;
       }
     }
 

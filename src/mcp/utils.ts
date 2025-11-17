@@ -69,10 +69,17 @@ export const formatNodeInfo = (value: any, key: string): any => {
 
     // Include source code if available and not a SourceFile
     if (value.properties.sourceCode && value.properties.coreType !== 'SourceFile') {
-      result.sourceCode = value.properties.sourceCode.substring(0, 500);
-      if (value.properties.sourceCode.length > 500) {
+      const code = value.properties.sourceCode;
+      const maxLength = 1000; // Show max 1000 chars total
+
+      if (code.length <= maxLength) {
+        result.sourceCode = code;
+      } else {
+        // Show first 500 and last 500 characters
+        const half = Math.floor(maxLength / 2);
+        result.sourceCode = code.substring(0, half) + '\n\n... [truncated] ...\n\n' + code.substring(code.length - half);
         result.hasMore = true;
-        result.hint = 'Source code truncated. Use traverse_from_node with includeCode for full code.';
+        result.truncated = code.length - maxLength;
       }
     }
 
