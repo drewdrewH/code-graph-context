@@ -4,19 +4,21 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://typescriptlang.org/)
 [![Neo4j](https://img.shields.io/badge/Neo4j-018bff?logo=neo4j&logoColor=white)](https://neo4j.com/)
 
-A Model Context Protocol (MCP) server that builds rich code graphs to provide deep contextual understanding of TypeScript/NestJS codebases to Large Language Models. This server parses your codebase, constructs a comprehensive graph representation in Neo4j, and provides intelligent querying capabilities through semantic search and natural language to Cypher conversion.
+A Model Context Protocol (MCP) server that builds rich code graphs to provide deep contextual understanding of TypeScript codebases to Large Language Models. This server parses your codebase using AST analysis, constructs a comprehensive graph representation in Neo4j, and provides intelligent querying capabilities through semantic search and graph traversal.
 
-## 🌟 Features
+**Config-Driven & Extensible**: Define custom framework schemas to capture domain-specific patterns beyond the included NestJS support. The parser is fully configurable to recognize your architectural patterns, decorators, and relationships.
 
-- **📊 Rich Code Graph Generation**: Parses TypeScript/NestJS projects and creates detailed graph representations with AST-level precision
-- **🔍 Semantic Search**: Vector-based semantic search using OpenAI embeddings to find relevant code patterns and implementations
-- **🗣️ Natural Language Querying**: Convert natural language questions into Cypher queries using OpenAI assistants api
-- **🎯 Framework-Aware**: Deep understanding of NestJS patterns (Controllers, Services, Modules, DTOs, Entities, etc.)
-- **🕸️ Graph Traversal**: Explore code relationships and dependencies through intelligent graph traversal
-- **⚡ High Performance**: Optimized Neo4j storage with vector indexing for fast retrieval
-- **🔧 MCP Integration**: Seamless integration with Claude Code and other MCP-compatible tools
+## Features
 
-## 🏗️ Architecture
+- **Rich Code Graph Generation**: Parses TypeScript projects and creates detailed graph representations with AST-level precision
+- **Semantic Search**: Vector-based semantic search using OpenAI embeddings to find relevant code patterns and implementations
+- **Natural Language Querying**: Convert natural language questions into Cypher queries using OpenAI assistants API
+- **Framework-Aware & Customizable**: Built-in NestJS schema with ability to define custom framework patterns via configuration
+- **Graph Traversal**: Explore code relationships and dependencies through intelligent graph traversal
+- **High Performance**: Optimized Neo4j storage with vector indexing for fast retrieval
+- **MCP Integration**: Seamless integration with Claude Code and other MCP-compatible tools
+
+## Architecture
 
 The MCP server consists of several key components:
 
@@ -34,7 +36,7 @@ The system uses a dual-schema approach:
 - **Core Schema**: AST-level nodes (Classes, Methods, Properties, Imports, etc.)
 - **Framework Schema**: Semantic interpretations (NestJS Controllers, Services, HTTP Endpoints, etc.)
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -116,9 +118,9 @@ Add to your Claude Code MCP configuration file:
 }
 ```
 
-## 📖 Tool Usage Guide & Sequential Workflows
+## Tool Usage Guide & Sequential Workflows
 
-### 🔄 Sequential Tool Usage Patterns
+### Sequential Tool Usage Patterns
 
 The MCP tools are designed to work together in powerful workflows. Here are the most effective patterns:
 
@@ -134,7 +136,7 @@ graph LR
 2. **Focus**: Use `traverse_from_node` to explore specific relationships
 3. **Paginate**: Use `skip` parameter to explore different sections of the graph
 
-### 🔧 Tool Deep Dive
+### Tool Deep Dive
 
 #### 1. `search_codebase` - Your Starting Point
 **Purpose**: Semantic search using vector embeddings to find the most relevant code nodes.
@@ -340,7 +342,7 @@ await mcp.call('test_neo4j_connection');
 APOC plugin available with 438 functions"
 ```
 
-### 🚀 Workflow Examples
+### Workflow Examples
 
 #### Example 1: Understanding Authentication Flow
 ```typescript
@@ -424,7 +426,7 @@ const serviceDependents = await mcp.call('search_codebase', {
 });
 ```
 
-### 💡 Advanced Usage Tips
+### Advanced Usage Tips
 
 #### Understanding Response Format (JSON:API Normalization)
 
@@ -478,7 +480,7 @@ firstDepth.chains.forEach(chain => {
 - **Memory**: Large traversals may hit Neo4j memory limits (increase heap size if needed)
 - **Caching**: Node IDs are persistent; save interesting ones for later exploration
 
-## 🔧 Available MCP Tools
+## Available MCP Tools
 
 ### Core Tools
 
@@ -501,7 +503,7 @@ firstDepth.chains.forEach(chain => {
 | `traverse_from_node` | **Focused graph traversal** - Explore specific relationships from a known node | `nodeId` (string), `maxDepth?` (1-10, default: 3), `skip?` (default: 0) | **Deep diving** into specific code relationships. Pagination for large graphs |
 | `natural_language_to_cypher` | **AI-powered query generation** - Convert natural language to Cypher queries using GPT-4 | `query` (string) | **Advanced queries** - currently requires OpenAI assistant setup |
 
-### 🎯 Tool Selection Guide
+### Tool Selection Guide
 
 **Start Here**: `search_codebase`
 - Use when you don't know specific node IDs
@@ -518,7 +520,7 @@ firstDepth.chains.forEach(chain => {
 - Best for complex queries beyond simple search/traversal
 - Currently in development - may require setup
 
-## 🎯 Framework Support
+## Framework Support
 
 ### NestJS Framework Schema
 
@@ -563,7 +565,7 @@ The server provides deep understanding of NestJS patterns:
 └─────────────────┘
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -595,7 +597,7 @@ const parseOptions = {
 };
 ```
 
-## 🚧 Limitations
+## Limitations
 
 ### Current Limitations
 
@@ -622,7 +624,7 @@ const parseOptions = {
 3. **Decorator Arguments**: Complex decorator argument patterns may not be fully parsed
 4. **Monorepo Support**: Limited support for complex monorepo structures
 
-## 🔍 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -697,7 +699,7 @@ export DEBUG=mcp:*
 export NODE_ENV=development
 ```
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
@@ -724,11 +726,11 @@ npm run lint
 npm run format
 ```
 
-## 📄 License
+## License
 
 This project is proprietary software. All rights reserved - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Model Context Protocol](https://modelcontextprotocol.io/) by Anthropic
 - [Neo4j](https://neo4j.com/) for graph database technology
@@ -736,7 +738,7 @@ This project is proprietary software. All rights reserved - see the [LICENSE](LI
 - [OpenAI](https://openai.com/) for embeddings and natural language processing
 - [NestJS](https://nestjs.com/) for the framework patterns and conventions
 
-## 📞 Support
+## Support
 
 - Create an [Issue](https://github.com/drewdrewH/code-graph-context/issues) for bug reports or feature requests
 - Join the [MCP Discord](https://discord.gg/mcp) for community support
