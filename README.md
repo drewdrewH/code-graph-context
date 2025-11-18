@@ -743,5 +743,3 @@ This project is proprietary software. All rights reserved - see the [LICENSE](LI
 - Check the [MCP Documentation](https://modelcontextprotocol.io/docs) for MCP-specific questions
 
 ---
-
-**Made with ❤️ for the developer community**
