@@ -139,77 +139,173 @@ graph LR
 #### 1. `search_codebase` - Your Starting Point
 **Purpose**: Semantic search using vector embeddings to find the most relevant code nodes.
 
-**Response Structure**: Returns a comprehensive graph exploration starting from the most semantically similar node:
-- **Starting Node**: The best match with full source code snippet
-- **Multi-depth Connections**: Shows relationships up to 3 levels deep by default
-- **Relationship Grouping**: Organizes connections by relationship type and depth
-- **File Context**: Shows which files contain related code
+**Response Structure**: Returns normalized JSON using JSON:API pattern to eliminate duplication:
+- **nodes**: Map of unique nodes (stored once, referenced by ID)
+- **depths**: Array of depth levels with relationship chains
+- **Source Code**: Included by default (truncated to 1000 chars: first 500 + last 500)
+- **Statistics**: Total connections, unique files, max depth
 
 **Real Response Example**:
-```typescript
+```json
 // Query: "JWT token validation"
 // Returns:
 {
-  "Starting Node": {
-    "Type": "TypeScript", 
-    "ID": "MethodDeclaration:697d2c96-1f91-4894-985d-1eece117b72b",
-    "File": "/packages/jwt-validation/src/lib/jwt.strategy.ts",
-    "Name": "validate",
-    "Code": "validate(payload: EmJwtPayload): EmJwtPayload { ... }"
+  "totalConnections": 22,
+  "uniqueFiles": 2,
+  "maxDepth": 3,
+  "startNodeId": "MethodDeclaration:697d2c96-1f91-4894-985d-1eece117b72b",
+  "nodes": {
+    "MethodDeclaration:697d2c96-1f91-4894-985d-1eece117b72b": {
+      "id": "MethodDeclaration:697d2c96-1f91-4894-985d-1eece117b72b",
+      "type": "MethodDeclaration",
+      "filePath": "/packages/jwt-validation/src/lib/jwt.strategy.ts",
+      "name": "validate",
+      "sourceCode": "validate(payload: EmJwtPayload): EmJwtPayload {\n  ...\n\n... [truncated] ...\n\n  return payload;\n}",
+      "hasMore": true,
+      "truncated": 1250
+    },
+    "ClassDeclaration:abc-123": {
+      "id": "ClassDeclaration:abc-123",
+      "type": "Service",
+      "filePath": "/packages/jwt-validation/src/lib/jwt.strategy.ts",
+      "name": "JwtStrategy"
+    }
   },
-  "Depth 1 Connections": [
-    // Direct relationships like HAS_PARAMETER, HAS_MEMBER
-  ],
-  "Depth 2 Connections": [
-    // Secondary relationships like class dependencies, imports
-  ],
-  "Summary": "Found 22 connected nodes across 4 depth levels, spanning 2 files"
+  "depths": [
+    {
+      "depth": 1,
+      "count": 8,
+      "chains": [
+        {
+          "via": "HAS_MEMBER",
+          "direction": "INCOMING",
+          "count": 1,
+          "nodeIds": ["ClassDeclaration:abc-123"]
+        },
+        {
+          "via": "HAS_PARAMETER",
+          "direction": "OUTGOING",
+          "count": 2,
+          "nodeIds": ["Parameter:xyz-456", "Parameter:def-789"]
+        }
+      ]
+    },
+    {
+      "depth": 2,
+      "count": 14,
+      "chains": [
+        {
+          "via": "HAS_MEMBER → INJECTS",
+          "direction": "INCOMING",
+          "count": 3,
+          "nodeIds": ["Service:auth-service", "Service:user-service", "Repository:user-repo"],
+          "hasMore": 2
+        }
+      ]
+    }
+  ]
 }
 ```
+
+**Key Features**:
+- **JSON:API Normalization**: Nodes stored once in `nodes` map, referenced by ID to eliminate duplication
+- **Source Code Truncation**: Max 1000 chars per snippet (first 500 + last 500 chars)
+- **Relationship Chains**: Shows full path like "HAS_MEMBER → INJECTS → USES_REPOSITORY"
+- **Direction Indicators**: OUTGOING (what this calls), INCOMING (who calls this)
 
 **Pro Tips**:
 - Use specific domain terms: "JWT token validation" vs "authentication"
 - Start with limit=1-3 for initial exploration to avoid token limits
-- Look for node IDs in the response to use with `traverse_from_node`
+- Look for node IDs in `nodes` map to use with `traverse_from_node`
+- Check `truncated` field to see how many bytes were hidden from source code
 
 #### 2. `traverse_from_node` - Deep Relationship Exploration
 **Purpose**: Explore all connections from a specific node with precise control over depth and pagination.
 
-**Response Structure**: Similar to search_codebase but starts from a known node ID:
+**Response Structure**: Identical JSON:API format to search_codebase:
 - **Focused Traversal**: Starts from your specified node
 - **Depth Control**: Configurable max depth (1-10, default 3)
 - **Pagination**: Skip parameter for exploring large graphs in chunks
-- **Relationship Statistics**: Shows total nodes, relationships, and types
+- **Source Code Included by Default**: Set `includeCode: false` for structure-only view
 
 **Real Response Example**:
-```typescript
-// Starting from a JWT validation method
-// maxDepth: 2, skip: 0
+```json
+// Starting from a Service class
+// maxDepth: 2, skip: 0, includeCode: true
 {
-  "Starting Node": {
-    "ID": "MethodDeclaration:697d2c96-1f91-4894-985d-1eece117b72b",
-    "Name": "validate"
+  "totalConnections": 15,
+  "uniqueFiles": 4,
+  "maxDepth": 2,
+  "startNodeId": "ClassDeclaration:credit-check-service",
+  "nodes": {
+    "ClassDeclaration:credit-check-service": {
+      "id": "ClassDeclaration:credit-check-service",
+      "type": "Service",
+      "filePath": "/src/modules/credit/credit-check.service.ts",
+      "name": "CreditCheckService",
+      "sourceCode": "@Injectable([CreditCheckRepository, OscilarClient])\nexport class CreditCheckService {\n  ...\n\n... [truncated] ...\n\n}",
+      "truncated": 3200
+    },
+    "Repository:credit-check-repo": {
+      "id": "Repository:credit-check-repo",
+      "type": "Repository",
+      "filePath": "/src/modules/credit/credit-check.repository.ts",
+      "name": "CreditCheckRepository"
+    }
   },
-  "Depth 1": [
-    // Direct method parameters, parent class
-  ],
-  "Depth 2": [
-    // Class decorators, file imports, injected dependencies
-  ],
-  "Summary": "Found 6 connected nodes across 2 depth levels, spanning 2 files"
+  "depths": [
+    {
+      "depth": 1,
+      "count": 5,
+      "chains": [
+        {
+          "via": "INJECTS",
+          "direction": "OUTGOING",
+          "count": 2,
+          "nodeIds": ["Repository:credit-check-repo", "VendorClient:oscilar"]
+        },
+        {
+          "via": "HAS_MEMBER",
+          "direction": "OUTGOING",
+          "count": 3,
+          "nodeIds": ["Method:processCheck", "Method:getResult", "Method:rerun"]
+        }
+      ]
+    },
+    {
+      "depth": 2,
+      "count": 10,
+      "chains": [
+        {
+          "via": "INJECTS → USES_DAL",
+          "direction": "OUTGOING",
+          "count": 1,
+          "nodeIds": ["DAL:application-dal"]
+        }
+      ]
+    }
+  ]
 }
 ```
 
+**Parameters**:
+- `nodeId` (required): Node ID from search_codebase results
+- `maxDepth` (default: 3): Traversal depth (1-10)
+- `skip` (default: 0): Pagination offset
+- `includeCode` (default: **true**): Include source code snippets
+- `summaryOnly` (default: false): Just file paths and statistics
+- `direction` (default: BOTH): Filter by OUTGOING/INCOMING/BOTH
+- `relationshipTypes` (optional): Filter by specific relationships like ["INJECTS", "USES_REPOSITORY"]
+
 **Pagination Strategy**:
 ```typescript
-// First call: Get overview
-traverse_from_node(nodeId, maxDepth: 2, skip: 0)  // First 20 connections
-
-// Second call: Get more connections
-traverse_from_node(nodeId, maxDepth: 2, skip: 20) // Next 20 connections
-
-// Deep dive: Explore deeper relationships
-traverse_from_node(nodeId, maxDepth: 4, skip: 0)  // Go deeper from same node
+// Note: Pagination removed in recent commits - all results returned
+// Use depth and relationship filtering instead
+traverse_from_node({
+  nodeId,
+  maxDepth: 2,
+  relationshipTypes: ["INJECTS"]  // Focus on dependency injection only
+})
 ```
 
 #### 3. `parse_typescript_project` - Graph Generation
@@ -330,19 +426,56 @@ const serviceDependents = await mcp.call('search_codebase', {
 
 ### 💡 Advanced Usage Tips
 
+#### Understanding Response Format (JSON:API Normalization)
+
+**Key Insight**: All responses use JSON:API pattern to eliminate duplication by storing each node once and referencing by ID.
+
+**How to Read Responses**:
+1. **Start with `nodes` map**: All unique nodes are stored here once
+2. **Look at `depths` array**: Shows how nodes are connected at each depth level
+3. **Follow `nodeIds` references**: Use IDs to look up full node data in `nodes` map
+4. **Check `truncated` field**: Indicates how many bytes of source code were hidden
+
+**Example Reading Pattern**:
+```typescript
+const response = await search_codebase({ query: "authentication" });
+
+// 1. Get overview statistics
+console.log(`Found ${response.totalConnections} connections across ${response.uniqueFiles} files`);
+
+// 2. Examine the starting node
+const startNode = response.nodes[response.startNodeId];
+console.log(`Starting from: ${startNode.name} in ${startNode.filePath}`);
+
+// 3. Explore first depth level
+const firstDepth = response.depths[0];
+firstDepth.chains.forEach(chain => {
+  console.log(`Via ${chain.via}: ${chain.count} connections (${chain.direction})`);
+
+  // 4. Look up actual node details
+  chain.nodeIds.forEach(nodeId => {
+    const node = response.nodes[nodeId];
+    console.log(`  - ${node.name} (${node.type})`);
+  });
+});
+```
+
 #### Managing Large Responses
 - **Start Small**: Use `limit: 1-3` for initial searches
-- **Paginate Intelligently**: Use `skip` to explore different graph regions
-- **Focus Searches**: Use specific technical terms rather than broad concepts
+- **Relationship Filtering**: Use `relationshipTypes` to focus on specific connections
+- **Structure-Only View**: Set `includeCode: false` to exclude source code snippets
+- **Summary Mode**: Use `summaryOnly: true` for just file paths and statistics
 
 #### Efficient Graph Exploration
 - **Breadth First**: Start with low `maxDepth` (1-2) to get overview
-- **Depth Second**: Increase `maxDepth` (3-5) for detailed analysis  
-- **Lateral Movement**: Use `skip` to explore parallel relationships
+- **Depth Second**: Increase `maxDepth` (3-5) for detailed analysis
+- **Direction Filtering**: Use `direction: "OUTGOING"` or `"INCOMING"` to focus exploration
+- **Source Code on Demand**: Source code included by default but truncated to 1000 chars
 
 #### Performance Optimization
-- **Memory**: Large traversals may hit Neo4j memory limits
-- **Tokens**: Responses can exceed token limits; use pagination
+- **Token Efficiency**: JSON:API normalization eliminates duplicate nodes in responses
+- **Code Truncation**: Source code limited to 1000 chars (first 500 + last 500) to prevent token overflow
+- **Memory**: Large traversals may hit Neo4j memory limits (increase heap size if needed)
 - **Caching**: Node IDs are persistent; save interesting ones for later exploration
 
 ## 🔧 Available MCP Tools
