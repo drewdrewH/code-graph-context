@@ -10,7 +10,7 @@ A Model Context Protocol (MCP) server that builds rich code graphs to provide de
 
 - **📊 Rich Code Graph Generation**: Parses TypeScript/NestJS projects and creates detailed graph representations with AST-level precision
 - **🔍 Semantic Search**: Vector-based semantic search using OpenAI embeddings to find relevant code patterns and implementations
-- **🗣️ Natural Language Querying**: Convert natural language questions into Cypher queries using OpenAI assitants api
+- **🗣️ Natural Language Querying**: Convert natural language questions into Cypher queries using OpenAI assistants api
 - **🎯 Framework-Aware**: Deep understanding of NestJS patterns (Controllers, Services, Modules, DTOs, Entities, etc.)
 - **🕸️ Graph Traversal**: Explore code relationships and dependencies through intelligent graph traversal
 - **⚡ High Performance**: Optimized Neo4j storage with vector indexing for fast retrieval
