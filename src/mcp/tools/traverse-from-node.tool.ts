@@ -54,8 +54,8 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
           .number()
           .int()
           .optional()
-          .describe('Maximum nodes to show per relationship chain (default: 8)')
-          .default(8),
+          .describe('Maximum chains to show per depth level (default: 5, applied independently at each depth)')
+          .default(5),
         summaryOnly: z
           .boolean()
           .optional()
@@ -76,7 +76,7 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
       direction = 'BOTH',
       relationshipTypes,
       includeCode = true,
-      maxNodesPerChain = 8,
+      maxNodesPerChain = 5,
       summaryOnly = false,
       snippetLength = DEFAULTS.codeSnippetLength,
     }) => {

@@ -36,13 +36,28 @@ export const TOOL_METADATA = {
     title: 'Search Codebase',
     description: `Search the codebase using semantic similarity to find relevant code, functions, classes, and implementations.
 
-Returns normalized JSON with source code snippets (maxDepth: 3, maxNodesPerChain: 4). Uses JSON:API pattern to deduplicate nodes.
+Returns normalized JSON with source code snippets. Uses JSON:API pattern to deduplicate nodes.
+
+**Default Usage (Recommended)**:
+Start with default parameters for richest context in a single call. Most queries complete successfully.
 
 Parameters:
 - query: Natural language description of what you're looking for
 - limit (default: 10): Number of initial vector search results to consider
 
-Response includes both relationship chains and actual source code for immediate understanding.`,
+**Token Optimization (Only if needed)**:
+Use these parameters ONLY if you encounter token limit errors (>25,000 tokens):
+
+- maxDepth (default: 3): Reduce to 1-2 for shallow exploration
+- maxNodesPerChain (default: 5): Limit chains shown per depth level
+- includeCode (default: true): Set false to get structure only, fetch code separately
+- snippetLength (default: 700): Reduce to 400-600 for smaller code snippets
+- skip (default: 0): For pagination (skip N results)
+
+**Progressive Strategy**:
+1. Try with defaults first
+2. If token error: Use maxDepth=1, includeCode=false for structure
+3. Then traverse deeper or Read specific files for full code`,
   },
   [TOOL_NAMES.naturalLanguageToCypher]: {
     title: 'Natural Language to Cypher',
@@ -60,7 +75,7 @@ Parameters:
 
 Advanced options (use when needed):
 - includeCode (default: true): Set to false for structure-only view without source code
-- maxNodesPerChain: Limit nodes shown per relationship chain (default: 8)
+- maxNodesPerChain (default: 5): Limit chains shown per depth level (applied independently at each depth)
 - summaryOnly: Set to true for just file paths and statistics without detailed traversal
 
 Best practices:
@@ -85,9 +100,9 @@ export const DEFAULTS = {
   traversalDepth: 3,
   skipOffset: 0,
   batchSize: 500,
-  maxResultsDisplayed: 20,
-  codeSnippetLength: 800,
-  chainSnippetLength: 800,
+  maxResultsDisplayed: 30,
+  codeSnippetLength: 700,
+  chainSnippetLength: 700,
 } as const;
 
 // Messages

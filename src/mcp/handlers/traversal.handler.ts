@@ -35,7 +35,6 @@ interface Connection {
 
 export class TraversalHandler {
   private static readonly NODE_NOT_FOUND_QUERY = 'MATCH (n) WHERE n.id = $nodeId RETURN n';
-  private static readonly MAX_NODES_PER_CHAIN = 8;
 
   constructor(private neo4jService: Neo4jService) {}
 
@@ -47,7 +46,7 @@ export class TraversalHandler {
       relationshipTypes,
       includeStartNodeDetails = true,
       includeCode = false,
-      maxNodesPerChain = TraversalHandler.MAX_NODES_PER_CHAIN,
+      maxNodesPerChain = 5,
       summaryOnly = false,
       title = `Node Traversal from: ${nodeId}`,
       snippetLength = DEFAULTS.codeSnippetLength,
@@ -84,7 +83,7 @@ export class TraversalHandler {
       });
 
       return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify(result) }],
       };
     } catch (error) {
       console.error('Node traversal error:', error);
@@ -137,25 +136,6 @@ export class TraversalHandler {
     );
   }
 
-  private groupConnectionsByRelationshipChain(connections: Connection[]): Record<string, Connection[]> {
-    return connections.reduce(
-      (acc, conn) => {
-        // Build chain with direction arrows
-        const chain =
-          conn.relationshipChain
-            ?.map((rel: any) => {
-              // rel has: { type, start, end, properties }
-              return rel.type;
-            })
-            .join(' → ') ?? 'Unknown';
-        acc[chain] ??= [];
-        acc[chain].push(conn);
-        return acc;
-      },
-      {} as Record<string, Connection[]>,
-    );
-  }
-
   private getRelationshipDirection(connection: Connection, startNodeId: string): 'OUTGOING' | 'INCOMING' | 'UNKNOWN' {
     // Check the first relationship in the chain to determine direction from start node
     const firstRel = connection.relationshipChain?.[0] as any;
@@ -190,9 +170,13 @@ export class TraversalHandler {
     // JSON:API normalization - collect all unique nodes
     const nodeMap = new Map<string, any>();
 
+    // Get common root path from all nodes
+    const allNodes = [startNode, ...traversalData.connections.map((c) => c.node)];
+    const projectRoot = this.getCommonRootPath(allNodes);
+
     // Add start node to map
     if (includeStartNodeDetails) {
-      const startNodeData = this.formatNodeJSON(startNode, includeCode, snippetLength);
+      const startNodeData = this.formatNodeJSON(startNode, includeCode, snippetLength, projectRoot);
       nodeMap.set(startNode.properties.id, startNodeData);
     }
 
@@ -200,19 +184,20 @@ export class TraversalHandler {
     traversalData.connections.forEach((conn) => {
       const nodeId = conn.node.properties.id;
       if (!nodeMap.has(nodeId)) {
-        nodeMap.set(nodeId, this.formatNodeJSON(conn.node, includeCode, snippetLength));
+        nodeMap.set(nodeId, this.formatNodeJSON(conn.node, includeCode, snippetLength, projectRoot));
       }
     });
 
     const byDepth = this.groupConnectionsByDepth(traversalData.connections);
 
     return {
+      projectRoot,
       totalConnections: traversalData.connections.length,
       uniqueFiles: this.getUniqueFileCount(traversalData.connections),
       maxDepth: Object.keys(byDepth).length > 0 ? Math.max(...Object.keys(byDepth).map((d) => parseInt(d))) : 0,
       startNodeId: includeStartNodeDetails ? startNode.properties.id : undefined,
       nodes: Object.fromEntries(nodeMap),
-      depths: this.formatConnectionsByDepthWithReferences(byDepth, maxNodesPerChain, startNode.properties.id),
+      depths: this.formatConnectionsByDepthWithReferences(byDepth, maxNodesPerChain),
     };
   }
 
@@ -227,11 +212,15 @@ export class TraversalHandler {
       Object.keys(byDepth).length > 0 ? Math.max(...Object.keys(byDepth).map((d) => parseInt(d))) : 0;
     const uniqueFiles = this.getUniqueFileCount(traversalData.connections);
 
+    const allNodes = [startNode, ...traversalData.connections.map((c) => c.node)];
+    const projectRoot = this.getCommonRootPath(allNodes);
+
     const fileMap = new Map<string, number>();
     traversalData.connections.forEach((conn) => {
       const filePath = conn.node.properties.filePath;
       if (filePath) {
-        fileMap.set(filePath, (fileMap.get(filePath) ?? 0) + 1);
+        const relativePath = this.makeRelativePath(filePath, projectRoot);
+        fileMap.set(relativePath, (fileMap.get(relativePath) ?? 0) + 1);
       }
     });
 
@@ -239,24 +228,27 @@ export class TraversalHandler {
       .sort((a, b) => b[1] - a[1])
       .map(([file, count]) => ({ file, nodeCount: count }));
 
+    const maxSummaryFiles = DEFAULTS.maxResultsDisplayed;
+
     return {
+      projectRoot,
       startNodeId: startNode.properties.id,
       nodes: {
-        [startNode.properties.id]: this.formatNodeJSON(startNode, false, 0),
+        [startNode.properties.id]: this.formatNodeJSON(startNode, false, 0, projectRoot),
       },
       totalConnections,
       maxDepth: maxDepthFound,
       uniqueFiles,
-      files: connectedFiles.slice(0, 20),
-      ...(fileMap.size > 20 && { hasMore: fileMap.size - 20 }),
+      files: connectedFiles.slice(0, maxSummaryFiles),
+      ...(fileMap.size > maxSummaryFiles && { hasMore: fileMap.size - maxSummaryFiles }),
     };
   }
 
-  private formatNodeJSON(node: Neo4jNode, includeCode: boolean, snippetLength: number): any {
+  private formatNodeJSON(node: Neo4jNode, includeCode: boolean, snippetLength: number, projectRoot?: string): any {
     const result: any = {
       id: node.properties.id,
-      type: node.labels[0] ?? 'Unknown',
-      filePath: node.properties.filePath,
+      type: node.properties.semanticType ?? node.labels.at(-1) ?? 'Unknown',
+      filePath: projectRoot ? this.makeRelativePath(node.properties.filePath, projectRoot) : node.properties.filePath,
     };
 
     if (node.properties.name) {
@@ -265,14 +257,15 @@ export class TraversalHandler {
 
     if (includeCode && node.properties.sourceCode && node.properties.coreType !== 'SourceFile') {
       const code = node.properties.sourceCode;
-      const maxLength = 1000; // Show max 1000 chars total
+      const maxLength = snippetLength; // Use the provided snippet length
 
       if (code.length <= maxLength) {
         result.sourceCode = code;
       } else {
-        // Show first 500 and last 500 characters
+        // Show first half and last half of the snippet
         const half = Math.floor(maxLength / 2);
-        result.sourceCode = code.substring(0, half) + '\n\n... [truncated] ...\n\n' + code.substring(code.length - half);
+        result.sourceCode =
+          code.substring(0, half) + '\n\n... [truncated] ...\n\n' + code.substring(code.length - half);
         result.hasMore = true;
         result.truncated = code.length - maxLength;
       }
@@ -284,38 +277,70 @@ export class TraversalHandler {
   private formatConnectionsByDepthWithReferences(
     byDepth: Record<number, Connection[]>,
     maxNodesPerChain: number,
-    startNodeId: string,
   ): any[] {
     return Object.keys(byDepth)
       .sort((a, b) => parseInt(a) - parseInt(b))
       .map((depth) => {
         const depthConnections = byDepth[parseInt(depth)];
-        const byRelChain = this.groupConnectionsByRelationshipChain(depthConnections);
 
-        const chains = Object.entries(byRelChain).map(([chain, nodes]) => {
-          const firstNode = nodes[0];
-          const direction = this.getRelationshipDirection(firstNode, startNodeId);
-          const displayNodes = nodes.slice(0, maxNodesPerChain);
+        const connectionsToShow = Math.min(depthConnections.length, maxNodesPerChain);
 
-          const chainResult: any = {
-            via: chain,
-            direction,
-            count: nodes.length,
-            nodeIds: displayNodes.map((conn) => conn.node.properties.id),
-          };
-
-          if (nodes.length > maxNodesPerChain) {
-            chainResult.hasMore = nodes.length - maxNodesPerChain;
-          }
-
-          return chainResult;
+        const chains = depthConnections.slice(0, connectionsToShow).map((conn) => {
+          return (
+            conn.relationshipChain?.map((rel: any) => ({
+              type: rel.type,
+              from: rel.start,
+              to: rel.end,
+            })) ?? []
+          );
         });
 
         return {
           depth: parseInt(depth),
           count: depthConnections.length,
           chains,
+          ...(depthConnections.length > connectionsToShow && {
+            hasMore: depthConnections.length - connectionsToShow,
+          }),
         };
       });
+  }
+
+  private getCommonRootPath(nodes: Neo4jNode[]): string {
+    const filePaths = nodes.map((n) => n.properties.filePath).filter(Boolean) as string[];
+
+    if (filePaths.length === 0) return process.cwd();
+
+    // Split all paths into parts
+    const pathParts = filePaths.map((p) => p.split('/'));
+
+    // Find common prefix
+    const commonParts: string[] = [];
+    const firstPath = pathParts[0];
+
+    for (let i = 0; i < firstPath.length; i++) {
+      const part = firstPath[i];
+      if (pathParts.every((p) => p[i] === part)) {
+        commonParts.push(part);
+      } else {
+        break;
+      }
+    }
+
+    return commonParts.join('/') || '/';
+  }
+
+  private makeRelativePath(absolutePath: string | undefined, projectRoot: string): string {
+    if (!absolutePath) return '';
+    if (!projectRoot || projectRoot === '/') return absolutePath;
+
+    // Ensure both paths end consistently
+    const root = projectRoot.endsWith('/') ? projectRoot : projectRoot + '/';
+
+    if (absolutePath.startsWith(root)) {
+      return absolutePath.substring(root.length);
+    }
+
+    return absolutePath;
   }
 }

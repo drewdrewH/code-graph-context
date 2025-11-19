@@ -26,9 +26,41 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
           .optional()
           .describe(`Maximum number of results to return (default: ${DEFAULTS.searchLimit})`)
           .default(DEFAULTS.searchLimit),
+        maxDepth: z
+          .number()
+          .int()
+          .optional()
+          .describe(`Maximum depth to traverse relationships (default: ${DEFAULTS.traversalDepth}, max: 10)`)
+          .default(DEFAULTS.traversalDepth),
+        maxNodesPerChain: z
+          .number()
+          .int()
+          .optional()
+          .describe('Maximum chains to show per depth level (default: 5, applied independently at each depth)')
+          .default(5),
+        skip: z.number().int().optional().describe('Number of results to skip for pagination (default: 0)').default(0),
+        includeCode: z
+          .boolean()
+          .optional()
+          .describe('Include source code snippets in results (default: true)')
+          .default(true),
+        snippetLength: z
+          .number()
+          .int()
+          .optional()
+          .describe(`Length of code snippets to include (default: ${DEFAULTS.codeSnippetLength})`)
+          .default(DEFAULTS.codeSnippetLength),
       },
     },
-    async ({ query, limit = DEFAULTS.searchLimit }) => {
+    async ({
+      query,
+      limit = DEFAULTS.searchLimit,
+      maxDepth = DEFAULTS.traversalDepth,
+      maxNodesPerChain = 5,
+      skip = 0,
+      includeCode = true,
+      snippetLength = DEFAULTS.codeSnippetLength,
+    }) => {
       try {
         await debugLog('Search codebase started', { query, limit });
 
@@ -54,14 +86,21 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         await debugLog('Vector search completed, starting traversal', {
           nodeId,
           resultsCount: vectorResults.length,
+          maxDepth,
+          maxNodesPerChain,
+          skip,
+          includeCode,
+          snippetLength,
         });
 
         return await traversalHandler.traverseFromNode(nodeId, {
-          maxDepth: 3,
+          maxDepth,
           direction: 'BOTH', // Show both incoming (who calls this) and outgoing (what this calls)
-          includeCode: true,
-          maxNodesPerChain: 4,
+          includeCode,
+          maxNodesPerChain,
+          skip,
           summaryOnly: false,
+          snippetLength,
           title: `Exploration from Node: ${nodeId}`,
         });
       } catch (error) {
