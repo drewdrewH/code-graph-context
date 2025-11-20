@@ -1,8 +1,11 @@
 # Code Graph Context MCP Server
 
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://typescriptlang.org/)
-[![Neo4j](https://img.shields.io/badge/Neo4j-018bff?logo=neo4j&logoColor=white)](https://neo4j.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-007ACC?logo=typescript&logoColor=white)](https://typescriptlang.org/)
+[![Neo4j](https://img.shields.io/badge/Neo4j-5.0+-018bff?logo=neo4j&logoColor=white)](https://neo4j.com/)
+[![NestJS](https://img.shields.io/badge/NestJS-Compatible-E0234E?logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-Powered-412991?logo=openai&logoColor=white)](https://openai.com/)
+[![MCP](https://img.shields.io/badge/MCP-Server-blue)](https://modelcontextprotocol.io/)
 
 A Model Context Protocol (MCP) server that builds rich code graphs to provide deep contextual understanding of TypeScript codebases to Large Language Models. This server parses your codebase using AST analysis, constructs a comprehensive graph representation in Neo4j, and provides intelligent querying capabilities through semantic search and graph traversal.
 
