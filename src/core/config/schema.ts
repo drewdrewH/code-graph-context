@@ -158,6 +158,14 @@ export interface Neo4jEdgeProperties {
   source: 'ast' | 'decorator' | 'pattern' | 'inference';
   confidence: number;
 
+  // === TRAVERSAL SCORING ===
+  /**
+   * Weight for traversal prioritization (0.0 - 1.0)
+   * Higher weights indicate more important relationships to follow
+   * Used in combination with query relevance and depth penalty
+   */
+  relationshipWeight: number;
+
   // === CORE METADATA ===
   filePath: string;
   createdAt: string;
@@ -279,6 +287,31 @@ export interface ContextExtractor {
 }
 
 /**
+ * Relationship Extractor Definition
+ * Maps an edge type to the AST method that extracts the related node(s)
+ */
+export interface RelationshipExtractor {
+  edgeType: CoreEdgeType;
+  /**
+   * AST method name to call on the source node
+   * - For single node: 'getBaseClass', 'getReturnTypeNode'
+   * - For array of nodes: 'getImplements', 'getTypeArguments'
+   */
+  method: string;
+  /**
+   * Whether the method returns a single node or an array
+   * - 'single': Method returns one node (e.g., getBaseClass)
+   * - 'array': Method returns array of nodes (e.g., getImplements)
+   */
+  cardinality: 'single' | 'array';
+  /**
+   * The target node type to create/link to
+   * Used to find existing nodes or create new ones
+   */
+  targetNodeType: CoreNodeType;
+}
+
+/**
  * Core Schema Node Definition
  */
 export interface CoreNode {
@@ -286,7 +319,13 @@ export interface CoreNode {
   astNodeKind: number;
   astGetter: string; // Method name to call on parent AST node (e.g., 'getMethods', 'getProperties')
   properties: PropertyDefinition[];
-  relationships: CoreEdgeType[];
+
+  /**
+   * Relationship extractors - defines how to find related nodes and create edges
+   * Unlike 'children' which handles containment, these handle references to other nodes
+   * Example: Class EXTENDS BaseClass, Class IMPLEMENTS Interface
+   */
+  relationships?: RelationshipExtractor[];
 
   // Children map - defines what child nodes to parse and what edge to create
   // Key: Child CoreNodeType, Value: Edge type to create between parent and child
@@ -308,6 +347,11 @@ export interface CoreEdge {
   sourceTypes: CoreNodeType[];
   targetTypes: CoreNodeType[];
   properties: PropertyDefinition[];
+  /**
+   * Default traversal weight for this core edge type (0.0 - 1.0)
+   * Can be overridden by framework-specific edge enhancements
+   */
+  relationshipWeight: number;
   neo4j: {
     relationshipType: string;
     direction: 'OUTGOING' | 'INCOMING' | 'BIDIRECTIONAL';
@@ -351,6 +395,17 @@ export interface FrameworkEnhancement {
 export interface EdgeEnhancement {
   name: string;
   semanticType: string; // Can be SemanticEdgeType or framework-specific edge type
+  /**
+   * Traversal weight for this relationship type (0.0 - 1.0)
+   * Higher weights = more important to follow during traversal
+   *
+   * Weight tiers:
+   * - Critical (0.9-1.0): Primary architectural relationships (INJECTS, EXPOSES)
+   * - High (0.7-0.8): Important semantic relationships (GUARDED_BY, MODULE_IMPORTS)
+   * - Medium (0.5-0.6): Supporting relationships (VALIDATES, TRANSFORMS)
+   * - Low (0.3-0.4): Structural relationships (CONTAINS, DECORATED_WITH)
+   */
+  relationshipWeight: number;
   detectionPattern: (
     parsedSourceNode: ParsedNode,
     parsedTargetNode: ParsedNode,
@@ -437,7 +492,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
-      relationships: [CoreEdgeType.CONTAINS, CoreEdgeType.IMPORTS, CoreEdgeType.EXPORTS],
+      relationships: [], // SourceFile doesn't have reference relationships, only containment
       children: {
         [CoreNodeType.CLASS_DECLARATION]: CoreEdgeType.CONTAINS,
         [CoreNodeType.INTERFACE_DECLARATION]: CoreEdgeType.CONTAINS,
@@ -482,10 +537,18 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         },
       ],
       relationships: [
-        CoreEdgeType.HAS_MEMBER,
-        CoreEdgeType.EXTENDS,
-        CoreEdgeType.IMPLEMENTS,
-        CoreEdgeType.DECORATED_WITH,
+        {
+          edgeType: CoreEdgeType.EXTENDS,
+          method: 'getBaseClass',
+          cardinality: 'single',
+          targetNodeType: CoreNodeType.CLASS_DECLARATION,
+        },
+        {
+          edgeType: CoreEdgeType.IMPLEMENTS,
+          method: 'getImplements',
+          cardinality: 'array',
+          targetNodeType: CoreNodeType.INTERFACE_DECLARATION,
+        },
       ],
       children: {
         [CoreNodeType.METHOD_DECLARATION]: CoreEdgeType.HAS_MEMBER,
@@ -531,7 +594,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
-      relationships: [CoreEdgeType.HAS_PARAMETER, CoreEdgeType.CALLS, CoreEdgeType.DECORATED_WITH],
+      relationships: [], // CALLS would need call-site analysis, not implemented yet
       children: {
         [CoreNodeType.PARAMETER_DECLARATION]: CoreEdgeType.HAS_PARAMETER,
         [CoreNodeType.DECORATOR]: CoreEdgeType.DECORATED_WITH,
@@ -574,7 +637,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
-      relationships: [CoreEdgeType.TYPED_AS, CoreEdgeType.DECORATED_WITH],
+      relationships: [], // TYPED_AS would need type resolution, not implemented yet
       children: {
         [CoreNodeType.DECORATOR]: CoreEdgeType.DECORATED_WITH,
       },
@@ -598,7 +661,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
-      relationships: [CoreEdgeType.TYPED_AS, CoreEdgeType.DECORATED_WITH],
+      relationships: [], // TYPED_AS would need type resolution, not implemented yet
       children: {
         [CoreNodeType.DECORATOR]: CoreEdgeType.DECORATED_WITH,
       },
@@ -622,7 +685,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
-      relationships: [CoreEdgeType.IMPORTS],
+      relationships: [], // IMPORTS to SourceFile would need module resolution
       children: {},
       neo4j: {
         labels: ['Import', 'TypeScript'],
@@ -672,7 +735,14 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
-      relationships: [CoreEdgeType.EXTENDS, CoreEdgeType.HAS_MEMBER],
+      relationships: [
+        {
+          edgeType: CoreEdgeType.EXTENDS,
+          method: 'getExtends',
+          cardinality: 'array',
+          targetNodeType: CoreNodeType.INTERFACE_DECLARATION,
+        },
+      ],
       children: {},
       neo4j: {
         labels: ['Interface', 'TypeScript'],
@@ -727,7 +797,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
-      relationships: [CoreEdgeType.HAS_PARAMETER, CoreEdgeType.CALLS],
+      relationships: [], // CALLS would need call-site analysis, not implemented yet
       children: {
         [CoreNodeType.PARAMETER_DECLARATION]: CoreEdgeType.HAS_PARAMETER,
       },
@@ -772,7 +842,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
-      relationships: [CoreEdgeType.HAS_PARAMETER],
+      relationships: [], // Parameters are handled via children, not relationship extractors
       children: {
         [CoreNodeType.PARAMETER_DECLARATION]: CoreEdgeType.HAS_PARAMETER,
       },
@@ -832,6 +902,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.4, // Structural - useful but not primary focus
       neo4j: {
         relationshipType: 'CONTAINS',
         direction: 'OUTGOING',
@@ -860,6 +931,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.6, // Medium - important for understanding class structure
       neo4j: {
         relationshipType: 'HAS_MEMBER',
         direction: 'OUTGOING',
@@ -888,6 +960,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.35, // Low - rarely primary traversal target
       neo4j: {
         relationshipType: 'HAS_PARAMETER',
         direction: 'OUTGOING',
@@ -917,6 +990,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.3, // Low - metadata, not code flow
       neo4j: {
         relationshipType: 'DECORATED_WITH',
         direction: 'OUTGOING',
@@ -941,6 +1015,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.55, // Medium - useful for dependency tracing
       neo4j: {
         relationshipType: 'IMPORTS',
         direction: 'OUTGOING',
@@ -969,6 +1044,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.5, // Medium - public API surface
       neo4j: {
         relationshipType: 'EXPORTS',
         direction: 'OUTGOING',
@@ -993,6 +1069,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.85, // High - inheritance is critical for understanding
       neo4j: {
         relationshipType: 'EXTENDS',
         direction: 'OUTGOING',
@@ -1017,6 +1094,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.75, // High - contract relationships are important
       neo4j: {
         relationshipType: 'IMPLEMENTS',
         direction: 'OUTGOING',
@@ -1041,6 +1119,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.5, // Medium - type info useful but not primary
       neo4j: {
         relationshipType: 'TYPED_AS',
         direction: 'OUTGOING',
@@ -1065,6 +1144,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           neo4j: { indexed: true, unique: false, required: true },
         },
       ],
+      relationshipWeight: 0.85, // Critical - execution flow is primary
       neo4j: {
         relationshipType: 'CALLS',
         direction: 'OUTGOING',
