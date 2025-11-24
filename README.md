@@ -17,7 +17,7 @@ A Model Context Protocol (MCP) server that builds rich code graphs to provide de
 - **Semantic Search**: Vector-based semantic search using OpenAI embeddings to find relevant code patterns and implementations
 - **Natural Language Querying**: Convert natural language questions into Cypher queries using OpenAI assistants API
 - **Framework-Aware & Customizable**: Built-in NestJS schema with ability to define custom framework patterns via configuration
-- **Graph Traversal**: Explore code relationships and dependencies through intelligent graph traversal
+- **Weighted Graph Traversal**: Intelligent traversal that scores paths based on relationship importance, query relevance, and depth
 - **High Performance**: Optimized Neo4j storage with vector indexing for fast retrieval
 - **MCP Integration**: Seamless integration with Claude Code and other MCP-compatible tools
 
@@ -477,6 +477,36 @@ firstDepth.chains.forEach(chain => {
 - **Direction Filtering**: Use `direction: "OUTGOING"` or `"INCOMING"` to focus exploration
 - **Source Code on Demand**: Source code included by default but truncated to 1000 chars
 
+#### Weighted Traversal
+
+The `search_codebase` tool uses **weighted traversal** by default (`useWeightedTraversal: true`) to intelligently prioritize which relationships to explore. This produces more relevant results by scoring each node at every depth level.
+
+**How Scoring Works**:
+
+Each potential path is scored using three factors multiplied together:
+
+1. **Edge Weight** (0.0-1.0): How important is this relationship type?
+   - Critical (0.9-0.95): `INJECTS`, `EXPOSES`, `ROUTES_TO` - core architectural relationships
+   - High (0.8-0.88): `EXTENDS`, `IMPLEMENTS`, `USES_REPOSITORY` - important semantic links
+   - Medium (0.5-0.6): `IMPORTS`, `EXPORTS`, `HAS_MEMBER` - structural relationships
+   - Low (0.3-0.4): `DECORATED_WITH`, `HAS_PARAMETER` - metadata relationships
+
+2. **Node Similarity**: Cosine similarity between the node's embedding and your query embedding. Nodes semantically related to your search rank higher.
+
+3. **Depth Penalty**: Exponential decay (default 0.85 per level). Closer nodes are preferred:
+   - Depth 1: 1.0 (no penalty)
+   - Depth 2: 0.85
+   - Depth 3: 0.72
+
+**When to Disable**:
+```typescript
+// Use standard traversal for exhaustive exploration
+search_codebase({
+  query: "...",
+  useWeightedTraversal: false
+})
+```
+
 #### Performance Optimization
 - **Token Efficiency**: JSON:API normalization eliminates duplicate nodes in responses
 - **Code Truncation**: Source code limited to 1000 chars (first 500 + last 500) to prevent token overflow
@@ -502,7 +532,7 @@ firstDepth.chains.forEach(chain => {
 
 | Tool | Description | Parameters | Best For |
 |------|-------------|------------|----------|
-| `search_codebase` | **Vector-based semantic search** - Find most relevant code using OpenAI embeddings | `query` (string), `limit?` (default: 10) | **Starting point** for code exploration. Returns comprehensive multi-depth graph starting from best semantic match |
+| `search_codebase` | **Vector-based semantic search** - Find most relevant code using OpenAI embeddings | `query`, `limit?`, `useWeightedTraversal?` (default: true) | **Starting point** for code exploration. Uses weighted scoring for intelligent traversal |
 | `traverse_from_node` | **Focused graph traversal** - Explore specific relationships from a known node | `nodeId` (string), `maxDepth?` (1-10, default: 3), `skip?` (default: 0) | **Deep diving** into specific code relationships. Pagination for large graphs |
 | `natural_language_to_cypher` | **AI-powered query generation** - Convert natural language to Cypher queries using GPT-4 | `query` (string) | **Advanced queries** - currently requires OpenAI assistant setup |
 
