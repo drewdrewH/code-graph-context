@@ -25,6 +25,7 @@ export interface TraversalOptions {
   summaryOnly?: boolean;
   title?: string;
   snippetLength?: number;
+  useWeightedTraversal?: boolean;
 }
 
 interface Connection {
@@ -38,7 +39,11 @@ export class TraversalHandler {
 
   constructor(private neo4jService: Neo4jService) {}
 
-  async traverseFromNode(nodeId: string, options: TraversalOptions = {}): Promise<TraversalResult> {
+  async traverseFromNode(
+    nodeId: string,
+    embedding: number[],
+    options: TraversalOptions = {},
+  ): Promise<TraversalResult> {
     const {
       maxDepth = DEFAULTS.traversalDepth,
       skip = DEFAULTS.skipOffset,
@@ -50,6 +55,7 @@ export class TraversalHandler {
       summaryOnly = false,
       title = `Node Traversal from: ${nodeId}`,
       snippetLength = DEFAULTS.codeSnippetLength,
+      useWeightedTraversal = false,
     } = options;
 
     try {
@@ -60,7 +66,18 @@ export class TraversalHandler {
         return createErrorResponse(`Node with ID "${nodeId}" not found.`);
       }
 
-      const traversalData = await this.performTraversal(nodeId, maxDepth, skip, direction, relationshipTypes);
+      const maxNodesPerDepth = Math.ceil(maxNodesPerChain * 1.5);
+      const traversalData = useWeightedTraversal
+        ? await this.performTraversalByDepth(
+            nodeId,
+            embedding,
+            maxDepth,
+            maxNodesPerDepth,
+            direction,
+            relationshipTypes,
+          )
+        : await this.performTraversal(nodeId, embedding, maxDepth, skip, direction, relationshipTypes);
+
       if (!traversalData) {
         return createSuccessResponse(`No connections found for node "${nodeId}".`);
       }
@@ -100,6 +117,7 @@ export class TraversalHandler {
 
   private async performTraversal(
     nodeId: string,
+    embedding: number[],
     maxDepth: number,
     skip: number,
     direction: 'OUTGOING' | 'INCOMING' | 'BOTH' = 'BOTH',
@@ -121,6 +139,98 @@ export class TraversalHandler {
     return {
       connections: result.connections ?? [],
       graph: result.graph ?? { nodes: [], relationships: [] },
+    };
+  }
+
+  private async performTraversalByDepth(
+    nodeId: string,
+    embedding: number[],
+    maxDepth: number,
+    maxNodesPerDepth: number,
+    direction: 'OUTGOING' | 'INCOMING' | 'BOTH' = 'BOTH',
+    relationshipTypes?: string[],
+  ) {
+    // Track visited nodes to avoid cycles
+    const visitedNodeIds = new Set<string>([nodeId]);
+
+    // Track the path (chain of relationships) to reach each node
+    // Key: nodeId, Value: array of relationships from start node to this node
+    const pathsToNode = new Map<string, any[]>();
+    pathsToNode.set(nodeId, []); // Start node has empty path
+
+    // Track which nodes to explore at each depth
+    let currentSourceIds = [nodeId];
+
+    // Result accumulators
+    const allConnections: Connection[] = [];
+    const nodeMap = new Map<string, Neo4jNode>(); // Dedupe nodes
+
+    for (let depth = 1; depth <= maxDepth; depth++) {
+      if (currentSourceIds.length === 0) {
+        console.log(`No source nodes to explore at depth ${depth}`);
+        break;
+      }
+
+      const traversalResults = await this.neo4jService.run(QUERIES.EXPLORE_DEPTH_LEVEL(direction, maxNodesPerDepth), {
+        sourceNodeIds: currentSourceIds,
+        visitedNodeIds: Array.from(visitedNodeIds),
+        currentDepth: parseInt(depth.toString()),
+        queryEmbedding: embedding,
+        depthDecay: 0.85,
+      });
+
+      if (traversalResults.length === 0) {
+        console.log(`No connections found at depth ${depth}`);
+        break;
+      }
+
+      // Collect node IDs for next depth exploration
+      const nextSourceIds: string[] = [];
+
+      for (const row of traversalResults) {
+        const { node, relationship, sourceNodeId, scoring } = row.result;
+        const neighborId = node.id;
+
+        // Skip if already visited (safety check)
+        if (visitedNodeIds.has(neighborId)) continue;
+
+        // Mark as visited
+        visitedNodeIds.add(neighborId);
+        nextSourceIds.push(neighborId);
+
+        // Build the relationship chain:
+        // This node's chain = parent's chain + this relationship
+        const parentPath = pathsToNode.get(sourceNodeId) ?? [];
+        const thisPath = [
+          ...parentPath,
+          {
+            type: relationship.type,
+            start: relationship.startNodeId,
+            end: relationship.endNodeId,
+            properties: relationship.properties,
+            score: scoring.combinedScore,
+          },
+        ];
+        pathsToNode.set(neighborId, thisPath);
+
+        // Create connection with full relationship chain
+        const connection: Connection = {
+          depth,
+          node: node as Neo4jNode,
+          relationshipChain: thisPath,
+        };
+        allConnections.push(connection);
+
+        // Accumulate unique nodes
+        nodeMap.set(neighborId, node as Neo4jNode);
+      }
+
+      // Move to next depth with the newly discovered nodes
+      currentSourceIds = nextSourceIds;
+    }
+
+    return {
+      connections: allConnections,
     };
   }
 
@@ -160,7 +270,7 @@ export class TraversalHandler {
 
   private formatTraversalJSON(
     startNode: Neo4jNode,
-    traversalData: { connections: Connection[]; graph: any },
+    traversalData: { connections: Connection[]; graph?: any },
     title: string,
     includeStartNodeDetails: boolean,
     includeCode: boolean,
@@ -203,7 +313,7 @@ export class TraversalHandler {
 
   private formatSummaryOnlyJSON(
     startNode: Neo4jNode,
-    traversalData: { connections: Connection[]; graph: any },
+    traversalData: { connections: Connection[]; graph?: any },
     title: string,
   ): any {
     const byDepth = this.groupConnectionsByDepth(traversalData.connections);
