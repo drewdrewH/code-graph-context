@@ -654,6 +654,7 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
     injectableDependencies: {
       name: 'Injectable Dependencies',
       semanticType: FairSquareSemanticEdgeType.FS_INJECTS as any,
+      relationshipWeight: 0.95, // Critical - FairSquare DI is core architecture
 
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode, allParsedNodes, sharedContext) => {
         // FILTER: Only create INJECTS edges between ClassDeclarations
@@ -699,6 +700,7 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
     repositoryUsesDAL: {
       name: 'Repository Uses DAL',
       semanticType: FairSquareSemanticEdgeType.FS_REPOSITORY_USES_DAL as any,
+      relationshipWeight: 0.85, // High - data access layer relationships
 
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode, allParsedNodes, sharedContext) => {
         const isSourceRepo = parsedSourceNode.semanticType === FairSquareSemanticNodeType.FS_REPOSITORY;
@@ -737,6 +739,7 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
     controllerProtectedBy: {
       name: 'Controller Protected By Permission Manager',
       semanticType: FairSquareSemanticEdgeType.FS_PROTECTED_BY as any,
+      relationshipWeight: 0.88, // High - security/authorization is critical
 
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode, allParsedNodes, sharedContext) => {
         const isSourceController = parsedSourceNode.semanticType === FairSquareSemanticNodeType.FS_CONTROLLER;
@@ -775,6 +778,7 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
     routeToController: {
       name: 'Route To Controller',
       semanticType: FairSquareSemanticEdgeType.FS_ROUTES_TO as any,
+      relationshipWeight: 0.92, // Critical - HTTP routing is primary entry point
 
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode, allParsedNodes, sharedContext) => {
         const isSourceRoute = parsedSourceNode.semanticType === FairSquareSemanticNodeType.FS_ROUTE_DEFINITION;
@@ -813,6 +817,7 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
     routeToHandlerMethod: {
       name: 'Route To Handler Method',
       semanticType: FairSquareSemanticEdgeType.FS_ROUTES_TO_HANDLER as any,
+      relationshipWeight: 0.9, // Critical - direct route to handler method
 
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode, allParsedNodes, sharedContext) => {
         const isSourceRoute = parsedSourceNode.semanticType === FairSquareSemanticNodeType.FS_ROUTE_DEFINITION;
@@ -883,6 +888,7 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
     internalApiCall: {
       name: 'Internal API Call',
       semanticType: FairSquareSemanticEdgeType.FS_INTERNAL_API_CALL as any,
+      relationshipWeight: 0.82, // High - internal service communication
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode, allParsedNodes, sharedContext) => {
         // Service → VendorController (through VendorClient)
         const isSourceService = parsedSourceNode.semanticType === FairSquareSemanticNodeType.FS_SERVICE;
@@ -954,6 +960,7 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
     usesRepository: {
       name: 'Uses Repository',
       semanticType: 'USES_REPOSITORY',
+      relationshipWeight: 0.8, // High - service to repository data access
 
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode, allParsedNodes, sharedContext) => {
         // Service → Repository

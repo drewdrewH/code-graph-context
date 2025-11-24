@@ -715,6 +715,7 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
     DependencyInjection: {
       name: 'DependencyInjection',
       semanticType: SemanticEdgeType.INJECTS,
+      relationshipWeight: 0.95, // Critical - core NestJS DI is primary architecture
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => {
         return detectDependencyInjection(parsedSourceNode, parsedTargetNode);
       },
@@ -732,6 +733,7 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
     MessageHandlerExposure: {
       name: 'MessageHandlerExposure',
       semanticType: SemanticEdgeType.EXPOSES,
+      relationshipWeight: 0.9, // Critical - API surface exposure
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => {
         if (
           parsedSourceNode.properties?.semanticType !== SemanticNodeType.NEST_CONTROLLER ||
@@ -769,6 +771,7 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
     HttpEndpointExposure: {
       name: 'HttpEndpointExposure',
       semanticType: SemanticEdgeType.EXPOSES,
+      relationshipWeight: 0.9, // Critical - HTTP API surface
       detectionPattern: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => {
         // Check if source is controller and target is HTTP endpoint
         if (
