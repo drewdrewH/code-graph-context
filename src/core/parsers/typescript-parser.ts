@@ -51,6 +51,12 @@ export class TypeScriptParser {
   private frameworkSchemas: FrameworkSchema[];
   private parsedNodes: Map<string, ParsedNode> = new Map();
   private parsedEdges: Map<string, ParsedEdge> = new Map();
+  private deferredEdges: Array<{
+    edgeType: CoreEdgeType;
+    sourceNodeId: string;
+    targetName: string;
+    targetType: CoreNodeType;
+  }> = [];
   private sharedContext: ParsingContext = new Map(); // Shared context for custom data
 
   constructor(
@@ -87,6 +93,9 @@ export class TypeScriptParser {
       if (this.shouldSkipFile(sourceFile)) continue;
       await this.parseCoreTypeScriptV2(sourceFile);
     }
+
+    // Phase 1.5: Resolve deferred relationship edges (EXTENDS, IMPLEMENTS)
+    this.resolveDeferredEdges();
 
     // Phase 2: Apply context extractors
     await this.applyContextExtractors();
@@ -181,10 +190,82 @@ export class TypeScriptParser {
 
         const childNodeConfig = this.coreSchema.nodeTypes[type];
         if (childNodeConfig) {
+          this.queueRelationshipNodes(childNodeConfig, coreNode, child);
           await this.parseChildNodes(childNodeConfig, coreNode, child);
         }
       }
     }
+  }
+
+  /**
+   * Queue relationship edges for deferred processing
+   * These are resolved after all nodes are parsed since the target may not exist yet
+   */
+  private queueRelationshipNodes(nodeConfig: CoreNode, parsedNode: ParsedNode, astNode: Node): void {
+    if (!nodeConfig.relationships || nodeConfig.relationships.length === 0) return;
+
+    for (const relationship of nodeConfig.relationships) {
+      const { edgeType, method, cardinality, targetNodeType } = relationship;
+      const astGetter = (astNode as any)[method];
+
+      if (typeof astGetter !== 'function') continue;
+
+      const result = astGetter.call(astNode);
+      if (!result) continue;
+
+      const targets = cardinality === 'single' ? [result] : result;
+
+      for (const target of targets) {
+        if (!target) continue;
+
+        const targetName = this.extractRelationshipTargetName(target);
+        if (!targetName) continue;
+
+        this.deferredEdges.push({
+          edgeType: edgeType as CoreEdgeType,
+          sourceNodeId: parsedNode.id,
+          targetName,
+          targetType: targetNodeType,
+        });
+      }
+    }
+  }
+
+  /**
+   * Extract the target name from an AST node returned by relationship methods
+   */
+  private extractRelationshipTargetName(target: Node): string | undefined {
+    if (Node.isClassDeclaration(target)) return target.getName();
+    if (Node.isInterfaceDeclaration(target)) return target.getName();
+    if (Node.isExpressionWithTypeArguments(target)) return target.getExpression().getText();
+    return undefined;
+  }
+
+  /**
+   * Find a parsed node by name and core type
+   */
+  private findNodeByNameAndType(name: string, coreType: CoreNodeType): ParsedNode | undefined {
+    for (const node of this.parsedNodes.values()) {
+      if (node.coreType === coreType && node.properties.name === name) {
+        return node;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Resolve deferred edges after all nodes have been parsed
+   */
+  private resolveDeferredEdges(): void {
+    for (const deferred of this.deferredEdges) {
+      const targetNode = this.findNodeByNameAndType(deferred.targetName, deferred.targetType);
+      if (targetNode) {
+        const edge = this.createCoreEdge(deferred.edgeType, deferred.sourceNodeId, targetNode.id);
+        this.addEdge(edge);
+      }
+      // If not found, it's likely an external type (from node_modules) - skip silently
+    }
+    this.deferredEdges = [];
   }
 
   private async parseCoreTypeScript(sourceFile: SourceFile): Promise<void> {
@@ -402,6 +483,10 @@ export class TypeScriptParser {
   }
 
   private createCoreEdge(relationshipType: CoreEdgeType, sourceNodeId: string, targetNodeId: string): ParsedEdge {
+    // Get the weight from the core schema
+    const coreEdgeSchema = CORE_TYPESCRIPT_SCHEMA.edgeTypes[relationshipType];
+    const relationshipWeight = coreEdgeSchema?.relationshipWeight ?? 0.5;
+
     return {
       id: `${relationshipType}:${uuidv4()}`,
       relationshipType,
@@ -411,6 +496,7 @@ export class TypeScriptParser {
         coreType: relationshipType,
         source: 'ast',
         confidence: 1.0,
+        relationshipWeight,
         filePath: '',
         createdAt: new Date().toISOString(),
       },
@@ -565,6 +651,7 @@ export class TypeScriptParser {
               sourceId,
               targetId,
               context,
+              edgeEnhancement.relationshipWeight,
             );
             this.addEdge(edge);
           }
@@ -581,6 +668,7 @@ export class TypeScriptParser {
     sourceNodeId: string,
     targetNodeId: string,
     context: Record<string, any> = {},
+    relationshipWeight: number = 0.5,
   ): ParsedEdge {
     const edgeId = `${semanticType}:${uuidv4()}`;
 
@@ -589,6 +677,7 @@ export class TypeScriptParser {
       semanticType,
       source: 'pattern',
       confidence: 0.8,
+      relationshipWeight,
       filePath: '',
       createdAt: new Date().toISOString(),
       context,
