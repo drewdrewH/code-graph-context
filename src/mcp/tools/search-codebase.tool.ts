@@ -50,6 +50,11 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
           .optional()
           .describe(`Length of code snippets to include (default: ${DEFAULTS.codeSnippetLength})`)
           .default(DEFAULTS.codeSnippetLength),
+        useWeightedTraversal: z
+          .boolean()
+          .optional()
+          .describe('Use weighted traversal strategy that scores each node for relevance (default: false)')
+          .default(true),
       },
     },
     async ({
@@ -60,6 +65,7 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
       skip = 0,
       includeCode = true,
       snippetLength = DEFAULTS.codeSnippetLength,
+      useWeightedTraversal = true,
     }) => {
       try {
         await debugLog('Search codebase started', { query, limit });
@@ -71,7 +77,7 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         const embedding = await embeddingsService.embedText(query);
 
         const vectorResults = await neo4jService.run(QUERIES.VECTOR_SEARCH, {
-          limit,
+          limit: parseInt(limit.toString()),
           embedding,
         });
 
@@ -93,7 +99,7 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
           snippetLength,
         });
 
-        return await traversalHandler.traverseFromNode(nodeId, {
+        return await traversalHandler.traverseFromNode(nodeId, embedding, {
           maxDepth,
           direction: 'BOTH', // Show both incoming (who calls this) and outgoing (what this calls)
           includeCode,
@@ -102,6 +108,7 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
           summaryOnly: false,
           snippetLength,
           title: `Exploration from Node: ${nodeId}`,
+          useWeightedTraversal,
         });
       } catch (error) {
         console.error('Search codebase error:', error);

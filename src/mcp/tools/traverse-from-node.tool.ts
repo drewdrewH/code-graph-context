@@ -99,7 +99,7 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
         const neo4jService = new Neo4jService();
         const traversalHandler = new TraversalHandler(neo4jService);
 
-        return await traversalHandler.traverseFromNode(nodeId, {
+        return await traversalHandler.traverseFromNode(nodeId, [], {
           maxDepth: sanitizedMaxDepth,
           skip: sanitizedSkip,
           direction,
