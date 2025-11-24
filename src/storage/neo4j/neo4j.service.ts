@@ -179,4 +179,115 @@ export const QUERIES = {
       } as result
     `;
   },
+
+  /**
+   * DEPTH-BY-DEPTH WEIGHTED TRAVERSAL
+   *
+   * This query is called once per depth level, allowing you to score and prune
+   * at each level before deciding which nodes to explore further.
+   *
+   * Parameters:
+   *   $sourceNodeIds: string[] - Node IDs to explore FROM (starts with just start node)
+   *   $visitedNodeIds: string[] - Node IDs already visited (to avoid cycles)
+   *   $queryEmbedding: number[] - The original query embedding for similarity scoring
+   *   $currentDepth: number - Which depth level we're at (1-indexed)
+   *   $depthDecay: number - Decay factor per depth (e.g., 0.85 means 15% penalty per level)
+   *   $maxNodesPerDepth: number - Maximum nodes to return at this depth
+   *   $direction: 'OUTGOING' | 'INCOMING' | 'BOTH'
+   *
+   * How it works:
+   *
+   * 1. UNWIND $sourceNodeIds - For each node we're exploring FROM
+   * 2. MATCH neighbors - Find all immediate neighbors (1 hop only)
+   * 3. Filter out visited nodes - Avoid cycles
+   * 4. Score each neighbor using:
+   *    - edgeWeight: The relationshipWeight we added to edges (how important is this relationship type?)
+   *    - nodeSimilarity: Cosine similarity between neighbor's embedding and query embedding
+   *    - depthPenalty: Exponential decay based on current depth
+   * 5. Combine: score = edgeWeight * nodeSimilarity * depthPenalty
+   * 6. ORDER BY score DESC, LIMIT to top N
+   * 7. Return scored neighbors - caller decides which to explore at next depth
+   *
+   * Example flow:
+   *   Depth 1: sourceNodeIds=[startNode], returns top 5 neighbors with scores
+   *   Depth 2: sourceNodeIds=[top 3 from depth 1], returns top 5 neighbors of those
+   *   Depth 3: sourceNodeIds=[top 3 from depth 2], returns top 5 neighbors of those
+   *   ...until maxDepth reached or no more neighbors
+   */
+  EXPLORE_DEPTH_LEVEL: (direction: 'OUTGOING' | 'INCOMING' | 'BOTH' = 'BOTH', maxNodesPerDepth: number = 5) => {
+    // Build relationship pattern based on direction
+    let relPattern = '';
+    if (direction === 'OUTGOING') {
+      relPattern = '-[rel]->';
+    } else if (direction === 'INCOMING') {
+      relPattern = '<-[rel]-';
+    } else {
+      relPattern = '-[rel]-';
+    }
+
+    return `
+      // Unwind the source nodes we're exploring from
+      UNWIND $sourceNodeIds AS sourceId
+      MATCH (source) WHERE source.id = sourceId
+
+      // Find immediate neighbors (exactly 1 hop)
+      MATCH (source)${relPattern}(neighbor)
+
+      // Filter: skip already visited nodes to avoid cycles
+      WHERE NOT neighbor.id IN $visitedNodeIds
+
+      // Calculate the three scoring components
+      WITH source, neighbor, rel,
+
+           // 1. Edge weight: how important is this relationship type?
+           //    Falls back to 0.5 if not set
+           COALESCE(rel.relationshipWeight, 0.5) AS edgeWeight,
+
+           // 2. Node similarity: how relevant is this node to the query?
+           //    Uses cosine similarity if neighbor has an embedding
+           //    Falls back to 0.5 if no embedding (structural nodes like decorators)
+           CASE
+             WHEN neighbor.embedding IS NOT NULL AND $queryEmbedding IS NOT NULL
+             THEN vector.similarity.cosine(neighbor.embedding, $queryEmbedding)
+             ELSE 0.5
+           END AS nodeSimilarity,
+
+           // 3. Depth penalty: exponential decay
+           //    depth 1: decay^0 = 1.0 (no penalty)
+           //    depth 2: decay^1 = 0.85 (if decay=0.85)
+           //    depth 3: decay^2 = 0.72
+           //    This ensures closer nodes are preferred
+           ($depthDecay ^ ($currentDepth - 1)) AS depthPenalty
+
+      // Combine into final score
+      WITH source, neighbor, rel, edgeWeight, nodeSimilarity, depthPenalty,
+           (edgeWeight * nodeSimilarity * depthPenalty) AS combinedScore
+
+      // Return all neighbor data with scores
+      RETURN {
+        node: {
+          id: neighbor.id,
+          labels: labels(neighbor),
+          properties: apoc.map.removeKeys(properties(neighbor), ['embedding'])
+        },
+        relationship: {
+          type: type(rel),
+          startNodeId: startNode(rel).id,
+          endNodeId: endNode(rel).id,
+          properties: properties(rel)
+        },
+        sourceNodeId: source.id,
+        scoring: {
+          edgeWeight: edgeWeight,
+          nodeSimilarity: nodeSimilarity,
+          depthPenalty: depthPenalty,
+          combinedScore: combinedScore
+        }
+      } AS result
+
+      // Sort by score and limit to top N per depth
+      ORDER BY combinedScore DESC
+      LIMIT ${maxNodesPerDepth}
+    `;
+  },
 };
