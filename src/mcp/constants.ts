@@ -101,7 +101,7 @@ export const DEFAULTS = {
   skipOffset: 0,
   batchSize: 500,
   maxResultsDisplayed: 30,
-  codeSnippetLength: 700,
+  codeSnippetLength: 1000,
   chainSnippetLength: 700,
 } as const;
 
