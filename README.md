@@ -1,5 +1,6 @@
 # Code Graph Context MCP Server
 
+[![npm version](https://badge.fury.io/js/code-graph-context.svg)](https://www.npmjs.com/package/code-graph-context)
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-007ACC?logo=typescript&logoColor=white)](https://typescriptlang.org/)
 [![Neo4j](https://img.shields.io/badge/Neo4j-5.0+-018bff?logo=neo4j&logoColor=white)](https://neo4j.com/)
