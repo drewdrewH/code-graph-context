@@ -553,6 +553,70 @@ search_codebase({
 - Best for complex queries beyond simple search/traversal
 - Currently in development - may require setup
 
+## Claude Code Integration Tips
+
+### Guiding Tool Usage with claude.md
+
+You can add a `claude.md` file to your repository root to help Claude Code understand when to use these MCP tools effectively. Here are some useful patterns:
+
+#### Trigger Word Hints
+
+```markdown
+## Code Search Tools
+
+**Use `search_codebase` for:**
+- "Where is...", "Find...", "Show me [specific thing]"
+- Example: "Where is the authentication middleware?"
+
+**Use `natural_language_to_cypher` for:**
+- "List all...", "How many...", "Count..."
+- Example: "List all API controllers"
+
+**Use `traverse_from_node` for:**
+- Deep dependency analysis after initial search
+- "What depends on X?", "Trace the flow..."
+```
+
+#### Weighted Traversal Hints
+
+```markdown
+**Use `useWeightedTraversal: true` for:**
+- Service/Controller classes with many dependencies
+- Queries with depth > 3 or limit > 10
+- Cleaner, more relevant results
+
+**Recommended settings:**
+- Default: `limit: 15, maxDepth: 5, snippetLength: 900`
+- Simple lookups: `limit: 5, maxDepth: 2`
+```
+
+#### Framework-Specific Patterns
+
+Document your custom node types and relationships so Claude knows what to search for:
+
+```markdown
+**Custom Node Types:**
+- `PaymentProcessor` - Payment integrations
+- `EmailTemplate` - Email templates
+
+**Custom Relationships:**
+- `PROCESSES_PAYMENT` - Service → PaymentProcessor
+- `SENDS_EMAIL` - Service → EmailTemplate
+```
+
+#### Common Query Examples
+
+```markdown
+**Finding authentication:**
+search_codebase({ query: "JWT authentication middleware" })
+
+**Tracing dependencies:**
+traverse_from_node({ nodeId: "...", direction: "OUTGOING", maxDepth: 5 })
+
+**Impact analysis:**
+traverse_from_node({ nodeId: "...", direction: "INCOMING", maxDepth: 4 })
+```
+
 ## Framework Support
 
 ### NestJS Framework Schema
