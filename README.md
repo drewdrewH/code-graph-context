@@ -148,6 +148,84 @@ Then configure in your MCP config file (`~/.config/claude/config.json`):
 
 **Note:** The env vars can be configured for any Neo4j instance - local, Docker, cloud (Aura), or enterprise.
 
+### Verify Installation
+
+After installation, verify everything is working:
+
+1. **Check Neo4j is running:**
+```bash
+# Open Neo4j Browser
+open http://localhost:7474
+# Login: neo4j / PASSWORD
+```
+
+2. **Test APOC plugin:**
+```cypher
+CALL apoc.help("apoc")
+```
+Should return a list of APOC functions.
+
+3. **Test MCP server connection:**
+```bash
+claude mcp list
+```
+Should show: `code-graph-context: ✓ Connected`
+
+### Troubleshooting
+
+**"APOC plugin not found"**
+```bash
+# Check Neo4j logs
+docker logs code-graph-neo4j
+
+# Verify APOC loaded
+docker exec code-graph-neo4j cypher-shell -u neo4j -p PASSWORD "CALL apoc.help('apoc')"
+
+# Restart if needed
+docker restart code-graph-neo4j
+```
+
+**"OPENAI_API_KEY environment variable is required"**
+- Get your API key from: https://platform.openai.com/api-keys
+- Add to Claude Code MCP config `env` section
+- Verify with: `echo $OPENAI_API_KEY` (if using shell env)
+
+**"Connection refused bolt://localhost:7687"**
+```bash
+# Check Neo4j is running
+docker ps | grep neo4j
+
+# Check ports are not in use
+lsof -i :7687
+
+# Start Neo4j if stopped
+docker start code-graph-neo4j
+
+# Check Neo4j logs
+docker logs code-graph-neo4j
+```
+
+**"Neo4j memory errors"**
+```bash
+# Increase memory in docker-compose.yml or docker run:
+-e NEO4J_server_memory_heap_max__size=8G
+-e NEO4J_dbms_memory_transaction_total_max=8G
+
+docker restart code-graph-neo4j
+```
+
+**"MCP server not responding"**
+```bash
+# Check Claude Code logs
+cat ~/Library/Logs/Claude/mcp*.log
+
+# Test server directly
+node /path/to/code-graph-context/dist/mcp/mcp.server.js
+
+# Rebuild if needed
+npm run build
+```
+
 ## Tool Usage Guide & Sequential Workflows
 
 ### Sequential Tool Usage Patterns
