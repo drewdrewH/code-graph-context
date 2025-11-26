@@ -50,6 +50,12 @@ The system uses a dual-schema approach:
 
 ### Installation
 
+Choose the installation method that works best for you:
+
+#### Option 1: Development Install (From Source)
+
+Best for: Contributing to the project or customizing the code
+
 1. **Clone the repository:**
 ```bash
 git clone https://github.com/drewdrewH/code-graph-context.git
@@ -73,14 +79,8 @@ This will start Neo4j with:
 
 4. **Configure environment variables:**
 ```bash
-# Create .env file
 cp .env.example .env
-
-# Edit .env with your configuration:
-OPENAI_API_KEY=your_openai_api_key_here
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=PASSWORD
+# Edit .env with your configuration
 ```
 
 5. **Build the project:**
@@ -88,30 +88,54 @@ NEO4J_PASSWORD=PASSWORD
 npm run build
 ```
 
-### Adding to Claude Code
-
-**Method 1: Direct (Recommended)**
+6. **Add to Claude Code:**
 ```bash
 claude mcp add code-graph-context node /absolute/path/to/code-graph-context/dist/mcp/mcp.server.js
 ```
 
-**Method 2: With Debug Shell** (useful for troubleshooting)
+#### Option 2: NPM Install (Global Package)
+
+Best for: Easy setup and automatic updates
+
+1. **Install the package globally:**
 ```bash
-claude mcp add code-graph-context /absolute/path/to/code-graph-context/debug-mcp.sh
+npm install -g code-graph-context
 ```
 
-**Method 3: Manual Configuration**
+2. **Set up Neo4j** (choose one):
 
-Add to your Claude Code MCP configuration file:
+**Option A: Docker (Recommended)**
+```bash
+docker run -d \
+  --name code-graph-neo4j \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/PASSWORD \
+  -e NEO4J_PLUGINS='["apoc"]' \
+  neo4j:5.15
+```
 
+**Option B: Neo4j Desktop**
+- Download from [neo4j.com/download](https://neo4j.com/download/)
+- Install APOC plugin
+- Start database
+
+**Option C: Neo4j Aura (Cloud)**
+- Create free account at [neo4j.com/cloud/aura](https://neo4j.com/cloud/platform/aura-graph-database/)
+- Note your connection URI and credentials
+
+3. **Add to Claude Code:**
+```bash
+claude mcp add code-graph-context code-graph-context
+```
+
+Then configure in your MCP config file (`~/.config/claude/config.json`):
 ```json
 {
   "mcpServers": {
     "code-graph-context": {
-      "command": "node",
-      "args": ["/path/to/code-graph-context/dist/mcp/mcp.server.js"],
+      "command": "code-graph-context",
       "env": {
-        "OPENAI_API_KEY": "your_openai_api_key_here",
+        "OPENAI_API_KEY": "sk-your-key-here",
         "NEO4J_URI": "bolt://localhost:7687",
         "NEO4J_USER": "neo4j",
         "NEO4J_PASSWORD": "PASSWORD"
@@ -120,6 +144,8 @@ Add to your Claude Code MCP configuration file:
   }
 }
 ```
+
+**Note:** The env vars can be configured for any Neo4j instance - local, Docker, cloud (Aura), or enterprise.
 
 ## Tool Usage Guide & Sequential Workflows
 
