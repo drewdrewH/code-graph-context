@@ -3,6 +3,7 @@
  * Creates TypeScript parsers with appropriate framework schemas
  */
 
+import { EXCLUDE_PATTERNS_REGEX } from '../../constants.js';
 import { FAIRSQUARE_FRAMEWORK_SCHEMA } from '../config/fairsquare-framework-schema.js';
 import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
 import { CORE_TYPESCRIPT_SCHEMA, FrameworkSchema, CoreNodeType } from '../config/schema.js';
@@ -35,7 +36,7 @@ export class ParserFactory {
       tsConfigPath = 'tsconfig.json',
       projectType = ProjectType.NESTJS, // Default to NestJS (use auto-detect for best results)
       customFrameworkSchemas = [],
-      excludePatterns = ['node_modules', 'dist', 'build', '.spec.', '.test.'],
+      excludePatterns = EXCLUDE_PATTERNS_REGEX,
       excludedNodeTypes = [CoreNodeType.PARAMETER_DECLARATION],
     } = options;
 
@@ -100,7 +101,10 @@ export class ParserFactory {
       };
 
       const hasNestJS = '@nestjs/common' in deps || '@nestjs/core' in deps;
-      const hasFairSquare = '@fairsquare/core' in deps || '@fairsquare/server' in deps;
+      const hasFairSquare =
+        '@fairsquare/core' in deps ||
+        '@fairsquare/server' in deps ||
+        packageJson.name === '@fairsquare/source';
 
       if (hasFairSquare && hasNestJS) {
         return ProjectType.BOTH;

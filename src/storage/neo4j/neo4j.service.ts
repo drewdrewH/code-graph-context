@@ -91,17 +91,79 @@ export const QUERIES = {
   RETURN {
     id: node.id,
     labels: labels(node),
-    properties: apoc.map.removeKeys(properties(node), ['embedding'])
+    properties: apoc.map.removeKeys(properties(node), ['embedding', 'contentHash', 'mtime', 'size'])
   } as node, score
   ORDER BY score DESC
 `,
 
   // Check if index exists
   CHECK_VECTOR_INDEX: `
-    SHOW INDEXES YIELD name, type 
+    SHOW INDEXES YIELD name, type
     WHERE name = 'node_embedding_idx' AND type = 'VECTOR'
     RETURN count(*) > 0 as exists
   `,
+
+  GET_SOURCE_FILE_TRACKING_INFO: `
+    MATCH (sf:SourceFile)
+    RETURN sf.filePath AS filePath, sf.mtime AS mtime, sf.size AS size, sf.contentHash AS contentHash
+  `,
+
+  // Get cross-file edges before deletion (edges where one endpoint is outside the subgraph)
+  // These will be recreated after import using deterministic IDs
+  GET_CROSS_FILE_EDGES: `
+    MATCH (sf:SourceFile)
+    WHERE sf.filePath IN $filePaths
+    OPTIONAL MATCH (sf)-[*]->(child)
+    WITH collect(DISTINCT sf) + collect(DISTINCT child) AS nodesToDelete
+    UNWIND nodesToDelete AS n
+    MATCH (n)-[r]-(other)
+    WHERE NOT other IN nodesToDelete
+    RETURN DISTINCT
+      startNode(r).id AS startNodeId,
+      endNode(r).id AS endNodeId,
+      type(r) AS edgeType,
+      properties(r) AS edgeProperties
+  `,
+
+  // Delete source file subgraphs (nodes and all their edges)
+  DELETE_SOURCE_FILE_SUBGRAPHS: `
+    MATCH (sf:SourceFile)
+    WHERE sf.filePath IN $filePaths
+    OPTIONAL MATCH (sf)-[*]->(child)
+    DETACH DELETE sf, child
+  `,
+
+  // Recreate cross-file edges after import (uses deterministic IDs)
+  RECREATE_CROSS_FILE_EDGES: `
+    UNWIND $edges AS edge
+    MATCH (startNode {id: edge.startNodeId})
+    MATCH (endNode {id: edge.endNodeId})
+    CALL apoc.create.relationship(startNode, edge.edgeType, edge.edgeProperties, endNode) YIELD rel
+    RETURN count(rel) AS recreatedCount
+  `,
+
+  // Clean up dangling edges (edges pointing to non-existent nodes)
+  // Run after incremental parse to remove edges to renamed/deleted nodes
+  CLEANUP_DANGLING_EDGES: `
+    MATCH ()-[r]->()
+    WHERE startNode(r) IS NULL OR endNode(r) IS NULL
+    DELETE r
+    RETURN count(r) AS deletedCount
+  `,
+
+  // Get existing nodes (excluding files being reparsed) for edge target matching
+  // Returns minimal info needed for edge detection: id, name, coreType, semanticType
+  GET_EXISTING_NODES_FOR_EDGE_DETECTION: `
+    MATCH (sf:SourceFile)-[*]->(n)
+    WHERE NOT sf.filePath IN $excludeFilePaths
+    RETURN n.id AS id,
+           n.name AS name,
+           n.coreType AS coreType,
+           n.semanticType AS semanticType,
+           labels(n) AS labels,
+           sf.filePath AS filePath
+  `,
+
   EXPLORE_ALL_CONNECTIONS: (
     maxDepth: number = MAX_TRAVERSAL_DEPTH,
     direction: 'OUTGOING' | 'INCOMING' | 'BOTH' = 'BOTH',
@@ -139,7 +201,7 @@ export const QUERIES = {
         RETURN {
           id: connected.id,
           labels: labels(connected),
-          properties: apoc.map.removeKeys(properties(connected), ['embedding'])
+          properties: apoc.map.removeKeys(properties(connected), ['embedding', 'contentHash', 'mtime', 'size'])
         } as node,
         depth,
         [rel in relationships(path) | {
@@ -164,7 +226,7 @@ export const QUERIES = {
         startNode: {
           id: start.id,
           labels: labels(start),
-          properties: apoc.map.removeKeys(properties(start), ['embedding'])
+          properties: apoc.map.removeKeys(properties(start), ['embedding', 'contentHash', 'mtime', 'size'])
         },
         connections: connections,
         totalConnections: size(allConnections),
@@ -172,7 +234,7 @@ export const QUERIES = {
           nodes: [conn in connections | conn.node] + [{
             id: start.id,
             labels: labels(start),
-            properties: apoc.map.removeKeys(properties(start), ['embedding'])
+            properties: apoc.map.removeKeys(properties(start), ['embedding', 'contentHash', 'mtime', 'size'])
           }],
           relationships: reduce(rels = [], conn in connections | rels + conn.relationshipChain)
         }
@@ -268,7 +330,7 @@ export const QUERIES = {
         node: {
           id: neighbor.id,
           labels: labels(neighbor),
-          properties: apoc.map.removeKeys(properties(neighbor), ['embedding'])
+          properties: apoc.map.removeKeys(properties(neighbor), ['embedding', 'contentHash', 'mtime', 'size'])
         },
         relationship: {
           type: type(rel),

@@ -1,10 +1,34 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import crypto from 'crypto';
+import fs from 'fs/promises';
 import path from 'node:path';
 
 import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * Generate a deterministic node ID based on stable properties.
+ * This ensures the same node gets the same ID across reparses.
+ *
+ * Identity is based on: coreType + filePath + name (+ parentId for nested nodes)
+ * This is stable because when it matters (one side of edge not reparsed),
+ * names are guaranteed unchanged (or imports would break, triggering reparse).
+ */
+const generateDeterministicId = (
+  coreType: string,
+  filePath: string,
+  name: string,
+  parentId?: string,
+): string => {
+  const parts = parentId ? [coreType, filePath, parentId, name] : [coreType, filePath, name];
+  const identity = parts.join('::');
+  const hash = crypto.createHash('sha256').update(identity).digest('hex').substring(0, 16);
+
+  return `${coreType}:${hash}`;
+};
+
+import { hashFile } from '../../utils/file-utils.js';
 import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
 import {
   CoreNodeType,
@@ -44,6 +68,19 @@ export interface ParseResult {
   edges: Map<string, ParsedEdge>;
 }
 
+/**
+ * Minimal node info from Neo4j for edge target matching during incremental parsing.
+ * These nodes don't have AST (sourceNode) but have enough properties for edge detection.
+ */
+export interface ExistingNode {
+  id: string;
+  name: string;
+  coreType: string;
+  semanticType?: string;
+  labels: string[];
+  filePath: string;
+}
+
 export class TypeScriptParser {
   private project: Project;
   private coreSchema: CoreTypeScriptSchema;
@@ -51,6 +88,7 @@ export class TypeScriptParser {
   private frameworkSchemas: FrameworkSchema[];
   private parsedNodes: Map<string, ParsedNode> = new Map();
   private parsedEdges: Map<string, ParsedEdge> = new Map();
+  private existingNodes: Map<string, ParsedNode> = new Map(); // Nodes from Neo4j for edge target matching
   private deferredEdges: Array<{
     edgeType: CoreEdgeType;
     sourceNodeId: string;
@@ -70,7 +108,6 @@ export class TypeScriptParser {
     this.frameworkSchemas = frameworkSchemas;
     this.parseConfig = parseConfig;
 
-    // Initialize with proper compiler options for NestJS
     this.project = new Project({
       tsConfigFilePath: tsConfigPath,
       skipAddingFilesFromTsConfig: false,
@@ -85,30 +122,59 @@ export class TypeScriptParser {
     this.project.addSourceFilesAtPaths(path.join(workspacePath, '**/*.ts'));
   }
 
-  async parseWorkspace(): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
-    const sourceFiles = this.project.getSourceFiles();
+  /**
+   * Set existing nodes from Neo4j for edge target matching during incremental parsing.
+   * These nodes will be available as targets for edge detection but won't be exported.
+   */
+  setExistingNodes(nodes: ExistingNode[]): void {
+    this.existingNodes.clear();
+    for (const node of nodes) {
+      // Convert to ParsedNode format (without AST)
+      const parsedNode: ParsedNode = {
+        id: node.id,
+        coreType: node.coreType as CoreNodeType,
+        semanticType: node.semanticType,
+        labels: node.labels,
+        properties: {
+          id: node.id,
+          name: node.name,
+          coreType: node.coreType as CoreNodeType,
+          filePath: node.filePath,
+          semanticType: node.semanticType,
+        } as Neo4jNodeProperties,
+        // No sourceNode - these are from Neo4j, not parsed
+      };
+      this.existingNodes.set(node.id, parsedNode);
+    }
+    console.log(`📦 Loaded ${nodes.length} existing nodes for edge detection`);
+  }
 
-    // Phase 1: Core parsing for ALL files
+  async parseWorkspace(filesToParse?: string[]): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
+    let sourceFiles: SourceFile[];
+
+    if (filesToParse && filesToParse.length > 0) {
+      sourceFiles = filesToParse
+        .map((filePath) => this.project.getSourceFile(filePath))
+        .filter((sf): sf is SourceFile => sf !== undefined);
+    } else {
+      sourceFiles = this.project.getSourceFiles();
+    }
+
     for (const sourceFile of sourceFiles) {
       if (this.shouldSkipFile(sourceFile)) continue;
       await this.parseCoreTypeScriptV2(sourceFile);
     }
 
-    // Phase 1.5: Resolve deferred relationship edges (EXTENDS, IMPLEMENTS)
     this.resolveDeferredEdges();
 
-    // Phase 2: Apply context extractors
     await this.applyContextExtractors();
 
-    // Phase 3: Framework enhancements
     if (this.frameworkSchemas.length > 0) {
       await this.applyFrameworkEnhancements();
     }
 
-    // Phase 4: Edge enhancements
     await this.applyEdgeEnhancements();
 
-    // Convert to Neo4j format
     const neo4jNodes = Array.from(this.parsedNodes.values()).map(this.toNeo4jNode);
     const neo4jEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
 
@@ -134,19 +200,25 @@ export class TypeScriptParser {
   }
 
   private async parseCoreTypeScriptV2(sourceFile: SourceFile): Promise<void> {
-    const sourceFileNode = this.createCoreNode(sourceFile, CoreNodeType.SOURCE_FILE);
+    const filePath = sourceFile.getFilePath();
+    const stats = await fs.stat(filePath);
+    const fileTrackingProperties: Partial<Neo4jNodeProperties> = {
+      size: stats.size,
+      mtime: stats.mtimeMs,
+      contentHash: await hashFile(filePath),
+    };
+
+    const sourceFileNode = this.createCoreNode(sourceFile, CoreNodeType.SOURCE_FILE, fileTrackingProperties);
     this.addNode(sourceFileNode);
 
-    // Parse configured children
-    this.parseChildNodes(this.coreSchema.nodeTypes[CoreNodeType.SOURCE_FILE], sourceFileNode, sourceFile);
+    await this.parseChildNodes(this.coreSchema.nodeTypes[CoreNodeType.SOURCE_FILE], sourceFileNode, sourceFile);
 
-    // Special handling: Parse variable declarations if framework schema specifies patterns
     if (this.shouldParseVariables(sourceFile.getFilePath())) {
       for (const varStatement of sourceFile.getVariableStatements()) {
         for (const varDecl of varStatement.getDeclarations()) {
           if (this.shouldSkipChildNode(varDecl)) continue;
 
-          const variableNode = this.createCoreNode(varDecl, CoreNodeType.VARIABLE_DECLARATION);
+          const variableNode = this.createCoreNode(varDecl, CoreNodeType.VARIABLE_DECLARATION, {}, sourceFileNode.id);
           this.addNode(variableNode);
 
           const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, variableNode.id);
@@ -183,7 +255,8 @@ export class TypeScriptParser {
 
       for (const child of children) {
         if (this.shouldSkipChildNode(child)) continue;
-        const coreNode = this.createCoreNode(child, type);
+
+        const coreNode = this.createCoreNode(child, type, {}, parentNode.id);
         this.addNode(coreNode);
         const coreEdge = this.createCoreEdge(edgeType as CoreEdgeType, parentNode.id, coreNode.id);
         this.addEdge(coreEdge);
@@ -276,7 +349,7 @@ export class TypeScriptParser {
 
       // Parse classes
       for (const classDecl of sourceFile.getClasses()) {
-        const classNode = this.createCoreNode(classDecl, CoreNodeType.CLASS_DECLARATION);
+        const classNode = this.createCoreNode(classDecl, CoreNodeType.CLASS_DECLARATION, {}, sourceFileNode.id);
         this.addNode(classNode);
 
         // File contains class relationship
@@ -285,7 +358,7 @@ export class TypeScriptParser {
 
         // Parse class decorators
         for (const decorator of classDecl.getDecorators()) {
-          const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR);
+          const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR, {}, classNode.id);
           this.addNode(decoratorNode);
 
           // Class decorated with decorator relationship
@@ -295,7 +368,7 @@ export class TypeScriptParser {
 
         // Parse methods
         for (const method of classDecl.getMethods()) {
-          const methodNode = this.createCoreNode(method, CoreNodeType.METHOD_DECLARATION);
+          const methodNode = this.createCoreNode(method, CoreNodeType.METHOD_DECLARATION, {}, classNode.id);
           this.addNode(methodNode);
 
           // Class has method relationship
@@ -304,7 +377,7 @@ export class TypeScriptParser {
 
           // Parse method decorators
           for (const decorator of method.getDecorators()) {
-            const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR);
+            const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR, {}, methodNode.id);
             this.addNode(decoratorNode);
 
             // Method decorated with decorator relationship
@@ -314,7 +387,7 @@ export class TypeScriptParser {
 
           // Parse method parameters
           for (const param of method.getParameters()) {
-            const paramNode = this.createCoreNode(param, CoreNodeType.PARAMETER_DECLARATION);
+            const paramNode = this.createCoreNode(param, CoreNodeType.PARAMETER_DECLARATION, {}, methodNode.id);
             this.addNode(paramNode);
 
             // Method has parameter relationship
@@ -323,7 +396,7 @@ export class TypeScriptParser {
 
             // Parse parameter decorators
             for (const decorator of param.getDecorators()) {
-              const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR);
+              const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR, {}, paramNode.id);
               this.addNode(decoratorNode);
 
               // Parameter decorated with decorator relationship
@@ -335,7 +408,7 @@ export class TypeScriptParser {
 
         // Parse properties
         for (const property of classDecl.getProperties()) {
-          const propertyNode = this.createCoreNode(property, CoreNodeType.PROPERTY_DECLARATION);
+          const propertyNode = this.createCoreNode(property, CoreNodeType.PROPERTY_DECLARATION, {}, classNode.id);
           this.addNode(propertyNode);
 
           // Class has property relationship
@@ -344,7 +417,7 @@ export class TypeScriptParser {
 
           // Parse property decorators
           for (const decorator of property.getDecorators()) {
-            const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR);
+            const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR, {}, propertyNode.id);
             this.addNode(decoratorNode);
 
             // Property decorated with decorator relationship
@@ -356,7 +429,7 @@ export class TypeScriptParser {
 
       // Parse interfaces
       for (const interfaceDecl of sourceFile.getInterfaces()) {
-        const interfaceNode = this.createCoreNode(interfaceDecl, CoreNodeType.INTERFACE_DECLARATION);
+        const interfaceNode = this.createCoreNode(interfaceDecl, CoreNodeType.INTERFACE_DECLARATION, {}, sourceFileNode.id);
         this.addNode(interfaceNode);
 
         // File contains interface relationship
@@ -366,7 +439,7 @@ export class TypeScriptParser {
 
       // Parse functions
       for (const funcDecl of sourceFile.getFunctions()) {
-        const functionNode = this.createCoreNode(funcDecl, CoreNodeType.FUNCTION_DECLARATION);
+        const functionNode = this.createCoreNode(funcDecl, CoreNodeType.FUNCTION_DECLARATION, {}, sourceFileNode.id);
         this.addNode(functionNode);
 
         // File contains function relationship
@@ -375,7 +448,7 @@ export class TypeScriptParser {
 
         // Parse function parameters
         for (const param of funcDecl.getParameters()) {
-          const paramNode = this.createCoreNode(param, CoreNodeType.PARAMETER_DECLARATION);
+          const paramNode = this.createCoreNode(param, CoreNodeType.PARAMETER_DECLARATION, {}, functionNode.id);
           this.addNode(paramNode);
 
           // Function has parameter relationship
@@ -386,7 +459,7 @@ export class TypeScriptParser {
 
       // Parse imports
       for (const importDecl of sourceFile.getImportDeclarations()) {
-        const importNode = this.createCoreNode(importDecl, CoreNodeType.IMPORT_DECLARATION);
+        const importNode = this.createCoreNode(importDecl, CoreNodeType.IMPORT_DECLARATION, {}, sourceFileNode.id);
         this.addNode(importNode);
 
         // File contains import relationship
@@ -398,7 +471,7 @@ export class TypeScriptParser {
       if (this.shouldParseVariables(sourceFile.getFilePath())) {
         for (const varStatement of sourceFile.getVariableStatements()) {
           for (const varDecl of varStatement.getDeclarations()) {
-            const variableNode = this.createCoreNode(varDecl, CoreNodeType.VARIABLE_DECLARATION);
+            const variableNode = this.createCoreNode(varDecl, CoreNodeType.VARIABLE_DECLARATION, {}, sourceFileNode.id);
             this.addNode(variableNode);
 
             // File contains variable relationship
@@ -412,19 +485,27 @@ export class TypeScriptParser {
     }
   }
 
-  private createCoreNode(astNode: Node, coreType: CoreNodeType): ParsedNode {
-    const nodeId = `${coreType}:${uuidv4()}`;
+  private createCoreNode(
+    astNode: Node,
+    coreType: CoreNodeType,
+    baseProperties: Partial<Neo4jNodeProperties> = {},
+    parentId?: string,
+  ): ParsedNode {
+    const name = this.extractNodeName(astNode, coreType);
+    const filePath = astNode.getSourceFile().getFilePath();
+    const nodeId = generateDeterministicId(coreType, filePath, name, parentId);
 
     // Extract base properties using schema
     const properties: Neo4jNodeProperties = {
       id: nodeId,
-      name: this.extractNodeName(astNode, coreType),
+      name,
       coreType,
-      filePath: astNode.getSourceFile().getFilePath(),
+      filePath,
       startLine: astNode.getStartLineNumber(),
       endLine: astNode.getEndLineNumber(),
       sourceCode: astNode.getText(),
       createdAt: new Date().toISOString(),
+      ...baseProperties,
     };
 
     // Extract schema-defined properties
@@ -487,8 +568,13 @@ export class TypeScriptParser {
     const coreEdgeSchema = CORE_TYPESCRIPT_SCHEMA.edgeTypes[relationshipType];
     const relationshipWeight = coreEdgeSchema?.relationshipWeight ?? 0.5;
 
+    // Generate deterministic edge ID based on type + source + target
+    const edgeIdentity = `${relationshipType}::${sourceNodeId}::${targetNodeId}`;
+    const edgeHash = crypto.createHash('sha256').update(edgeIdentity).digest('hex').substring(0, 16);
+    const edgeId = `${relationshipType}:${edgeHash}`;
+
     return {
-      id: `${relationshipType}:${uuidv4()}`,
+      id: edgeId,
       relationshipType,
       sourceNodeId,
       targetNodeId,
@@ -629,8 +715,15 @@ export class TypeScriptParser {
 
   private async applyEdgeEnhancement(edgeEnhancement: EdgeEnhancement): Promise<void> {
     try {
+      // Combine parsed nodes and existing nodes for target matching
+      // Sources must be parsed (have AST), targets can be either
+      const allTargetNodes = new Map([...this.parsedNodes, ...this.existingNodes]);
+
       for (const [sourceId, sourceNode] of this.parsedNodes) {
-        for (const [targetId, targetNode] of this.parsedNodes) {
+        // Skip if source doesn't have AST (shouldn't happen for parsedNodes, but be safe)
+        if (!sourceNode.sourceNode) continue;
+
+        for (const [targetId, targetNode] of allTargetNodes) {
           if (sourceId === targetId) continue;
 
           if (edgeEnhancement.detectionPattern(sourceNode, targetNode, this.parsedNodes as any, this.sharedContext)) {
@@ -670,7 +763,10 @@ export class TypeScriptParser {
     context: Record<string, any> = {},
     relationshipWeight: number = 0.5,
   ): ParsedEdge {
-    const edgeId = `${semanticType}:${uuidv4()}`;
+    // Generate deterministic edge ID based on type + source + target
+    const edgeIdentity = `${semanticType}::${sourceNodeId}::${targetNodeId}`;
+    const edgeHash = crypto.createHash('sha256').update(edgeIdentity).digest('hex').substring(0, 16);
+    const edgeId = `${semanticType}:${edgeHash}`;
 
     const properties: Neo4jEdgeProperties = {
       coreType: semanticType as any, // This might need adjustment based on schema
@@ -804,7 +900,6 @@ export class TypeScriptParser {
 
     for (const pattern of excludedPatterns) {
       if (filePath.includes(pattern) || filePath.match(new RegExp(pattern))) {
-        console.log(`⏭️ Skipping excluded file: ${filePath}`);
         return true;
       }
     }

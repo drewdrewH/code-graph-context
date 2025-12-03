@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // graph.ts - Optimized for Neo4j performance with context-based framework properties
 
+import { EXCLUDE_PATTERNS_REGEX } from '../../constants.js';
+
 // ============================================================================
 // CORE ENUMS
 // ============================================================================
@@ -141,6 +143,9 @@ export interface Neo4jNodeProperties {
   endLine: number;
   sourceCode: string;
   createdAt: string;
+  contentHash?: string;
+  mtime?: number;
+  size?: number;
 
   // === FRAMEWORK-SPECIFIC (Dynamic) ===
   context?: Record<string, any>;
@@ -1170,7 +1175,7 @@ export interface ParseOptions {
 
 export const DEFAULT_PARSE_OPTIONS: ParseOptions = {
   includePatterns: ['**/*.ts', '**/*.tsx'],
-  excludePatterns: ['node_modules/', 'dist/', 'coverage/', '.d.ts', '.spec.ts', '.test.ts'],
+  excludePatterns: EXCLUDE_PATTERNS_REGEX,
   maxFiles: 1000,
   coreSchema: CORE_TYPESCRIPT_SCHEMA,
   frameworkSchemas: [],

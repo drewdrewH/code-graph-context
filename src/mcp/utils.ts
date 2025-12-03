@@ -3,24 +3,9 @@
  * Common utility functions used across the MCP server
  */
 
-import fs from 'fs/promises';
-import path from 'path';
+import { MESSAGES } from './constants.js';
 
-import { FILE_PATHS, LOG_CONFIG, MESSAGES } from './constants.js';
-
-/**
- * Debug logging utility
- */
-export const debugLog = async (message: string, data?: any): Promise<void> => {
-  const timestamp = new Date().toISOString();
-  const logEntry = `[${timestamp}] ${message}\n${data ? JSON.stringify(data, null, LOG_CONFIG.jsonIndentation) : ''}\n${LOG_CONFIG.logSeparator}\n`;
-
-  try {
-    await fs.appendFile(path.join(process.cwd(), FILE_PATHS.debugLog), logEntry);
-  } catch (error) {
-    console.error('Failed to write debug log:', error);
-  }
-};
+export { debugLog } from '../utils/file-utils.js';
 
 /**
  * Standard error response format for MCP tools

@@ -1,6 +1,8 @@
 /* eslint-disable prefer-arrow/prefer-arrow-functions */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { EXCLUDE_PATTERNS_REGEX } from '../../constants.js';
+
 import {
   CoreNodeType,
   FrameworkSchema,
@@ -940,7 +942,7 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
 
 export const NESTJS_PARSE_OPTIONS: ParseOptions = {
   includePatterns: ['**/*.ts', '**/*.tsx'],
-  excludePatterns: ['node_modules/', 'dist/', 'coverage/', '.d.ts', '.spec.ts', '.test.ts'],
+  excludePatterns: EXCLUDE_PATTERNS_REGEX,
   maxFiles: 1000,
   frameworkSchemas: [NESTJS_FRAMEWORK_SCHEMA],
 };
