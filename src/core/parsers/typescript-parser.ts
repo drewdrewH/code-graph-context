@@ -5,7 +5,6 @@ import path from 'node:path';
 
 import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
-import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Generate a deterministic node ID based on stable properties.
@@ -15,12 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
  * This is stable because when it matters (one side of edge not reparsed),
  * names are guaranteed unchanged (or imports would break, triggering reparse).
  */
-const generateDeterministicId = (
-  coreType: string,
-  filePath: string,
-  name: string,
-  parentId?: string,
-): string => {
+const generateDeterministicId = (coreType: string, filePath: string, name: string, parentId?: string): string => {
   const parts = parentId ? [coreType, filePath, parentId, name] : [coreType, filePath, name];
   const identity = parts.join('::');
   const hash = crypto.createHash('sha256').update(identity).digest('hex').substring(0, 16);
@@ -261,12 +255,32 @@ export class TypeScriptParser {
         const coreEdge = this.createCoreEdge(edgeType as CoreEdgeType, parentNode.id, coreNode.id);
         this.addEdge(coreEdge);
 
+        const SKELETONIZE_TYPES = new Set([
+          CoreNodeType.METHOD_DECLARATION,
+          CoreNodeType.FUNCTION_DECLARATION,
+          CoreNodeType.PROPERTY_DECLARATION,
+        ]);
+
+        if (SKELETONIZE_TYPES.has(type)) {
+          this.skeletonizeChildInParent(parentNode, coreNode);
+        }
+
         const childNodeConfig = this.coreSchema.nodeTypes[type];
         if (childNodeConfig) {
           this.queueRelationshipNodes(childNodeConfig, coreNode, child);
           await this.parseChildNodes(childNodeConfig, coreNode, child);
         }
       }
+    }
+  }
+
+  private skeletonizeChildInParent(parent: ParsedNode, child: ParsedNode): void {
+    const childText = child.properties.sourceCode;
+    const bodyStart = childText.indexOf('{');
+    if (bodyStart > -1) {
+      const signature = childText.substring(0, bodyStart).trim();
+      const placeholder = `${signature} { /* NodeID: ${child.id} */ }`;
+      parent.properties.sourceCode = parent.properties.sourceCode.replace(childText, placeholder);
     }
   }
 
@@ -310,7 +324,12 @@ export class TypeScriptParser {
   private extractRelationshipTargetName(target: Node): string | undefined {
     if (Node.isClassDeclaration(target)) return target.getName();
     if (Node.isInterfaceDeclaration(target)) return target.getName();
-    if (Node.isExpressionWithTypeArguments(target)) return target.getExpression().getText();
+    if (Node.isExpressionWithTypeArguments(target)) {
+      const expression = target.getExpression();
+      const text = expression.getText();
+      const genericIndex = text.indexOf('<');
+      return genericIndex > 0 ? text.substring(0, genericIndex) : text;
+    }
     return undefined;
   }
 
@@ -319,6 +338,12 @@ export class TypeScriptParser {
    */
   private findNodeByNameAndType(name: string, coreType: CoreNodeType): ParsedNode | undefined {
     for (const node of this.parsedNodes.values()) {
+      if (node.coreType === coreType && node.properties.name === name) {
+        return node;
+      }
+    }
+
+    for (const node of this.existingNodes.values()) {
       if (node.coreType === coreType && node.properties.name === name) {
         return node;
       }
@@ -429,7 +454,12 @@ export class TypeScriptParser {
 
       // Parse interfaces
       for (const interfaceDecl of sourceFile.getInterfaces()) {
-        const interfaceNode = this.createCoreNode(interfaceDecl, CoreNodeType.INTERFACE_DECLARATION, {}, sourceFileNode.id);
+        const interfaceNode = this.createCoreNode(
+          interfaceDecl,
+          CoreNodeType.INTERFACE_DECLARATION,
+          {},
+          sourceFileNode.id,
+        );
         this.addNode(interfaceNode);
 
         // File contains interface relationship

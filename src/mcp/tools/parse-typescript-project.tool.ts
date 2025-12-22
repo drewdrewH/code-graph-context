@@ -85,7 +85,9 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
           // Recreate cross-file edges after incremental parse
           if (!clearExisting && savedCrossFileEdges.length > 0) {
             await debugLog('Recreating cross-file edges', { edgesToRecreate: savedCrossFileEdges.length });
-            const recreateResult = await neo4jService.run(QUERIES.RECREATE_CROSS_FILE_EDGES, { edges: savedCrossFileEdges });
+            const recreateResult = await neo4jService.run(QUERIES.RECREATE_CROSS_FILE_EDGES, {
+              edges: savedCrossFileEdges,
+            });
             const recreatedCount = recreateResult[0]?.recreatedCount ?? 0;
             await debugLog('Cross-file edges recreated', { recreatedCount, expected: savedCrossFileEdges.length });
           }
@@ -178,7 +180,10 @@ const parseProject = async (options: ParseProjectOptions): Promise<ParseProjectR
     }
 
     if (filesToReparse.length > 0) {
-      await debugLog('Incremental parse starting', { filesChanged: filesToReparse.length, filesDeleted: filesToDelete.length });
+      await debugLog('Incremental parse starting', {
+        filesChanged: filesToReparse.length,
+        filesDeleted: filesToDelete.length,
+      });
 
       // Load existing nodes from Neo4j for edge target matching
       const existingNodes = await loadExistingNodesForEdgeDetection(neo4jService, filesToRemoveFromGraph);

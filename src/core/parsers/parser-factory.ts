@@ -102,9 +102,7 @@ export class ParserFactory {
 
       const hasNestJS = '@nestjs/common' in deps || '@nestjs/core' in deps;
       const hasFairSquare =
-        '@fairsquare/core' in deps ||
-        '@fairsquare/server' in deps ||
-        packageJson.name === '@fairsquare/source';
+        '@fairsquare/core' in deps || '@fairsquare/server' in deps || packageJson.name === '@fairsquare/source';
 
       if (hasFairSquare && hasNestJS) {
         return ProjectType.BOTH;

@@ -20,12 +20,6 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
       description: TOOL_METADATA[TOOL_NAMES.searchCodebase].description,
       inputSchema: {
         query: z.string().describe('Natural language query to search the codebase'),
-        limit: z
-          .number()
-          .int()
-          .optional()
-          .describe(`Maximum number of results to return (default: ${DEFAULTS.searchLimit})`)
-          .default(DEFAULTS.searchLimit),
         maxDepth: z
           .number()
           .int()
@@ -59,7 +53,6 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
     },
     async ({
       query,
-      limit = DEFAULTS.searchLimit,
       maxDepth = DEFAULTS.traversalDepth,
       maxNodesPerChain = 5,
       skip = 0,
@@ -68,7 +61,7 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
       useWeightedTraversal = true,
     }) => {
       try {
-        await debugLog('Search codebase started', { query, limit });
+        await debugLog('Search codebase started', { query });
 
         const neo4jService = new Neo4jService();
         const embeddingsService = new EmbeddingsService();
@@ -77,12 +70,12 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         const embedding = await embeddingsService.embedText(query);
 
         const vectorResults = await neo4jService.run(QUERIES.VECTOR_SEARCH, {
-          limit: parseInt(limit.toString()),
+          limit: 1,
           embedding,
         });
 
         if (vectorResults.length === 0) {
-          await debugLog('No relevant code found', { query, limit });
+          await debugLog('No relevant code found', { query });
           return createSuccessResponse(MESSAGES.errors.noRelevantCode);
         }
 

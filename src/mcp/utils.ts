@@ -62,7 +62,8 @@ export const formatNodeInfo = (value: any, key: string): any => {
       } else {
         // Show first 500 and last 500 characters
         const half = Math.floor(maxLength / 2);
-        result.sourceCode = code.substring(0, half) + '\n\n... [truncated] ...\n\n' + code.substring(code.length - half);
+        result.sourceCode =
+          code.substring(0, half) + '\n\n... [truncated] ...\n\n' + code.substring(code.length - half);
         result.hasMore = true;
         result.truncated = code.length - maxLength;
       }

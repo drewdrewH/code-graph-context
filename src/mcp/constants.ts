@@ -24,6 +24,7 @@ export const TOOL_NAMES = {
   traverseFromNode: 'traverse_from_node',
   parseTypescriptProject: 'parse_typescript_project',
   testNeo4jConnection: 'test_neo4j_connection',
+  impactAnalysis: 'impact_analysis',
 } as const;
 
 // Tool Metadata
@@ -43,7 +44,6 @@ Start with default parameters for richest context in a single call. Most queries
 
 Parameters:
 - query: Natural language description of what you're looking for
-- limit (default: 10): Number of initial vector search results to consider
 
 **Token Optimization (Only if needed)**:
 Use these parameters ONLY if you encounter token limit errors (>25,000 tokens):
@@ -92,11 +92,28 @@ Best practices:
     title: 'Test Neo4j Connection & APOC',
     description: 'Test connection to Neo4j database and verify APOC plugin is available',
   },
+  [TOOL_NAMES.impactAnalysis]: {
+    title: 'Impact Analysis',
+    description: `Analyze the impact of modifying a code node. Shows what depends on this node and helps assess risk before making changes.
+
+Returns:
+- Risk level (LOW/MEDIUM/HIGH/CRITICAL) based on dependency count and relationship types
+- Direct dependents: nodes that directly reference the target
+- Transitive dependents: nodes affected through dependency chains
+- Affected files: list of files that would need review
+- Critical paths: high-risk dependency chains
+
+Parameters:
+- nodeId: Node ID from search_codebase or traverse_from_node results
+- filePath: Alternative - analyze all exports from a file
+- maxDepth: How far to trace transitive dependencies (default: 4)
+
+Use this before refactoring to understand blast radius of changes.`,
+  },
 } as const;
 
 // Default Values
 export const DEFAULTS = {
-  searchLimit: 10,
   traversalDepth: 3,
   skipOffset: 0,
   batchSize: 500,

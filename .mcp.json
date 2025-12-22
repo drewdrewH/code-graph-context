@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "code-graph-context": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/ahernandez/code/code-graph-context/dist/mcp/mcp.server.js"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -352,4 +352,154 @@ export const QUERIES = {
       LIMIT ${maxNodesPerDepth}
     `;
   },
+
+  // ============================================
+  // DYNAMIC SCHEMA DISCOVERY QUERIES
+  // ============================================
+
+  /**
+   * Get all distinct node labels with counts and sample properties
+   */
+  DISCOVER_NODE_TYPES: `
+    CALL db.labels() YIELD label
+    CALL {
+      WITH label
+      MATCH (n) WHERE label IN labels(n)
+      WITH n LIMIT 1
+      RETURN keys(n) AS sampleProperties
+    }
+    CALL {
+      WITH label
+      MATCH (n) WHERE label IN labels(n)
+      RETURN count(n) AS nodeCount
+    }
+    RETURN label, nodeCount, sampleProperties
+    ORDER BY nodeCount DESC
+  `,
+
+  /**
+   * Get all distinct relationship types with counts and which node types they connect
+   */
+  DISCOVER_RELATIONSHIP_TYPES: `
+    CALL db.relationshipTypes() YIELD relationshipType
+    CALL {
+      WITH relationshipType
+      MATCH (a)-[r]->(b) WHERE type(r) = relationshipType
+      WITH labels(a)[0] AS fromLabel, labels(b)[0] AS toLabel
+      RETURN fromLabel, toLabel
+      LIMIT 10
+    }
+    CALL {
+      WITH relationshipType
+      MATCH ()-[r]->() WHERE type(r) = relationshipType
+      RETURN count(r) AS relCount
+    }
+    RETURN relationshipType, relCount, collect(DISTINCT {from: fromLabel, to: toLabel}) AS connections
+    ORDER BY relCount DESC
+  `,
+
+  /**
+   * Get sample nodes of each semantic type for context
+   */
+  DISCOVER_SEMANTIC_TYPES: `
+    MATCH (n)
+    WHERE n.semanticType IS NOT NULL
+    WITH n.semanticType AS semanticType, count(*) AS count
+    ORDER BY count DESC
+    RETURN semanticType, count
+  `,
+
+  /**
+   * Get example query patterns based on actual graph structure
+   */
+  DISCOVER_COMMON_PATTERNS: `
+    MATCH (a)-[r]->(b)
+    WITH labels(a)[0] AS fromType, type(r) AS relType, labels(b)[0] AS toType, count(*) AS count
+    WHERE count > 5
+    RETURN fromType, relType, toType, count
+    ORDER BY count DESC
+    LIMIT 20
+  `,
+
+  // ============================================
+  // IMPACT ANALYSIS QUERIES
+  // Reuses cross-file edge pattern to find dependents
+  // ============================================
+
+  /**
+   * Get node details by ID
+   */
+  GET_NODE_BY_ID: `
+    MATCH (n) WHERE n.id = $nodeId
+    RETURN n.id AS id,
+           n.name AS name,
+           labels(n) AS labels,
+           n.semanticType AS semanticType,
+           n.coreType AS coreType,
+           n.filePath AS filePath
+  `,
+
+  /**
+   * Get impact of changing a node - finds all external nodes that depend on it
+   * Based on GET_CROSS_FILE_EDGES pattern but for a single node
+   */
+  GET_NODE_IMPACT: `
+    MATCH (target) WHERE target.id = $nodeId
+    MATCH (dependent)-[r]->(target)
+    WHERE dependent.id <> target.id
+    RETURN DISTINCT
+      dependent.id AS nodeId,
+      dependent.name AS name,
+      labels(dependent) AS labels,
+      dependent.semanticType AS semanticType,
+      dependent.coreType AS coreType,
+      dependent.filePath AS filePath,
+      type(r) AS relationshipType,
+      coalesce(r.relationshipWeight, 0.5) AS weight
+  `,
+
+  /**
+   * Get impact of changing a file - finds all external nodes that depend on nodes in this file
+   * Directly reuses GET_CROSS_FILE_EDGES pattern
+   */
+  GET_FILE_IMPACT: `
+    MATCH (sf:SourceFile {filePath: $filePath})
+    OPTIONAL MATCH (sf)-[*]->(child)
+    WITH collect(DISTINCT sf) + collect(DISTINCT child) AS nodesInFile
+    UNWIND nodesInFile AS n
+    MATCH (dependent)-[r]->(n)
+    WHERE NOT dependent IN nodesInFile
+    RETURN DISTINCT
+      dependent.id AS nodeId,
+      dependent.name AS name,
+      labels(dependent) AS labels,
+      dependent.semanticType AS semanticType,
+      dependent.coreType AS coreType,
+      dependent.filePath AS filePath,
+      type(r) AS relationshipType,
+      coalesce(r.relationshipWeight, 0.5) AS weight,
+      n.id AS targetNodeId,
+      n.name AS targetNodeName
+  `,
+
+  /**
+   * Get transitive dependents - nodes that depend on dependents (for deeper impact)
+   */
+  GET_TRANSITIVE_DEPENDENTS: (maxDepth: number = 4) => `
+    MATCH (target) WHERE target.id = $nodeId
+    MATCH path = (dependent)-[*2..${maxDepth}]->(target)
+    WITH dependent,
+         length(path) AS depth,
+         [r IN relationships(path) | type(r)] AS relationshipPath
+    RETURN DISTINCT
+      dependent.id AS nodeId,
+      dependent.name AS name,
+      labels(dependent) AS labels,
+      dependent.semanticType AS semanticType,
+      dependent.coreType AS coreType,
+      dependent.filePath AS filePath,
+      depth,
+      relationshipPath
+    ORDER BY depth ASC
+  `,
 };

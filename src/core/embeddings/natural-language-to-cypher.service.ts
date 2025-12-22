@@ -10,10 +10,11 @@ export class NaturalLanguageToCypherService {
   private readonly messageInstructions = `
 The schema file (neo4j-apoc-schema.json) contains two sections:
 1. rawSchema: Complete Neo4j APOC schema with all node labels, properties, and relationships in the graph
-2. domainContext: Framework-specific semantics including:
-   - nodeTypes: Descriptions and example queries for each node type
-   - relationships: How nodes connect with context about relationship properties
-   - commonQueryPatterns: Pre-built example queries for common use cases
+2. discoveredSchema: Dynamically discovered graph structure including:
+   - nodeTypes: Array of {label, count, properties} for each node type in the graph
+   - relationshipTypes: Array of {type, count, connections} showing relationship types and what they connect
+   - semanticTypes: Array of {type, count} showing semantic node classifications (e.g., Service, Controller)
+   - commonPatterns: Array of {from, relationship, to, count} showing frequent relationship patterns
 
 Your response must be a valid JSON object with this exact structure:
 {
@@ -23,19 +24,17 @@ Your response must be a valid JSON object with this exact structure:
 }
 
 Query Generation Process:
-1. CHECK DOMAIN CONTEXT: Look at domainContext.nodeTypes to understand available node types and their properties
-2. REVIEW EXAMPLES: Check domainContext.commonQueryPatterns for similar query examples
-3. CHECK RELATIONSHIPS: Look at domainContext.relationships to understand how nodes connect
-4. EXAMINE NODE PROPERTIES: Use rawSchema to see exact property names and types
-5. HANDLE JSON PROPERTIES: If properties or relationship context are stored as JSON strings, use apoc.convert.fromJsonMap() to parse them
+1. CHECK NODE TYPES: Look at discoveredSchema.nodeTypes to see available node labels and their properties
+2. CHECK RELATIONSHIPS: Look at discoveredSchema.relationshipTypes to understand how nodes connect
+3. CHECK SEMANTIC TYPES: Look at discoveredSchema.semanticTypes for higher-level node classifications
+4. REVIEW PATTERNS: Check discoveredSchema.commonPatterns for frequent relationship patterns in the graph
+5. EXAMINE PROPERTIES: Use rawSchema for exact property names and types
 6. GENERATE QUERY: Write the Cypher query using only node labels, relationships, and properties that exist in the schema
 
 Critical Rules:
 - Use the schema information from the file_search tool - do not guess node labels or relationships
-- Use ONLY node labels and properties found in rawSchema
-- For nested JSON data in properties, use: apoc.convert.fromJsonMap(node.propertyName) or apoc.convert.fromJsonMap(relationship.context)
-- Check domainContext for parsing instructions specific to certain node types (e.g., some nodes may store arrays of objects in JSON format)
-- Follow the example queries in commonQueryPatterns for proper syntax patterns
+- Use ONLY node labels and properties found in the schema
+- For nested JSON data in properties, use: apoc.convert.fromJsonMap(node.propertyName)
 - Use parameterized queries with $ syntax for any dynamic values
 - Return only the data relevant to the user's request
 
