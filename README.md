@@ -637,8 +637,9 @@ search_codebase({
 
 | Tool | Description | Parameters | Best For |
 |------|-------------|------------|----------|
-| `search_codebase` | **Vector-based semantic search** - Find most relevant code using OpenAI embeddings | `query`, `limit?`, `useWeightedTraversal?` (default: true) | **Starting point** for code exploration. Uses weighted scoring for intelligent traversal |
+| `search_codebase` | **Vector-based semantic search** - Find most relevant code using OpenAI embeddings | `query`, `useWeightedTraversal?` (default: true) | **Starting point** for code exploration. Uses weighted scoring for intelligent traversal |
 | `traverse_from_node` | **Focused graph traversal** - Explore specific relationships from a known node | `nodeId` (string), `maxDepth?` (1-10, default: 3), `skip?` (default: 0) | **Deep diving** into specific code relationships. Pagination for large graphs |
+| `impact_analysis` | **Change impact assessment** - Analyze what depends on a node before refactoring | `nodeId` or `filePath`, `maxDepth?` (default: 4), `frameworkConfig?` | **Pre-refactoring** - understand blast radius of changes |
 | `natural_language_to_cypher` | **AI-powered query generation** - Convert natural language to Cypher queries using GPT-4 | `query` (string) | **Advanced queries** - currently requires OpenAI assistant setup |
 
 ### Tool Selection Guide
@@ -648,10 +649,15 @@ search_codebase({
 - Best for exploring new codebases
 - Returns rich context with code snippets
 
-**Go Deeper**: `traverse_from_node`  
+**Go Deeper**: `traverse_from_node`
 - Use when you have specific node IDs from search results
 - Perfect for understanding relationships and dependencies
 - Use `skip` parameter for pagination through large result sets
+
+**Before Refactoring**: `impact_analysis`
+- Use to assess risk before modifying code
+- Shows direct and transitive dependents
+- Returns risk level (LOW/MEDIUM/HIGH/CRITICAL)
 
 **Advanced**: `natural_language_to_cypher`
 - Requires additional OpenAI assistant configuration
