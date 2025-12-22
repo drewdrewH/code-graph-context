@@ -226,9 +226,26 @@ node /path/to/code-graph-context/dist/mcp/mcp.server.js
 npm run build
 ```
 
-## Tool Usage Guide & Sequential Workflows
+## Tool Usage Guide
 
-### Sequential Tool Usage Patterns
+### Available Tools
+
+| Tool | Description | Best For |
+|------|-------------|----------|
+| `search_codebase` | Semantic search using vector embeddings | **Starting point** - find code by describing what you need |
+| `traverse_from_node` | Explore relationships from a specific node | **Deep dive** - understand dependencies and connections |
+| `impact_analysis` | Analyze what depends on a node | **Pre-refactoring** - assess blast radius (LOW/MEDIUM/HIGH/CRITICAL) |
+| `parse_typescript_project` | Parse project and build the graph | **Initial setup** - run once to build the database |
+| `natural_language_to_cypher` | Convert natural language to Cypher | **Advanced queries** - complex graph queries |
+| `test_neo4j_connection` | Verify database connectivity | **Health check** - troubleshooting |
+
+### Tool Selection Guide
+
+- **`search_codebase`**: Start here. Find code by describing what you're looking for.
+- **`traverse_from_node`**: Use node IDs from search results to explore relationships.
+- **`impact_analysis`**: Before refactoring - understand what depends on the code you're changing.
+
+### Sequential Workflow Patterns
 
 The MCP tools are designed to work together in powerful workflows. Here are the most effective patterns:
 
@@ -456,8 +473,7 @@ APOC plugin available with 438 functions"
 ```typescript
 // Step 1: Find authentication-related code
 const searchResult = await mcp.call('search_codebase', {
-  query: 'JWT token validation authentication',
-  limit: 2
+  query: 'JWT token validation authentication'
 });
 
 // Step 2: Extract node ID from most relevant result
@@ -489,8 +505,7 @@ const alternateConnections = await mcp.call('traverse_from_node', {
 ```typescript
 // Step 1: Search for controller endpoints
 const controllerSearch = await mcp.call('search_codebase', {
-  query: 'HTTP controller endpoints routes POST GET',
-  limit: 1
+  query: 'HTTP controller endpoints routes POST GET'
 });
 
 // Step 2: Find a controller node ID from results
@@ -516,8 +531,7 @@ const endpointDeps = await mcp.call('traverse_from_node', {
 ```typescript
 // Step 1: Find a specific service
 const serviceSearch = await mcp.call('search_codebase', {
-  query: 'UserService injectable dependency injection',
-  limit: 1
+  query: 'UserService injectable dependency injection'
 });
 
 // Step 2: Map all its dependencies (what it injects)
@@ -529,8 +543,7 @@ const serviceDeps = await mcp.call('traverse_from_node', {
 
 // Step 3: Find what depends on this service (reverse relationships)
 const serviceDependents = await mcp.call('search_codebase', {
-  query: 'UserService injection constructor parameter',
-  limit: 5
+  query: 'UserService injection constructor parameter'
 });
 ```
 
@@ -571,7 +584,6 @@ firstDepth.chains.forEach(chain => {
 ```
 
 #### Managing Large Responses
-- **Start Small**: Use `limit: 1-3` for initial searches
 - **Relationship Filtering**: Use `relationshipTypes` to focus on specific connections
 - **Structure-Only View**: Set `includeCode: false` to exclude source code snippets
 - **Summary Mode**: Use `summaryOnly: true` for just file paths and statistics
@@ -618,52 +630,6 @@ search_codebase({
 - **Memory**: Large traversals may hit Neo4j memory limits (increase heap size if needed)
 - **Caching**: Node IDs are persistent; save interesting ones for later exploration
 
-## Available MCP Tools
-
-### Core Tools
-
-| Tool | Description | Parameters | Use Case |
-|------|-------------|------------|----------|
-| `hello` | Test tool that says hello | None | Verify MCP connection |
-| `test_neo4j_connection` | Test Neo4j connection and APOC plugin | None | Health check before operations |
-
-### Parsing Tools
-
-| Tool | Description | Parameters | Use Case |
-|------|-------------|------------|----------|
-| `parse_typescript_project` | Parse TypeScript/NestJS project into graph | `projectPath`, `tsconfigPath`, `clearExisting?` | Initial setup: build the graph database |
-
-### Search & Exploration Tools
-
-| Tool | Description | Parameters | Best For |
-|------|-------------|------------|----------|
-| `search_codebase` | **Vector-based semantic search** - Find most relevant code using OpenAI embeddings | `query`, `useWeightedTraversal?` (default: true) | **Starting point** for code exploration. Uses weighted scoring for intelligent traversal |
-| `traverse_from_node` | **Focused graph traversal** - Explore specific relationships from a known node | `nodeId` (string), `maxDepth?` (1-10, default: 3), `skip?` (default: 0) | **Deep diving** into specific code relationships. Pagination for large graphs |
-| `impact_analysis` | **Change impact assessment** - Analyze what depends on a node before refactoring | `nodeId` or `filePath`, `maxDepth?` (default: 4), `frameworkConfig?` | **Pre-refactoring** - understand blast radius of changes |
-| `natural_language_to_cypher` | **AI-powered query generation** - Convert natural language to Cypher queries using GPT-4 | `query` (string) | **Advanced queries** - currently requires OpenAI assistant setup |
-
-### Tool Selection Guide
-
-**Start Here**: `search_codebase`
-- Use when you don't know specific node IDs
-- Best for exploring new codebases
-- Returns rich context with code snippets
-
-**Go Deeper**: `traverse_from_node`
-- Use when you have specific node IDs from search results
-- Perfect for understanding relationships and dependencies
-- Use `skip` parameter for pagination through large result sets
-
-**Before Refactoring**: `impact_analysis`
-- Use to assess risk before modifying code
-- Shows direct and transitive dependents
-- Returns risk level (LOW/MEDIUM/HIGH/CRITICAL)
-
-**Advanced**: `natural_language_to_cypher`
-- Requires additional OpenAI assistant configuration
-- Best for complex queries beyond simple search/traversal
-- Currently in development - may require setup
-
 ## Claude Code Integration Tips
 
 ### Guiding Tool Usage with claude.md
@@ -693,12 +659,12 @@ You can add a `claude.md` file to your repository root to help Claude Code under
 ```markdown
 **Use `useWeightedTraversal: true` for:**
 - Service/Controller classes with many dependencies
-- Queries with depth > 3 or limit > 10
+- Queries with depth > 3
 - Cleaner, more relevant results
 
 **Recommended settings:**
-- Default: `limit: 15, maxDepth: 5, snippetLength: 900`
-- Simple lookups: `limit: 5, maxDepth: 2`
+- Default: `maxDepth: 5, snippetLength: 900`
+- Simple lookups: `maxDepth: 2`
 ```
 
 #### Framework-Specific Patterns
@@ -864,11 +830,11 @@ docker-compose restart neo4j
 ```
 
 #### Token Limit Exceeded
-If responses exceed 25,000 tokens:
+If responses exceed token limits:
 
 ```typescript
-// Reduce limit parameter
-search_codebase({ query: "...", limit: 1 })
+// Reduce depth or use structure-only view
+traverse_from_node({ nodeId: "...", maxDepth: 2, includeCode: false })
 
 // Use pagination with skip
 traverse_from_node({ nodeId: "...", maxDepth: 2, skip: 0 })
