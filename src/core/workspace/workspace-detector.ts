@@ -197,7 +197,7 @@ export class WorkspaceDetector {
         let packageName: string;
         try {
           const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
-          packageName = packageJson.name || path.basename(packagePath);
+          packageName = packageJson.name ?? path.basename(packagePath);
         } catch {
           packageName = path.basename(packagePath);
         }
@@ -231,7 +231,7 @@ export class WorkspaceDetector {
     if (await this.fileExists(packageJsonPath)) {
       try {
         const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
-        packageName = packageJson.name || packageName;
+        packageName = packageJson.name ?? packageName;
       } catch {
         // Use directory name
       }
