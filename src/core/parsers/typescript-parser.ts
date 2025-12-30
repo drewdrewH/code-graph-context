@@ -7,6 +7,8 @@ import { glob } from 'glob';
 import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
 
+import { createFrameworkEdgeData } from '../utils/edge-factory.js';
+
 /**
  * Generate a deterministic node ID based on stable properties.
  * This ensures the same node gets the same ID across reparses.
@@ -32,7 +34,7 @@ const generateDeterministicId = (
   return `${projectId}:${coreType}:${hash}`;
 };
 
-import { debugLog, hashFile } from '../../utils/file-utils.js';
+import { debugLog, hashFile } from '../utils/file-utils.js';
 import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
 import {
   CoreNodeType,
@@ -71,6 +73,7 @@ export interface StreamingParser {
   addExistingNodesFromChunk(nodes: Neo4jNode[]): void;
   clearParsedData(): void;
   resolveDeferredEdgesManually(): Promise<Neo4jEdge[]>;
+  applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]>;
   getCurrentCounts(): { nodes: number; edges: number; deferredEdges: number };
 }
 
@@ -119,6 +122,7 @@ export class TypeScriptParser {
   private projectId: string; // Project identifier for multi-project isolation
   private lazyLoad: boolean; // Whether to use lazy file loading for large projects
   private discoveredFiles: string[] | null = null; // Cached file discovery results
+  private deferEdgeEnhancements: boolean = false; // When true, skip edge enhancements (parent will handle)
 
   constructor(
     private workspacePath: string,
@@ -1107,25 +1111,17 @@ export class TypeScriptParser {
     context: Record<string, any> = {},
     relationshipWeight: number = 0.5,
   ): ParsedEdge {
-    // Generate deterministic edge ID based on type + source + target
-    const edgeIdentity = `${semanticType}::${sourceNodeId}::${targetNodeId}`;
-    const edgeHash = crypto.createHash('sha256').update(edgeIdentity).digest('hex').substring(0, 16);
-    const edgeId = `${semanticType}:${edgeHash}`;
-
-    const properties: Neo4jEdgeProperties = {
-      coreType: semanticType as any, // This might need adjustment based on schema
-      projectId: this.projectId,
+    const { id, properties } = createFrameworkEdgeData({
       semanticType,
-      source: 'pattern',
-      confidence: 0.8,
-      relationshipWeight,
-      filePath: '',
-      createdAt: new Date().toISOString(),
+      sourceNodeId,
+      targetNodeId,
+      projectId: this.projectId,
       context,
-    };
+      relationshipWeight,
+    });
 
     return {
-      id: edgeId,
+      id,
       relationshipType,
       sourceNodeId,
       targetNodeId,
@@ -1394,6 +1390,48 @@ export class TypeScriptParser {
   }
 
   /**
+   * Set the shared context for this parser.
+   * Use this to share context across multiple parsers (e.g., in WorkspaceParser).
+   * @param context The shared context map to use
+   */
+  public setSharedContext(context: ParsingContext): void {
+    this.sharedContext = context;
+  }
+
+  /**
+   * Get the shared context from this parser.
+   * Useful for aggregating context across multiple parsers.
+   */
+  public getSharedContext(): ParsingContext {
+    return this.sharedContext;
+  }
+
+  /**
+   * Get all parsed nodes (for cross-parser edge resolution).
+   * Returns the internal Map of ParsedNodes.
+   */
+  public getParsedNodes(): Map<string, ParsedNode> {
+    return this.parsedNodes;
+  }
+
+  /**
+   * Get the framework schemas used by this parser.
+   * Useful for WorkspaceParser to apply cross-package edge enhancements.
+   */
+  public getFrameworkSchemas(): FrameworkSchema[] {
+    return this.frameworkSchemas;
+  }
+
+  /**
+   * Defer edge enhancements to a parent parser (e.g., WorkspaceParser).
+   * When true, parseChunk() will skip applyEdgeEnhancements().
+   * The parent is responsible for calling applyEdgeEnhancementsManually() at the end.
+   */
+  public setDeferEdgeEnhancements(defer: boolean): void {
+    this.deferEdgeEnhancements = defer;
+  }
+
+  /**
    * Get list of source files in the project.
    * In lazy mode, uses glob to discover files without loading them into memory.
    * Useful for determining total work and creating chunks.
@@ -1499,7 +1537,12 @@ export class TypeScriptParser {
         await this.applyFrameworkEnhancements();
       }
 
-      await this.applyEdgeEnhancements();
+      // Apply edge enhancements unless deferred to parent (e.g., WorkspaceParser)
+      // When deferred, parent will call applyEdgeEnhancementsManually() at the end
+      // with all accumulated nodes for cross-package edge detection
+      if (!this.deferEdgeEnhancements) {
+        await this.applyEdgeEnhancements();
+      }
 
       const neo4jNodes = Array.from(this.parsedNodes.values()).map(this.toNeo4jNode);
       const neo4jEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
@@ -1574,6 +1617,28 @@ export class TypeScriptParser {
 
     this.deferredEdges = [];
     return resolvedEdges.map(this.toNeo4jEdge);
+  }
+
+  /**
+   * Apply edge enhancements on all accumulated nodes.
+   * Call this after all chunks have been parsed for streaming mode.
+   * This allows context-dependent edges (like INTERNAL_API_CALL) to be detected
+   * after all nodes and their context have been collected.
+   * @returns New edges created by edge enhancements
+   */
+  public async applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]> {
+    const edgeCountBefore = this.parsedEdges.size;
+
+    console.log(`🔗 Applying edge enhancements on ${this.parsedNodes.size} accumulated nodes...`);
+
+    await this.applyEdgeEnhancements();
+
+    const newEdgeCount = this.parsedEdges.size - edgeCountBefore;
+    console.log(`   ✅ Created ${newEdgeCount} edges from edge enhancements`);
+
+    // Return only the new edges (those created by edge enhancements)
+    const allEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
+    return allEdges.slice(edgeCountBefore);
   }
 
   /**

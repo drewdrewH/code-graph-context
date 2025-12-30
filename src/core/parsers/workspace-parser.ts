@@ -8,11 +8,21 @@ import path from 'path';
 
 import { glob } from 'glob';
 
-import { debugLog } from '../../utils/file-utils.js';
-import { Neo4jNode, Neo4jEdge, CoreEdgeType, CORE_TYPESCRIPT_SCHEMA } from '../config/schema.js';
+import { debugLog } from '../utils/file-utils.js';
+import {
+  Neo4jNode,
+  Neo4jEdge,
+  CoreEdgeType,
+  CORE_TYPESCRIPT_SCHEMA,
+  ParsingContext,
+  FrameworkSchema,
+  EdgeEnhancement,
+} from '../config/schema.js';
+import { createFrameworkEdgeData } from '../utils/edge-factory.js';
 import { resolveProjectId } from '../utils/project-id.js';
 import { WorkspaceConfig, WorkspacePackage } from '../workspace/index.js';
 
+import { ParserFactory, ProjectType } from './parser-factory.js';
 import { TypeScriptParser } from './typescript-parser.js';
 
 export interface WorkspaceParseResult {
@@ -29,19 +39,46 @@ interface DeferredEdge {
   targetFilePath?: string; // File path of target for precise matching (used for EXTENDS/IMPLEMENTS)
 }
 
+/**
+ * Lightweight node for cross-package edge detection.
+ * Only stores what's needed for edge enhancement detection patterns.
+ * Does NOT store AST references (sourceNode) to prevent memory bloat.
+ */
+interface LightweightParsedNode {
+  id: string;
+  semanticType?: string;
+  properties: {
+    name?: string;
+    context?: Record<string, any>; // Contains propertyTypes, routes, etc.
+  };
+}
+
 export class WorkspaceParser {
   private config: WorkspaceConfig;
   private projectId: string;
+  private projectType: ProjectType | 'auto';
   private lazyLoad: boolean;
   private discoveredFiles: Map<string, string[]> | null = null;
   private parsedNodes: Map<string, Neo4jNode> = new Map();
   private parsedEdges: Map<string, Neo4jEdge> = new Map();
   private accumulatedDeferredEdges: DeferredEdge[] = [];
+  // Shared context across all packages for cross-package edge detection
+  private sharedContext: ParsingContext = new Map();
+  // Lightweight node copies for cross-package edge detection (no AST references)
+  private accumulatedParsedNodes: Map<string, LightweightParsedNode> = new Map();
+  // Framework schemas detected from packages (for edge enhancements)
+  private frameworkSchemas: FrameworkSchema[] = [];
 
-  constructor(config: WorkspaceConfig, projectId?: string, lazyLoad: boolean = true) {
+  constructor(
+    config: WorkspaceConfig,
+    projectId?: string,
+    lazyLoad: boolean = true,
+    projectType: ProjectType | 'auto' = 'auto',
+  ) {
     this.config = config;
     this.projectId = resolveProjectId(config.rootPath, projectId);
     this.lazyLoad = lazyLoad;
+    this.projectType = projectType;
   }
 
   /**
@@ -111,23 +148,45 @@ export class WorkspaceParser {
   }
 
   /**
+   * Create a parser for a package using ParserFactory (supports auto-detection)
+   * Injects the shared context so context is shared across all packages.
+   */
+  private async createParserForPackage(pkg: WorkspacePackage): Promise<TypeScriptParser> {
+    const tsConfigPath = pkg.tsConfigPath || path.join(pkg.path, 'tsconfig.json');
+
+    let parser: TypeScriptParser;
+    if (this.projectType === 'auto') {
+      // Auto-detect framework for this specific package
+      parser = await ParserFactory.createParserWithAutoDetection(pkg.path, tsConfigPath, this.projectId, this.lazyLoad);
+    } else {
+      // Use the specified project type for all packages
+      parser = ParserFactory.createParser({
+        workspacePath: pkg.path,
+        tsConfigPath,
+        projectType: this.projectType,
+        projectId: this.projectId,
+        lazyLoad: this.lazyLoad,
+      });
+    }
+
+    // Inject shared context so all packages share the same context
+    // This enables cross-package edge detection (e.g., INTERNAL_API_CALL)
+    parser.setSharedContext(this.sharedContext);
+
+    // Defer edge enhancements to WorkspaceParser's final pass
+    // This avoids duplicate work and enables cross-package edge detection
+    parser.setDeferEdgeEnhancements(true);
+
+    return parser;
+  }
+
+  /**
    * Parse a single package and return its results
    */
   async parsePackage(pkg: WorkspacePackage): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
-    console.log(`\n📦 Parsing package: ${pkg.name}`);
+    console.log(`\nParsing package: ${pkg.name}`);
 
-    // Create parser for this package with its own tsconfig
-    const tsConfigPath = pkg.tsConfigPath ?? path.join(pkg.path, 'tsconfig.json');
-
-    const parser = new TypeScriptParser(
-      pkg.path,
-      tsConfigPath,
-      undefined, // Use default core schema
-      [], // No framework schemas for now - can be enhanced later
-      undefined, // Default parse options
-      this.projectId, // Use workspace-level projectId
-      this.lazyLoad,
-    );
+    const parser = await this.createParserForPackage(pkg);
 
     // Discover files for this package
     const files = await this.discoverPackageFiles(pkg);
@@ -176,19 +235,8 @@ export class WorkspaceParser {
 
     // Parse each package's files
     for (const [pkg, files] of filesByPackage) {
-      // Use package's tsconfig if it exists, otherwise use root tsconfig
-      const tsConfigPath = pkg.tsConfigPath ?? path.join(this.config.rootPath, 'tsconfig.json');
-
       try {
-        const parser = new TypeScriptParser(
-          pkg.path,
-          tsConfigPath,
-          undefined,
-          [],
-          undefined,
-          this.projectId,
-          this.lazyLoad,
-        );
+        const parser = await this.createParserForPackage(pkg);
 
         const result = await parser.parseChunk(files, skipEdgeResolution);
 
@@ -200,6 +248,27 @@ export class WorkspaceParser {
         // Export and accumulate deferred edges for cross-package resolution
         const chunkData = parser.exportChunkResults();
         this.accumulatedDeferredEdges.push(...chunkData.deferredEdges);
+
+        // Accumulate LIGHTWEIGHT copies of ParsedNodes for cross-package edge detection
+        // Only stores what's needed for detection patterns - NO AST references
+        const innerParsedNodes = parser.getParsedNodes();
+        for (const [nodeId, parsedNode] of innerParsedNodes) {
+          this.accumulatedParsedNodes.set(nodeId, {
+            id: parsedNode.id,
+            semanticType: parsedNode.semanticType,
+            properties: {
+              name: parsedNode.properties.name,
+              context: parsedNode.properties.context, // Contains propertyTypes
+            },
+          });
+        }
+
+        // Accumulate framework schemas (deduplicated by name)
+        for (const schema of parser.getFrameworkSchemas()) {
+          if (!this.frameworkSchemas.some((s) => s.name === schema.name)) {
+            this.frameworkSchemas.push(schema);
+          }
+        }
 
         allNodes.push(...result.nodes);
         allEdges.push(...result.edges);
@@ -379,6 +448,158 @@ export class WorkspaceParser {
     this.accumulatedDeferredEdges = [];
 
     return resolvedEdges;
+  }
+
+  /**
+   * Apply edge enhancements on all accumulated nodes across all packages.
+   * This enables cross-package edge detection (e.g., INTERNAL_API_CALL between services and
+   * vendor controllers in different packages).
+   *
+   * Uses shared context and accumulated ParsedNodes from all packages.
+   * @returns New edges created by edge enhancements
+   */
+  async applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]> {
+    if (this.accumulatedParsedNodes.size === 0) {
+      console.log('WorkspaceParser: No accumulated nodes for edge enhancements');
+      return [];
+    }
+
+    if (this.frameworkSchemas.length === 0) {
+      console.log('WorkspaceParser: No framework schemas for edge enhancements');
+      return [];
+    }
+
+    console.log(
+      `WorkspaceParser: Applying edge enhancements on ${this.accumulatedParsedNodes.size} accumulated nodes across all packages...`,
+    );
+
+    // Pre-index nodes by semantic type for O(1) lookups
+    const nodesBySemanticType = new Map<string, Map<string, LightweightParsedNode>>();
+    for (const [nodeId, node] of this.accumulatedParsedNodes) {
+      const semanticType = node.semanticType || 'unknown';
+      if (!nodesBySemanticType.has(semanticType)) {
+        nodesBySemanticType.set(semanticType, new Map());
+      }
+      nodesBySemanticType.get(semanticType)!.set(nodeId, node);
+    }
+
+    const typeCounts: Record<string, number> = {};
+    for (const [type, nodes] of nodesBySemanticType) {
+      typeCounts[type] = nodes.size;
+    }
+    console.log(`Node distribution by semantic type:`, typeCounts);
+
+    const newEdges: Neo4jEdge[] = [];
+    const edgeCountBefore = this.parsedEdges.size;
+
+    // Apply edge enhancements from all framework schemas
+    for (const frameworkSchema of this.frameworkSchemas) {
+      for (const edgeEnhancement of Object.values(frameworkSchema.edgeEnhancements)) {
+        const enhancementEdges = await this.applyEdgeEnhancement(edgeEnhancement, nodesBySemanticType);
+        newEdges.push(...enhancementEdges);
+      }
+    }
+
+    const newEdgeCount = this.parsedEdges.size - edgeCountBefore;
+    console.log(`Created ${newEdgeCount} cross-package edges from edge enhancements`);
+
+    return newEdges;
+  }
+
+  /**
+   * Apply a single edge enhancement across all accumulated parsed nodes.
+   * Uses LightweightParsedNode which contains only fields needed for detection:
+   * - id, semanticType, properties.context (with propertyTypes)
+   * Detection patterns must NOT access sourceNode (AST) - use properties instead.
+   */
+  private async applyEdgeEnhancement(
+    edgeEnhancement: EdgeEnhancement,
+    _nodesBySemanticType: Map<string, Map<string, LightweightParsedNode>>,
+  ): Promise<Neo4jEdge[]> {
+    const newEdges: Neo4jEdge[] = [];
+    // Track created edges with simple key to avoid duplicate hash computations
+    const createdEdgeKeys = new Set<string>();
+
+    try {
+      // For now, iterate all nodes. Detection pattern short-circuits on semantic type.
+      // Future optimization: use _nodesBySemanticType to only iterate relevant pairs.
+      const allTargetNodes = new Map([...this.accumulatedParsedNodes]);
+
+      for (const [sourceId, sourceNode] of this.accumulatedParsedNodes) {
+        for (const [targetId, targetNode] of allTargetNodes) {
+          if (sourceId === targetId) continue;
+
+          // Run detection pattern FIRST (cheap semantic type checks)
+          if (
+            edgeEnhancement.detectionPattern(
+              sourceNode as any,
+              targetNode as any,
+              this.accumulatedParsedNodes as any,
+              this.sharedContext,
+            )
+          ) {
+            const simpleKey = `${sourceId}:${targetId}`;
+            if (createdEdgeKeys.has(simpleKey)) continue;
+            createdEdgeKeys.add(simpleKey);
+
+            // Extract context for this edge
+            let context = {};
+            if (edgeEnhancement.contextExtractor) {
+              context = edgeEnhancement.contextExtractor(
+                sourceNode as any,
+                targetNode as any,
+                this.accumulatedParsedNodes as any,
+                this.sharedContext,
+              );
+            }
+
+            const edge = this.createFrameworkEdge(
+              edgeEnhancement.semanticType,
+              edgeEnhancement.neo4j.relationshipType,
+              sourceId,
+              targetId,
+              context,
+              edgeEnhancement.relationshipWeight,
+            );
+            this.parsedEdges.set(edge.id, edge);
+            newEdges.push(edge);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error applying edge enhancement ${edgeEnhancement.name}:`, error);
+    }
+
+    return newEdges;
+  }
+
+  /**
+   * Create a framework edge with semantic type and properties.
+   */
+  private createFrameworkEdge(
+    semanticType: string,
+    relationshipType: string,
+    sourceId: string,
+    targetId: string,
+    context: Record<string, any>,
+    relationshipWeight: number,
+  ): Neo4jEdge {
+    const { id, properties } = createFrameworkEdgeData({
+      semanticType,
+      sourceNodeId: sourceId,
+      targetNodeId: targetId,
+      projectId: this.projectId,
+      context,
+      relationshipWeight,
+    });
+
+    return {
+      id,
+      type: relationshipType,
+      startNodeId: sourceId,
+      endNodeId: targetId,
+      properties,
+    };
   }
 
   /**
