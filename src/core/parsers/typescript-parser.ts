@@ -214,8 +214,18 @@ export class TypeScriptParser {
     let sourceFiles: SourceFile[];
 
     if (filesToParse && filesToParse.length > 0) {
+      // In lazy mode, files may not be loaded yet - add them if needed
       sourceFiles = filesToParse
-        .map((filePath) => this.project.getSourceFile(filePath))
+        .map((filePath) => {
+          const existing = this.project.getSourceFile(filePath);
+          if (existing) return existing;
+          // Add file to project if not already loaded (lazy mode)
+          try {
+            return this.project.addSourceFileAtPath(filePath);
+          } catch {
+            return undefined;
+          }
+        })
         .filter((sf): sf is SourceFile => sf !== undefined);
     } else {
       sourceFiles = this.project.getSourceFiles();
@@ -264,8 +274,8 @@ export class TypeScriptParser {
     const filePath = sourceFile.getFilePath();
     const stats = await fs.stat(filePath);
     const fileTrackingProperties: Partial<Neo4jNodeProperties> = {
-      size: stats.size,
-      mtime: stats.mtimeMs,
+      size: Number(stats.size),
+      mtime: Number(stats.mtimeMs),
       contentHash: await hashFile(filePath),
     };
 
@@ -503,10 +513,10 @@ export class TypeScriptParser {
         }
       }
 
-      // Strategy 2: Resolve relative imports (./foo, ../bar)
+      // Strategy 2: Resolve relative imports (./foo, ../bar, ../../baz)
       if (name.startsWith('.')) {
-        // Normalize: remove leading ./ or ../
-        const normalizedPath = name.replace(/^\.\.\//, '').replace(/^\.\//, '');
+        // Normalize: remove all leading ./ or ../ segments (handles ../../foo, ./bar, etc.)
+        const normalizedPath = name.replace(/^(\.\.?\/)+/, '');
 
         // Try matching with common extensions
         const extensions = ['', '.ts', '.tsx', '/index.ts', '/index.tsx'];
@@ -1229,12 +1239,30 @@ export class TypeScriptParser {
     return excludedNodeTypes.includes(node.getKindName() as CoreNodeType);
   }
 
+  /**
+   * Safely test if a file path matches a pattern (string or regex).
+   * Falls back to literal string matching if the pattern is an invalid regex.
+   */
+  private matchesPattern(filePath: string, pattern: string): boolean {
+    // First try literal string match (always safe)
+    if (filePath.includes(pattern)) {
+      return true;
+    }
+    // Then try regex match with error handling
+    try {
+      return new RegExp(pattern).test(filePath);
+    } catch {
+      // Invalid regex pattern - already checked via includes() above
+      return false;
+    }
+  }
+
   private shouldSkipFile(sourceFile: SourceFile): boolean {
     const filePath = sourceFile.getFilePath();
     const excludedPatterns = this.parseConfig.excludePatterns ?? [];
 
     for (const pattern of excludedPatterns) {
-      if (filePath.includes(pattern) || filePath.match(new RegExp(pattern))) {
+      if (this.matchesPattern(filePath, pattern)) {
         return true;
       }
     }
@@ -1388,7 +1416,7 @@ export class TypeScriptParser {
       const excludedPatterns = this.parseConfig.excludePatterns ?? [];
       this.discoveredFiles = allFiles.filter((filePath) => {
         for (const excludePattern of excludedPatterns) {
-          if (filePath.includes(excludePattern) || filePath.match(new RegExp(excludePattern))) {
+          if (this.matchesPattern(filePath, excludePattern)) {
             return false;
           }
         }

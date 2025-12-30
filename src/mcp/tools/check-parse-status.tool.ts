@@ -13,11 +13,12 @@ import { createErrorResponse, createSuccessResponse } from '../utils.js';
 const formatProgress = (job: ParseJob): string => {
   const { progress } = job;
   const progressPct = progress.filesTotal > 0 ? Math.round((progress.filesProcessed / progress.filesTotal) * 100) : 0;
+  const unit = progress.phase === 'resolving' ? 'edges' : 'files';
 
   const lines = [
     `Status: ${job.status}`,
     `Phase: ${progress.phase}`,
-    `Progress: ${progressPct}% (${progress.filesProcessed}/${progress.filesTotal} files)`,
+    `Progress: ${progressPct}% (${progress.filesProcessed}/${progress.filesTotal} ${unit})`,
   ];
 
   if (progress.totalChunks > 0) {

@@ -192,7 +192,10 @@ export const QUERIES = {
   GET_SOURCE_FILE_TRACKING_INFO: `
     MATCH (sf:SourceFile)
     WHERE sf.projectId = $projectId
-    RETURN sf.filePath AS filePath, sf.mtime AS mtime, sf.size AS size, sf.contentHash AS contentHash
+    RETURN sf.filePath AS filePath,
+           COALESCE(sf.mtime, 0) AS mtime,
+           COALESCE(sf.size, 0) AS size,
+           COALESCE(sf.contentHash, '') AS contentHash
   `,
 
   // Get cross-file edges before deletion (edges where one endpoint is outside the subgraph)

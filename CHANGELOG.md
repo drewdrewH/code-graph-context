@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### New MCP Tools
 - **`list_projects`**: List all parsed projects in the database with status, node/edge counts, and timestamps
 - **`check_parse_status`**: Monitor async parsing jobs with real-time progress (phase, files processed, chunks, nodes/edges created)
+- **`start_watch_project`**: Start file watching for a parsed project with configurable debounce
+- **`stop_watch_project`**: Stop file watching for a project by ID
+- **`list_watchers`**: List all active file watchers with status, pending changes, and last update time
+
+#### File Watching & Live Updates
+- **Real-Time File Monitoring**: Uses `@parcel/watcher` for cross-platform native file watching
+- **Watch Mode in parse_typescript_project**: New `watch: true` parameter starts watching after synchronous parse (requires `async: false`)
+- **Automatic Incremental Updates**: File changes trigger re-parsing of only affected files
+- **Debounced Processing**: Configurable debounce delay (`watchDebounceMs`, default 1000ms) batches rapid file changes
+- **Cross-File Edge Preservation**: Edges between changed and unchanged files are preserved during incremental updates
+- **Graceful Shutdown**: SIGINT/SIGTERM handlers ensure watchers are properly cleaned up
+- **Resource Limits**: Maximum 10 concurrent watchers, 1000 pending events per watcher
 
 #### Async & Streaming Parsing
 - **Async Parsing Mode**: New `async: true` parameter runs parsing in Worker threads without blocking the MCP server. Returns job ID for status monitoring

@@ -27,6 +27,9 @@ export const TOOL_NAMES = {
   impactAnalysis: 'impact_analysis',
   checkParseStatus: 'check_parse_status',
   listProjects: 'list_projects',
+  startWatchProject: 'start_watch_project',
+  stopWatchProject: 'stop_watch_project',
+  listWatchers: 'list_watchers',
 } as const;
 
 // Tool Metadata
@@ -204,6 +207,54 @@ Returns:
 - updatedAt: When the project was last parsed
 
 Use the name or path in other tools instead of the cryptic projectId.`,
+  },
+  [TOOL_NAMES.startWatchProject]: {
+    title: 'Start Watch Project',
+    description: `Start watching a project for file changes and automatically update the graph.
+
+**Parameters:**
+- projectPath (required): Absolute path to the project root
+- tsconfigPath (required): Path to tsconfig.json
+- projectId (optional): Custom project ID (auto-generated if omitted)
+- debounceMs (optional): Delay before processing changes (default: 1000ms)
+
+**Behavior:**
+- Watches for .ts file changes (add/change/delete)
+- Automatically triggers incremental graph updates
+- Sends MCP notifications for progress updates
+- Excludes node_modules, dist, build, .git, *.d.ts, *.js
+
+**Usage:**
+start_watch_project({ projectPath: "/path/to/project", tsconfigPath: "/path/to/project/tsconfig.json" })
+
+Use list_watchers to see active watchers, stop_watch_project to stop.`,
+  },
+  [TOOL_NAMES.stopWatchProject]: {
+    title: 'Stop Watch Project',
+    description: `Stop watching a project for file changes.
+
+**Parameters:**
+- projectId (required): Project ID to stop watching
+
+**Usage:**
+stop_watch_project({ projectId: "proj_abc123..." })
+
+Use list_watchers to see active watchers.`,
+  },
+  [TOOL_NAMES.listWatchers]: {
+    title: 'List Watchers',
+    description: `List all active file watchers.
+
+Returns information about each watcher:
+- projectId: The project being watched
+- projectPath: File system path
+- status: active, paused, or error
+- debounceMs: Configured debounce delay
+- pendingChanges: Number of queued file changes
+- lastUpdateTime: When the graph was last updated
+- errorMessage: Error details if status is "error"
+
+Use stop_watch_project to stop a watcher.`,
   },
 } as const;
 

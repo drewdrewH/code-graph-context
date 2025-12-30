@@ -31,6 +31,7 @@ import { TOOL_NAMES, TOOL_METADATA, DEFAULTS, FILE_PATHS, LOG_CONFIG } from '../
 import { GraphGeneratorHandler } from '../handlers/graph-generator.handler.js';
 import { StreamingImportHandler } from '../handlers/streaming-import.handler.js';
 import { jobManager } from '../services/job-manager.js';
+import { watchManager } from '../services/watch-manager.js';
 import {
   createErrorResponse,
   createSuccessResponse,
@@ -122,6 +123,16 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
           .optional()
           .default(false)
           .describe('Run parsing in background and return job ID immediately. Use check_parse_status to monitor.'),
+        watch: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe('Start file watching after parse completes. Only works with async: false.'),
+        watchDebounceMs: z
+          .number()
+          .optional()
+          .default(1000)
+          .describe('Debounce delay for watch mode in milliseconds (default: 1000)'),
       },
     },
     async ({
@@ -133,6 +144,8 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
       chunkSize = 100,
       useStreaming = 'auto',
       async: asyncMode = false,
+      watch = false,
+      watchDebounceMs = 1000,
     }) => {
       try {
         // SECURITY: Validate input paths before processing
@@ -149,6 +162,16 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
           useStreaming,
           asyncMode,
         });
+
+        // Reject conflicting parameters: watch only works with sync mode
+        if (asyncMode && watch) {
+          return createErrorResponse(
+            new Error(
+              'Invalid parameter combination: watch=true cannot be used with async=true. ' +
+                'File watching requires synchronous parsing. Either set async=false or watch=false.',
+            ),
+          );
+        }
 
         // Resolve projectId early
         const resolvedProjectId = resolveProjectId(projectPath, projectId);
@@ -384,9 +407,36 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
           });
           await debugLog('Project status updated to complete', { projectId: finalProjectId });
 
+          // Start file watcher if requested (only in synchronous mode)
+          let watchMessage = '';
+          if (watch && !asyncMode) {
+            try {
+              const watcherInfo = await watchManager.startWatching({
+                projectPath,
+                projectId: finalProjectId,
+                tsconfigPath,
+                debounceMs: watchDebounceMs,
+              });
+              await debugLog('File watcher started', { projectId: finalProjectId, status: watcherInfo.status });
+              watchMessage = `\n\nFile watcher started (debounce: ${watchDebounceMs}ms). Graph will auto-update on file changes.`;
+            } catch (watchError) {
+              console.error('Failed to start file watcher:', watchError);
+              await debugLog('File watcher failed to start', { error: watchError });
+              watchMessage = `\n\nWarning: Failed to start file watcher: ${watchError instanceof Error ? watchError.message : String(watchError)}`;
+            }
+          }
+
+          // Add watcher tip if not already watching
+          const watcherTip =
+            watch && !asyncMode
+              ? ''
+              : `\n\nTip: Use start_watch_project to automatically update the graph when files change.`;
+
           return createSuccessResponse(
             formatParseSuccess(nodes.length, edges.length, result) +
-              `\n\nTip: Use "${projectName}" instead of "${finalProjectId}" in other tools.`,
+              `\n\nTip: Use "${projectName}" instead of "${finalProjectId}" in other tools.` +
+              watcherTip +
+              watchMessage,
           );
         } catch (neo4jError) {
           console.error('Neo4j import failed:', neo4jError);
@@ -573,7 +623,7 @@ const detectChangedFiles = async (
   // SECURITY: Resolve project path to real path to handle symlinks consistently
   const realProjectPath = await realpath(projectPath);
 
-  const relativeFiles = await glob('**/*.ts', { cwd: projectPath, ignore: EXCLUDE_PATTERNS_GLOB });
+  const relativeFiles = await glob('**/*.{ts,tsx}', { cwd: projectPath, ignore: EXCLUDE_PATTERNS_GLOB });
 
   // SECURITY: Validate each file stays within project directory after symlink resolution
   const validatedFiles: string[] = [];
@@ -583,7 +633,8 @@ const detectChangedFiles = async (
       const realFilePath = await realpath(absolutePath);
       // Check that resolved path is within project
       if (realFilePath.startsWith(realProjectPath + sep) || realFilePath === realProjectPath) {
-        validatedFiles.push(absolutePath);
+        // Use realFilePath for consistent path matching with Neo4j
+        validatedFiles.push(realFilePath);
       } else {
         console.warn(`SECURITY: Skipping file outside project directory: ${relFile}`);
       }
@@ -602,22 +653,41 @@ const detectChangedFiles = async (
   const filesToReparse: string[] = [];
   const filesToDelete: string[] = [];
 
-  for (const absolutePath of currentFiles) {
-    const indexed = indexedMap.get(absolutePath);
+  for (const filePath of currentFiles) {
+    const indexed = indexedMap.get(filePath);
 
     if (!indexed) {
-      filesToReparse.push(absolutePath);
+      filesToReparse.push(filePath);
       continue;
     }
 
-    const fileStats = await stat(absolutePath);
-    if (fileStats.mtimeMs === indexed.mtime && fileStats.size === indexed.size) {
-      continue;
-    }
+    try {
+      const fileStats = await stat(filePath);
+      const currentHash = await hashFile(filePath);
 
-    const currentHash = await hashFile(absolutePath);
-    if (currentHash !== indexed.contentHash) {
-      filesToReparse.push(absolutePath);
+      // Only skip if mtime, size, AND hash all match (correctness over optimization)
+      if (
+        fileStats.mtimeMs === indexed.mtime &&
+        fileStats.size === indexed.size &&
+        currentHash === indexed.contentHash
+      ) {
+        continue;
+      }
+
+      // Any mismatch means file changed
+      filesToReparse.push(filePath);
+    } catch (error: unknown) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError.code === 'ENOENT') {
+        // File was deleted between glob and stat - will be caught in deletion logic below
+        console.warn(`File deleted between glob and stat: ${filePath}`);
+      } else if (nodeError.code === 'EACCES') {
+        // Permission denied - assume changed to be safe
+        console.warn(`Permission denied reading file: ${filePath}`);
+        filesToReparse.push(filePath);
+      } else {
+        throw error;
+      }
     }
   }
 

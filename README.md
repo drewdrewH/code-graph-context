@@ -24,6 +24,7 @@ A Model Context Protocol (MCP) server that builds rich code graphs to provide de
 - **Async Parsing**: Background parsing with Worker threads for large codebases without blocking the MCP server
 - **Streaming Import**: Chunked processing for projects with 100+ files to prevent memory issues
 - **Incremental Parsing**: Only reparse changed files for faster updates
+- **File Watching**: Real-time monitoring with automatic incremental graph updates on file changes
 - **Impact Analysis**: Assess refactoring risk with dependency analysis (LOW/MEDIUM/HIGH/CRITICAL scoring)
 - **High Performance**: Optimized Neo4j storage with vector indexing for fast retrieval
 - **MCP Integration**: Seamless integration with Claude Code and other MCP-compatible tools
@@ -244,6 +245,9 @@ npm run build
 | `impact_analysis` | Analyze what depends on a node | **Pre-refactoring** - assess blast radius (LOW/MEDIUM/HIGH/CRITICAL) |
 | `parse_typescript_project` | Parse project and build the graph | **Initial setup** - supports async mode for large projects |
 | `check_parse_status` | Monitor async parsing job progress | **Monitoring** - track background parsing jobs |
+| `start_watch_project` | Start file watching for a project | **Live updates** - auto-update graph on file changes |
+| `stop_watch_project` | Stop file watching for a project | **Resource management** - stop monitoring |
+| `list_watchers` | List all active file watchers | **Monitoring** - see what's being watched |
 | `natural_language_to_cypher` | Convert natural language to Cypher | **Advanced queries** - complex graph queries |
 | `test_neo4j_connection` | Verify database connectivity | **Health check** - troubleshooting |
 
@@ -493,6 +497,8 @@ traverse_from_node({
 | `useStreaming` | enum | "auto" | "auto", "always", or "never" |
 | `chunkSize` | number | 50 | Files per chunk for streaming |
 | `projectType` | enum | "auto" | "auto", "nestjs", "vanilla" |
+| `watch` | boolean | false | Start file watching after parse (requires `async: false`) |
+| `watchDebounceMs` | number | 1000 | Debounce delay for watch mode in ms |
 
 ```typescript
 // Standard parsing (blocking)
@@ -520,6 +526,15 @@ await mcp.call('parse_typescript_project', {
   tsconfigPath: '/path/to/project/tsconfig.json',
   clearExisting: false  // Keep existing, only reparse changed files
 });
+
+// Parse and start file watching
+await mcp.call('parse_typescript_project', {
+  projectPath: '/path/to/project',
+  tsconfigPath: '/path/to/project/tsconfig.json',
+  watch: true,           // Start watching after parse completes
+  watchDebounceMs: 1000  // Wait 1s after last change before updating
+});
+// File changes now automatically trigger incremental graph updates
 ```
 
 **Modes:**
@@ -527,6 +542,7 @@ await mcp.call('parse_typescript_project', {
 - **Async**: Returns immediately, use `check_parse_status` to monitor
 - **Streaming**: Auto-enabled for projects >100 files, prevents OOM
 - **Incremental**: Set `clearExisting: false` to only reparse changed files
+- **Watch**: Set `watch: true` to automatically update graph on file changes (requires sync mode)
 
 **Performance Notes**:
 - Large projects (>1000 files) should use `async: true`
@@ -545,6 +561,45 @@ await mcp.call('test_neo4j_connection');
 "Neo4j connected: Connected! at 2025-07-25T19:48:42.676Z
 APOC plugin available with 438 functions"
 ```
+
+#### 5. File Watching Tools
+**Purpose**: Monitor file changes and automatically update the graph.
+
+```typescript
+// Option 1: Start watching during parse
+await mcp.call('parse_typescript_project', {
+  projectPath: '/path/to/project',
+  tsconfigPath: '/path/to/project/tsconfig.json',
+  watch: true  // Starts watching after parse completes
+});
+
+// Option 2: Start watching a previously parsed project
+await mcp.call('start_watch_project', {
+  projectId: 'my-backend',      // Project name, ID, or path
+  debounceMs: 2000              // Optional: wait 2s after last change (default: 1000)
+});
+
+// List all active watchers
+await mcp.call('list_watchers');
+// Returns: watcher status, pending changes, last update time
+
+// Stop watching a project
+await mcp.call('stop_watch_project', {
+  projectId: 'my-backend'
+});
+```
+
+**How It Works:**
+1. File watcher monitors `.ts` and `.tsx` files using native OS events
+2. Changes are debounced to batch rapid edits
+3. Only modified files are re-parsed (incremental)
+4. Cross-file edges are preserved during updates
+5. Graph updates happen automatically in the background
+
+**Resource Limits:**
+- Maximum 10 concurrent watchers
+- 1000 pending events per watcher
+- Graceful cleanup on server shutdown
 
 ### Workflow Examples
 
