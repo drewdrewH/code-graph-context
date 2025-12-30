@@ -129,12 +129,14 @@ export enum SemanticEdgeType {
 export interface Neo4jNodeProperties {
   // === ALWAYS INDEXED ===
   id: string;
+  projectId: string; // Project identifier for multi-project isolation
   name: string;
   coreType: CoreNodeType;
   semanticType?: string; // Can be SemanticNodeType or framework-specific semantic type
 
   // === FREQUENTLY INDEXED ===
   filePath: string;
+  packageName?: string; // Package name for monorepo support (e.g., "@any-ui/auth")
   isExported?: boolean;
   visibility?: 'public' | 'private' | 'protected';
 
@@ -157,6 +159,7 @@ export interface Neo4jNodeProperties {
 export interface Neo4jEdgeProperties {
   // === ALWAYS INDEXED ===
   coreType: CoreEdgeType;
+  projectId: string; // Project identifier for multi-project isolation
   semanticType?: string; // Can be SemanticEdgeType or framework-specific edge type
 
   // === FREQUENTLY INDEXED ===
@@ -544,7 +547,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
       relationships: [
         {
           edgeType: CoreEdgeType.EXTENDS,
-          method: 'getBaseClass',
+          method: 'getExtends', // Use getExtends() instead of getBaseClass() - works in lazy mode
           cardinality: 'single',
           targetNodeType: CoreNodeType.CLASS_DECLARATION,
         },

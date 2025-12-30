@@ -5,11 +5,12 @@
  * Clean, modular architecture for the Code Graph Context MCP Server
  */
 
-// Load environment variables from .env file
-import dotenv from 'dotenv';
-
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+
+// Load environment variables from .env file - must run before other imports use env vars
+// eslint-disable-next-line import/order
+import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,9 +41,18 @@ const startServer = async (): Promise<void> => {
   // Register all tools
   registerAllTools(server);
 
-  // Initialize external services (non-blocking)
-  initializeServices().catch((error) => {
-    debugLog('Service initialization error', error);
+  // Initialize external services (non-blocking but with proper error handling)
+  initializeServices().catch(async (error) => {
+    // Await the debugLog to ensure it completes before potential exit
+    await debugLog('Service initialization error', error);
+    // Log to stderr so it's visible even if debug file fails
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        message: 'Service initialization failed',
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
   });
 
   // Create and connect transport

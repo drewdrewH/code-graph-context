@@ -7,6 +7,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { resolveProjectIdFromInput } from '../../core/utils/project-id.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA } from '../constants.js';
 import { createErrorResponse, createSuccessResponse, debugLog } from '../utils.js';
@@ -61,6 +62,7 @@ export const createImpactAnalysisTool = (server: McpServer): void => {
       title: TOOL_METADATA[TOOL_NAMES.impactAnalysis].title,
       description: TOOL_METADATA[TOOL_NAMES.impactAnalysis].description,
       inputSchema: {
+        projectId: z.string().describe('Project ID, name, or path (e.g., "any-backend" or "proj_a1b2c3d4e5f6")'),
         nodeId: z
           .string()
           .optional()
@@ -82,15 +84,29 @@ export const createImpactAnalysisTool = (server: McpServer): void => {
         ),
       },
     },
-    async ({ nodeId, filePath, maxDepth = 4, frameworkConfig }) => {
+    async ({ projectId, nodeId, filePath, maxDepth = 4, frameworkConfig }) => {
+      const neo4jService = new Neo4jService();
       try {
+        // Resolve project ID from name, path, or ID
+        let resolvedProjectId: string;
+        try {
+          resolvedProjectId = await resolveProjectIdFromInput(projectId, neo4jService);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return createErrorResponse(message);
+        }
+
         if (!nodeId && !filePath) {
           return createErrorResponse('Either nodeId or filePath must be provided');
         }
 
-        await debugLog('Impact analysis started', { nodeId, filePath, maxDepth, frameworkConfig });
-
-        const neo4jService = new Neo4jService();
+        await debugLog('Impact analysis started', {
+          projectId: resolvedProjectId,
+          nodeId,
+          filePath,
+          maxDepth,
+          frameworkConfig,
+        });
 
         // Merge default weights with framework-specific weights
         const weights = { ...DEFAULT_RELATIONSHIP_WEIGHTS, ...frameworkConfig?.relationshipWeights };
@@ -101,9 +117,9 @@ export const createImpactAnalysisTool = (server: McpServer): void => {
 
         if (nodeId) {
           // Get target node info
-          const targetResult = await neo4jService.run(QUERIES.GET_NODE_BY_ID, { nodeId });
+          const targetResult = await neo4jService.run(QUERIES.GET_NODE_BY_ID, { nodeId, projectId: resolvedProjectId });
           if (targetResult.length === 0) {
-            return createErrorResponse(`Node with ID "${nodeId}" not found`);
+            return createErrorResponse(`Node with ID "${nodeId}" not found in project "${resolvedProjectId}"`);
           }
           const target = targetResult[0];
           targetInfo = {
@@ -114,26 +130,82 @@ export const createImpactAnalysisTool = (server: McpServer): void => {
           };
 
           // Get direct dependents using cross-file edge pattern
-          const directResult = await neo4jService.run(QUERIES.GET_NODE_IMPACT, { nodeId });
+          const directResult = await neo4jService.run(QUERIES.GET_NODE_IMPACT, {
+            nodeId,
+            projectId: resolvedProjectId,
+          });
           directDependents = normalizeDependents(directResult);
         } else {
-          // File-based analysis
-          targetInfo = {
-            id: filePath!,
-            name: filePath!.split('/').pop() ?? filePath!,
-            type: 'SourceFile',
-            filePath: filePath!,
-          };
+          // File-based analysis - find all Class/Function/Interface entities in the file
+          // and aggregate their impact analysis results
+          const entitiesQuery = `
+            MATCH (n)
+            WHERE n.projectId = $projectId
+              AND (n.filePath = $filePath OR n.filePath ENDS WITH '/' + $filePath)
+              AND (n:Class OR n:Function OR n:Interface)
+            RETURN n.id AS nodeId, n.name AS name, labels(n) AS labels,
+                   n.semanticType AS semanticType, n.coreType AS coreType
+          `;
 
-          // Get all external dependents on this file
-          const fileResult = await neo4jService.run(QUERIES.GET_FILE_IMPACT, { filePath });
-          directDependents = normalizeDependents(fileResult);
+          const entities = await neo4jService.run(entitiesQuery, {
+            filePath,
+            projectId: resolvedProjectId,
+          });
+
+          if (entities.length === 0) {
+            // No exportable entities found
+            targetInfo = {
+              id: filePath!,
+              name: filePath!.split('/').pop() ?? filePath!,
+              type: 'SourceFile',
+              filePath: filePath!,
+            };
+            directDependents = [];
+          } else {
+            // Use first entity as the primary target for display
+            const primaryEntity = entities[0];
+            targetInfo = {
+              id: primaryEntity.nodeId as string,
+              name: (primaryEntity.name as string) ?? filePath!.split('/').pop() ?? filePath!,
+              type: (primaryEntity.semanticType as string) ?? (primaryEntity.coreType as string) ?? 'Class',
+              filePath: filePath!,
+            };
+
+            // Aggregate impact from all entities in the file
+            const allDependentsMap = new Map<string, Dependent>();
+
+            for (const entity of entities) {
+              const entityResult = await neo4jService.run(QUERIES.GET_NODE_IMPACT, {
+                nodeId: entity.nodeId,
+                projectId: resolvedProjectId,
+              });
+
+              for (const dep of normalizeDependents(entityResult)) {
+                // Dedupe by nodeId, keeping highest weight
+                const existing = allDependentsMap.get(dep.nodeId);
+                if (!existing || dep.weight > existing.weight) {
+                  allDependentsMap.set(dep.nodeId, dep);
+                }
+              }
+            }
+
+            directDependents = Array.from(allDependentsMap.values());
+
+            // Update nodeId for transitive analysis if we have dependents
+            if (directDependents.length > 0 && entities.length > 0) {
+              // Use first entity's nodeId for transitive analysis
+              nodeId = primaryEntity.nodeId as string;
+            }
+          }
         }
 
         // Get transitive dependents if nodeId provided
         let transitiveDependents: Dependent[] = [];
         if (nodeId && maxDepth > 1) {
-          const transitiveResult = await neo4jService.run(QUERIES.GET_TRANSITIVE_DEPENDENTS(maxDepth), { nodeId });
+          const transitiveResult = await neo4jService.run(QUERIES.GET_TRANSITIVE_DEPENDENTS(maxDepth), {
+            nodeId,
+            projectId: resolvedProjectId,
+          });
           transitiveDependents = normalizeTransitiveDependents(transitiveResult);
 
           // Filter out direct dependents from transitive
@@ -196,6 +268,8 @@ export const createImpactAnalysisTool = (server: McpServer): void => {
         console.error('Impact analysis error:', error);
         await debugLog('Impact analysis error', { nodeId, filePath, error });
         return createErrorResponse(error);
+      } finally {
+        await neo4jService.close();
       }
     },
   );

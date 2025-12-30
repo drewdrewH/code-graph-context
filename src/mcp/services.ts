@@ -37,12 +37,12 @@ const discoverSchemaFromGraph = async (neo4jService: Neo4jService) => {
       nodeTypes: nodeTypes.map((r: any) => ({
         label: r.label,
         count: typeof r.nodeCount === 'object' ? r.nodeCount.toNumber() : r.nodeCount,
-        properties: r.sampleProperties || [],
+        properties: r.sampleProperties ?? [],
       })),
       relationshipTypes: relationshipTypes.map((r: any) => ({
         type: r.relationshipType,
         count: typeof r.relCount === 'object' ? r.relCount.toNumber() : r.relCount,
-        connections: r.connections || [],
+        connections: r.connections ?? [],
       })),
       semanticTypes: semanticTypes.map((r: any) => ({
         type: r.semanticType,

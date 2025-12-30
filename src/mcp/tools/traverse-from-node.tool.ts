@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { MAX_TRAVERSAL_DEPTH } from '../../constants.js';
+import { resolveProjectIdFromInput } from '../../core/utils/project-id.js';
 import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA, DEFAULTS } from '../constants.js';
 import { TraversalHandler } from '../handlers/traversal.handler.js';
@@ -19,7 +20,15 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
       title: TOOL_METADATA[TOOL_NAMES.traverseFromNode].title,
       description: TOOL_METADATA[TOOL_NAMES.traverseFromNode].description,
       inputSchema: {
-        nodeId: z.string().describe('The node ID to start traversal from'),
+        projectId: z.string().describe('Project ID, name, or path (e.g., "any-backend" or "proj_a1b2c3d4e5f6")'),
+        nodeId: z
+          .string()
+          .optional()
+          .describe('The node ID to start traversal from (required if filePath not provided)'),
+        filePath: z
+          .string()
+          .optional()
+          .describe('File path to start traversal from (alternative to nodeId - finds the SourceFile node)'),
         maxDepth: z
           .number()
           .int()
@@ -32,6 +41,12 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
           .optional()
           .describe(`Number of results to skip for pagination (default: ${DEFAULTS.skipOffset})`)
           .default(DEFAULTS.skipOffset),
+        limit: z
+          .number()
+          .int()
+          .optional()
+          .describe('Maximum results per page (default: 50). Use with skip for pagination.')
+          .default(50),
         direction: z
           .enum(['OUTGOING', 'INCOMING', 'BOTH'])
           .optional()
@@ -67,41 +82,95 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
           .optional()
           .describe(`Code snippet character length when includeCode is true (default: ${DEFAULTS.codeSnippetLength})`)
           .default(DEFAULTS.codeSnippetLength),
+        maxTotalNodes: z
+          .number()
+          .int()
+          .optional()
+          .describe('Maximum total unique nodes to return across all depths (default: 50). Limits output size.')
+          .default(50),
       },
     },
     async ({
+      projectId,
       nodeId,
+      filePath,
       maxDepth = DEFAULTS.traversalDepth,
       skip = DEFAULTS.skipOffset,
+      limit = 50,
       direction = 'BOTH',
       relationshipTypes,
       includeCode = true,
       maxNodesPerChain = 5,
       summaryOnly = false,
       snippetLength = DEFAULTS.codeSnippetLength,
+      maxTotalNodes = 50,
     }) => {
+      // Validate that either nodeId or filePath is provided
+      if (!nodeId && !filePath) {
+        return createErrorResponse('Either nodeId or filePath must be provided.');
+      }
+
+      const neo4jService = new Neo4jService();
       try {
+        // Resolve project ID from name, path, or ID
+        let resolvedProjectId: string;
+        try {
+          resolvedProjectId = await resolveProjectIdFromInput(projectId, neo4jService);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return createErrorResponse(message);
+        }
+
+        const traversalHandler = new TraversalHandler(neo4jService);
+
+        // If filePath is provided, resolve it to a nodeId
+        let resolvedNodeId: string | undefined = nodeId;
+        if (!resolvedNodeId && filePath) {
+          const fileNodeId = await traversalHandler.resolveNodeIdFromFilePath(filePath, resolvedProjectId);
+          if (!fileNodeId) {
+            // Try to provide helpful suggestions
+            const fileName = filePath.split('/').pop() ?? filePath;
+            return createErrorResponse(
+              `No SourceFile node found for "${filePath}" in project "${resolvedProjectId}".\n\n` +
+                `Suggestions:\n` +
+                `- Use the full absolute path (e.g., /Users/.../src/file.ts)\n` +
+                `- Use just the filename (e.g., "${fileName}")\n` +
+                `- Use search_codebase to find the correct node ID first\n` +
+                `- Run list_projects to verify the project exists`,
+            );
+          }
+          resolvedNodeId = fileNodeId;
+        }
+
         const sanitizedMaxDepth = sanitizeNumericInput(maxDepth, DEFAULTS.traversalDepth, MAX_TRAVERSAL_DEPTH);
         const sanitizedSkip = sanitizeNumericInput(skip, DEFAULTS.skipOffset);
 
         await debugLog('Node traversal started', {
-          nodeId,
+          projectId: resolvedProjectId,
+          nodeId: resolvedNodeId,
+          filePath,
           maxDepth: sanitizedMaxDepth,
           skip: sanitizedSkip,
+          limit,
           direction,
           relationshipTypes,
           includeCode,
           maxNodesPerChain,
           summaryOnly,
           snippetLength,
+          maxTotalNodes,
         });
 
-        const neo4jService = new Neo4jService();
-        const traversalHandler = new TraversalHandler(neo4jService);
+        // Safety check - resolvedNodeId should be set at this point
+        if (!resolvedNodeId) {
+          return createErrorResponse('Could not resolve node ID from provided parameters.');
+        }
 
-        return await traversalHandler.traverseFromNode(nodeId, [], {
+        return await traversalHandler.traverseFromNode(resolvedNodeId, [], {
+          projectId: resolvedProjectId,
           maxDepth: sanitizedMaxDepth,
           skip: sanitizedSkip,
+          limit,
           direction,
           relationshipTypes,
           includeStartNodeDetails: true,
@@ -109,12 +178,15 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
           maxNodesPerChain,
           summaryOnly,
           snippetLength,
-          title: `Node Traversal from: ${nodeId}`,
+          maxTotalNodes,
+          title: filePath ? `File Traversal from: ${filePath}` : `Node Traversal from: ${resolvedNodeId}`,
         });
       } catch (error) {
         console.error('Node traversal error:', error);
-        await debugLog('Node traversal error', { nodeId, error });
+        await debugLog('Node traversal error', { nodeId, filePath, error });
         return createErrorResponse(error);
+      } finally {
+        await neo4jService.close();
       }
     },
   );
