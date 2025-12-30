@@ -122,13 +122,24 @@ function extractModuleExports(node: any): string[] {
   return extractModuleArrayProperty(node, 'exports');
 }
 
+/**
+ * Escapes special regex characters in a string to prevent ReDoS attacks.
+ * @param str The string to escape
+ * @returns The escaped string safe for use in a regex
+ */
+function escapeRegexChars(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function extractModuleArrayProperty(node: any, propertyName: string): string[] {
   const decorator = node.getDecorator('Module');
   if (!decorator) return [];
   const args = decorator.getArguments();
   if (args.length === 0) return [];
   const configText = args[0].getText();
-  const regex = new RegExp(`${propertyName}\\s*:\\s*\\[([^\\]]+)\\]`);
+  // SECURITY: Escape propertyName to prevent ReDoS attacks
+  const escapedPropertyName = escapeRegexChars(propertyName);
+  const regex = new RegExp(`${escapedPropertyName}\\s*:\\s*\\[([^\\]]+)\\]`);
   const match = configText.match(regex);
   if (!match) return [];
   return match[1]

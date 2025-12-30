@@ -3,7 +3,7 @@
 [![npm version](https://badge.fury.io/js/code-graph-context.svg)](https://www.npmjs.com/package/code-graph-context)
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-007ACC?logo=typescript&logoColor=white)](https://typescriptlang.org/)
-[![Neo4j](https://img.shields.io/badge/Neo4j-5.0+-018bff?logo=neo4j&logoColor=white)](https://neo4j.com/)
+[![Neo4j](https://img.shields.io/badge/Neo4j-5.23+-018bff?logo=neo4j&logoColor=white)](https://neo4j.com/)
 [![NestJS](https://img.shields.io/badge/NestJS-Compatible-E0234E?logo=nestjs&logoColor=white)](https://nestjs.com/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-Powered-412991?logo=openai&logoColor=white)](https://openai.com/)
 [![MCP](https://img.shields.io/badge/MCP-Server-blue)](https://modelcontextprotocol.io/)
@@ -14,11 +14,18 @@ A Model Context Protocol (MCP) server that builds rich code graphs to provide de
 
 ## Features
 
+- **Multi-Project Support**: Parse and query multiple projects in a single database with complete isolation via `projectId`
 - **Rich Code Graph Generation**: Parses TypeScript projects and creates detailed graph representations with AST-level precision
 - **Semantic Search**: Vector-based semantic search using OpenAI embeddings to find relevant code patterns and implementations
 - **Natural Language Querying**: Convert natural language questions into Cypher queries using OpenAI assistants API
 - **Framework-Aware & Customizable**: Built-in NestJS schema with ability to define custom framework patterns via configuration
 - **Weighted Graph Traversal**: Intelligent traversal that scores paths based on relationship importance, query relevance, and depth
+- **Workspace & Monorepo Support**: Auto-detects Turborepo, pnpm, Yarn, and npm workspaces
+- **Async Parsing**: Background parsing with Worker threads for large codebases without blocking the MCP server
+- **Streaming Import**: Chunked processing for projects with 100+ files to prevent memory issues
+- **Incremental Parsing**: Only reparse changed files for faster updates
+- **File Watching**: Real-time monitoring with automatic incremental graph updates on file changes
+- **Impact Analysis**: Assess refactoring risk with dependency analysis (LOW/MEDIUM/HIGH/CRITICAL scoring)
 - **High Performance**: Optimized Neo4j storage with vector indexing for fast retrieval
 - **MCP Integration**: Seamless integration with Claude Code and other MCP-compatible tools
 
@@ -45,7 +52,7 @@ The system uses a dual-schema approach:
 ### Prerequisites
 
 - **Node.js** >= 18
-- **Neo4j** >= 5.0 with APOC plugin
+- **Neo4j** >= 5.23 with APOC plugin
 - **OpenAI API Key** (for embeddings and natural language processing)
 - **Docker** (recommended for Neo4j setup)
 
@@ -112,7 +119,7 @@ docker run -d \
   -p 7474:7474 -p 7687:7687 \
   -e NEO4J_AUTH=neo4j/PASSWORD \
   -e NEO4J_PLUGINS='["apoc"]' \
-  neo4j:5.15
+  neo4j:5.23
 ```
 
 **Option B: Neo4j Desktop**
@@ -232,18 +239,59 @@ npm run build
 
 | Tool | Description | Best For |
 |------|-------------|----------|
+| `list_projects` | List all parsed projects in database | **Discovery** - see available projects and their status |
 | `search_codebase` | Semantic search using vector embeddings | **Starting point** - find code by describing what you need |
 | `traverse_from_node` | Explore relationships from a specific node | **Deep dive** - understand dependencies and connections |
 | `impact_analysis` | Analyze what depends on a node | **Pre-refactoring** - assess blast radius (LOW/MEDIUM/HIGH/CRITICAL) |
-| `parse_typescript_project` | Parse project and build the graph | **Initial setup** - run once to build the database |
+| `parse_typescript_project` | Parse project and build the graph | **Initial setup** - supports async mode for large projects |
+| `check_parse_status` | Monitor async parsing job progress | **Monitoring** - track background parsing jobs |
+| `start_watch_project` | Start file watching for a project | **Live updates** - auto-update graph on file changes |
+| `stop_watch_project` | Stop file watching for a project | **Resource management** - stop monitoring |
+| `list_watchers` | List all active file watchers | **Monitoring** - see what's being watched |
 | `natural_language_to_cypher` | Convert natural language to Cypher | **Advanced queries** - complex graph queries |
 | `test_neo4j_connection` | Verify database connectivity | **Health check** - troubleshooting |
 
+> **Note**: All query tools (`search_codebase`, `traverse_from_node`, `impact_analysis`, `natural_language_to_cypher`) require a `projectId` parameter. Use `list_projects` to discover available projects.
+
 ### Tool Selection Guide
 
-- **`search_codebase`**: Start here. Find code by describing what you're looking for.
-- **`traverse_from_node`**: Use node IDs from search results to explore relationships.
-- **`impact_analysis`**: Before refactoring - understand what depends on the code you're changing.
+- **`list_projects`**: First step - discover what projects are available
+- **`search_codebase`**: Find code by describing what you're looking for
+- **`traverse_from_node`**: Use node IDs from search results to explore relationships
+- **`impact_analysis`**: Before refactoring - understand what depends on the code you're changing
+
+### Multi-Project Workflow
+
+All query tools require a `projectId` parameter to ensure project isolation. You can provide:
+
+1. **Project ID**: `proj_a1b2c3d4e5f6` (auto-generated from path)
+2. **Project Name**: `my-backend` (extracted from package.json or directory name)
+3. **Project Path**: `/path/to/my-backend` (resolved to project ID)
+
+**Typical Workflow:**
+
+```typescript
+// Step 1: Discover available projects
+list_projects()
+// Returns: project names, IDs, status, node/edge counts
+
+// Step 2: Parse a new project (if not already parsed)
+parse_typescript_project({
+  projectPath: '/path/to/project',
+  tsconfigPath: '/path/to/project/tsconfig.json'
+})
+// Returns: projectId for use in queries
+
+// Step 3: Query the project using any of these ID formats
+search_codebase({ projectId: "my-backend", query: "authentication" })
+search_codebase({ projectId: "proj_a1b2c3d4e5f6", query: "authentication" })
+search_codebase({ projectId: "/path/to/my-backend", query: "authentication" })
+```
+
+**Pro Tips:**
+- Use project names instead of full IDs for convenience
+- Run `list_projects` first to see what's available
+- Each project is completely isolated - queries never cross project boundaries
 
 ### Sequential Workflow Patterns
 
@@ -436,24 +484,71 @@ traverse_from_node({
 ```
 
 #### 3. `parse_typescript_project` - Graph Generation
-**Purpose**: Parse a TypeScript/NestJS project and build the initial graph database.
+**Purpose**: Parse a TypeScript/NestJS project and build the graph database.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `projectPath` | string | required | Path to project root directory |
+| `tsconfigPath` | string | required | Path to tsconfig.json |
+| `projectId` | string | auto | Override auto-generated project ID |
+| `clearExisting` | boolean | true | Clear existing data (false = incremental) |
+| `async` | boolean | false | Run in background Worker thread |
+| `useStreaming` | enum | "auto" | "auto", "always", or "never" |
+| `chunkSize` | number | 50 | Files per chunk for streaming |
+| `projectType` | enum | "auto" | "auto", "nestjs", "vanilla" |
+| `watch` | boolean | false | Start file watching after parse (requires `async: false`) |
+| `watchDebounceMs` | number | 1000 | Debounce delay for watch mode in ms |
 
 ```typescript
-// Full project parsing
+// Standard parsing (blocking)
 await mcp.call('parse_typescript_project', {
-  projectPath: '/path/to/your/nestjs/project',
-  tsconfigPath: '/path/to/your/nestjs/project/tsconfig.json',
-  clearExisting: true // Recommended: clear previous data
+  projectPath: '/path/to/project',
+  tsconfigPath: '/path/to/project/tsconfig.json'
+});
+// Returns: projectId for use in queries
+
+// Async parsing for large projects (non-blocking)
+await mcp.call('parse_typescript_project', {
+  projectPath: '/path/to/large-project',
+  tsconfigPath: '/path/to/large-project/tsconfig.json',
+  async: true  // Returns immediately with job ID
+});
+// Returns: "Job ID: job_abc123... Use check_parse_status to monitor."
+
+// Check async job progress
+await mcp.call('check_parse_status', { jobId: 'job_abc123' });
+// Returns: progress %, phase, nodes/edges imported
+
+// Incremental parsing (only changed files)
+await mcp.call('parse_typescript_project', {
+  projectPath: '/path/to/project',
+  tsconfigPath: '/path/to/project/tsconfig.json',
+  clearExisting: false  // Keep existing, only reparse changed files
 });
 
-// Response: Success confirmation with node/edge counts
-"✅ SUCCESS: Parsed 2,445 nodes and 4,892 edges. Graph imported to Neo4j."
+// Parse and start file watching
+await mcp.call('parse_typescript_project', {
+  projectPath: '/path/to/project',
+  tsconfigPath: '/path/to/project/tsconfig.json',
+  watch: true,           // Start watching after parse completes
+  watchDebounceMs: 1000  // Wait 1s after last change before updating
+});
+// File changes now automatically trigger incremental graph updates
 ```
 
+**Modes:**
+- **Standard**: Blocks until complete, best for small-medium projects
+- **Async**: Returns immediately, use `check_parse_status` to monitor
+- **Streaming**: Auto-enabled for projects >100 files, prevents OOM
+- **Incremental**: Set `clearExisting: false` to only reparse changed files
+- **Watch**: Set `watch: true` to automatically update graph on file changes (requires sync mode)
+
 **Performance Notes**:
-- Large projects (>1000 files) may take several minutes
-- Embedding generation adds significant time but enables semantic search
-- Use `clearExisting: true` to avoid duplicate data
+- Large projects (>1000 files) should use `async: true`
+- Streaming is auto-enabled for projects >100 files
+- Incremental mode detects changes via mtime, size, and content hash
+- Worker threads have 30-minute timeout and 8GB heap limit
 
 #### 4. `test_neo4j_connection` - Health Check
 **Purpose**: Verify database connectivity and APOC plugin availability.
@@ -467,63 +562,104 @@ await mcp.call('test_neo4j_connection');
 APOC plugin available with 438 functions"
 ```
 
+#### 5. File Watching Tools
+**Purpose**: Monitor file changes and automatically update the graph.
+
+```typescript
+// Option 1: Start watching during parse
+await mcp.call('parse_typescript_project', {
+  projectPath: '/path/to/project',
+  tsconfigPath: '/path/to/project/tsconfig.json',
+  watch: true  // Starts watching after parse completes
+});
+
+// Option 2: Start watching a previously parsed project
+await mcp.call('start_watch_project', {
+  projectId: 'my-backend',      // Project name, ID, or path
+  debounceMs: 2000              // Optional: wait 2s after last change (default: 1000)
+});
+
+// List all active watchers
+await mcp.call('list_watchers');
+// Returns: watcher status, pending changes, last update time
+
+// Stop watching a project
+await mcp.call('stop_watch_project', {
+  projectId: 'my-backend'
+});
+```
+
+**How It Works:**
+1. File watcher monitors `.ts` and `.tsx` files using native OS events
+2. Changes are debounced to batch rapid edits
+3. Only modified files are re-parsed (incremental)
+4. Cross-file edges are preserved during updates
+5. Graph updates happen automatically in the background
+
+**Resource Limits:**
+- Maximum 10 concurrent watchers
+- 1000 pending events per watcher
+- Graceful cleanup on server shutdown
+
 ### Workflow Examples
 
 #### Example 1: Understanding Authentication Flow
 ```typescript
 // Step 1: Find authentication-related code
 const searchResult = await mcp.call('search_codebase', {
+  projectId: 'my-backend',  // Required: project name, ID, or path
   query: 'JWT token validation authentication'
 });
 
 // Step 2: Extract node ID from most relevant result
-const nodeId = "MethodDeclaration:697d2c96-1f91-4894-985d-1eece117b72b";
+const nodeId = "proj_abc123:MethodDeclaration:697d2c96";
 
 // Step 3: Explore immediate relationships
 const immediateConnections = await mcp.call('traverse_from_node', {
+  projectId: 'my-backend',
   nodeId,
-  maxDepth: 2,
-  skip: 0
+  maxDepth: 2
 });
 
 // Step 4: Go deeper to understand full authentication chain
 const deepConnections = await mcp.call('traverse_from_node', {
+  projectId: 'my-backend',
   nodeId,
-  maxDepth: 4,
-  skip: 0
+  maxDepth: 4
 });
 
-// Step 5: Explore different connection branches
-const alternateConnections = await mcp.call('traverse_from_node', {
-  nodeId,
-  maxDepth: 3,
-  skip: 10  // Skip first 10 to see different connections
+// Step 5: Assess refactoring impact
+const impact = await mcp.call('impact_analysis', {
+  projectId: 'my-backend',
+  nodeId
 });
+// Returns: risk level (LOW/MEDIUM/HIGH/CRITICAL), dependents, affected files
 ```
 
 #### Example 2: API Endpoint Analysis
 ```typescript
 // Step 1: Search for controller endpoints
 const controllerSearch = await mcp.call('search_codebase', {
+  projectId: 'my-backend',
   query: 'HTTP controller endpoints routes POST GET'
 });
 
 // Step 2: Find a controller node ID from results
-const controllerNodeId = "ClassDeclaration:controller-uuid";
+const controllerNodeId = "proj_abc123:ClassDeclaration:controller-uuid";
 
 // Step 3: Explore what endpoints this controller exposes
 const endpoints = await mcp.call('traverse_from_node', {
+  projectId: 'my-backend',
   nodeId: controllerNodeId,
-  maxDepth: 2,
-  skip: 0
+  maxDepth: 2
 });
 
 // Step 4: For each endpoint found, explore its dependencies
-const endpointNodeId = "MethodDeclaration:endpoint-uuid";
+const endpointNodeId = "proj_abc123:MethodDeclaration:endpoint-uuid";
 const endpointDeps = await mcp.call('traverse_from_node', {
+  projectId: 'my-backend',
   nodeId: endpointNodeId,
-  maxDepth: 3,
-  skip: 0
+  maxDepth: 3
 });
 ```
 
@@ -531,20 +667,24 @@ const endpointDeps = await mcp.call('traverse_from_node', {
 ```typescript
 // Step 1: Find a specific service
 const serviceSearch = await mcp.call('search_codebase', {
+  projectId: 'my-backend',
   query: 'UserService injectable dependency injection'
 });
 
 // Step 2: Map all its dependencies (what it injects)
 const serviceDeps = await mcp.call('traverse_from_node', {
-  nodeId: "ClassDeclaration:user-service-uuid",
+  projectId: 'my-backend',
+  nodeId: "proj_abc123:ClassDeclaration:user-service-uuid",
   maxDepth: 2,
-  skip: 0
+  direction: "OUTGOING"  // What this service depends on
 });
 
-// Step 3: Find what depends on this service (reverse relationships)
-const serviceDependents = await mcp.call('search_codebase', {
-  query: 'UserService injection constructor parameter'
+// Step 3: Impact analysis - what depends on this service
+const impact = await mcp.call('impact_analysis', {
+  projectId: 'my-backend',
+  nodeId: "proj_abc123:ClassDeclaration:user-service-uuid"
 });
+// Returns: risk level, all dependents, affected files
 ```
 
 ### Advanced Usage Tips
@@ -561,7 +701,10 @@ const serviceDependents = await mcp.call('search_codebase', {
 
 **Example Reading Pattern**:
 ```typescript
-const response = await search_codebase({ query: "authentication" });
+const response = await search_codebase({
+  projectId: "my-backend",
+  query: "authentication"
+});
 
 // 1. Get overview statistics
 console.log(`Found ${response.totalConnections} connections across ${response.uniqueFiles} files`);
@@ -619,6 +762,7 @@ Each potential path is scored using three factors multiplied together:
 ```typescript
 // Use standard traversal for exhaustive exploration
 search_codebase({
+  projectId: "my-backend",
   query: "...",
   useWeightedTraversal: false
 })
@@ -685,13 +829,13 @@ Document your custom node types and relationships so Claude knows what to search
 
 ```markdown
 **Finding authentication:**
-search_codebase({ query: "JWT authentication middleware" })
+search_codebase({ projectId: "my-project", query: "JWT authentication middleware" })
 
 **Tracing dependencies:**
-traverse_from_node({ nodeId: "...", direction: "OUTGOING", maxDepth: 5 })
+traverse_from_node({ projectId: "my-project", nodeId: "...", direction: "OUTGOING", maxDepth: 5 })
 
 **Impact analysis:**
-traverse_from_node({ nodeId: "...", direction: "INCOMING", maxDepth: 4 })
+impact_analysis({ projectId: "my-project", nodeId: "..." })
 ```
 
 ## Framework Support
@@ -750,6 +894,10 @@ The server provides deep understanding of NestJS patterns:
 | `NEO4J_URI` | Neo4j database URI | `bolt://localhost:7687` |
 | `NEO4J_USER` | Neo4j username | `neo4j` |
 | `NEO4J_PASSWORD` | Neo4j password | `PASSWORD` |
+| `NEO4J_QUERY_TIMEOUT_MS` | Neo4j query timeout | `30000` (30s) |
+| `NEO4J_CONNECTION_TIMEOUT_MS` | Neo4j connection timeout | `10000` (10s) |
+| `OPENAI_EMBEDDING_TIMEOUT_MS` | Embedding API timeout | `60000` (60s) |
+| `OPENAI_ASSISTANT_TIMEOUT_MS` | Assistant API timeout | `120000` (120s) |
 
 ### Parse Options
 
@@ -776,27 +924,27 @@ const parseOptions = {
 ### Current Limitations
 
 1. **Language Support**: Currently supports TypeScript/NestJS only
-2. **Framework Support**: Primary focus on NestJS patterns  
+2. **Framework Support**: Primary focus on NestJS patterns (React, Angular, Vue planned)
 3. **File Size**: Large files (>10MB) may cause parsing performance issues
-4. **Memory Usage**: Graph generation is memory-intensive for very large projects
+4. **Memory Usage**: Mitigated by streaming import for large projects
 5. **Vector Search**: Requires OpenAI API for semantic search functionality
-6. **Real-time Updates**: No file watching - requires manual re-parsing for code changes
-7. **Response Size**: Large graph traversals can exceed token limits (25,000 tokens max)
-8. **Neo4j Memory**: Database memory limits can cause query failures on large graphs
+6. **Response Size**: Large graph traversals can exceed token limits (25,000 tokens max)
+7. **Neo4j Memory**: Database memory limits can cause query failures on large graphs
 
 ### Performance Considerations
 
-- **Large Projects**: Projects with >10,000 files may require increased memory allocation
+- **Large Projects**: Use `async: true` for projects with >1000 files
+- **Streaming**: Auto-enabled for >100 files to prevent memory issues
 - **Graph Traversal**: Deep traversals (>5 levels) may be slow for highly connected graphs
 - **Embedding Generation**: Initial parsing with embeddings can take several minutes for large codebases
 - **Neo4j Memory**: Recommend at least 4GB RAM allocation for Neo4j with large graphs
+- **Worker Timeout**: Async parsing has 30-minute timeout for safety
 
 ### Known Issues
 
 1. **Complex Type Inference**: Advanced TypeScript type gymnastics may not be fully captured
 2. **Dynamic Imports**: Runtime module loading not tracked in static analysis
 3. **Decorator Arguments**: Complex decorator argument patterns may not be fully parsed
-4. **Monorepo Support**: Limited support for complex monorepo structures
 
 ## Troubleshooting
 

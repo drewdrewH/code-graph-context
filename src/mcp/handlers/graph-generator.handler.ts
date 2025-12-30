@@ -6,7 +6,7 @@
 import fs from 'fs/promises';
 
 import { Neo4jNode, Neo4jEdge } from '../../core/config/schema.js';
-import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
+import { EmbeddingsService, EMBEDDING_BATCH_CONFIG } from '../../core/embeddings/embeddings.service.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { DEFAULTS } from '../constants.js';
 import { debugLog } from '../utils.js';
@@ -25,18 +25,27 @@ interface ImportResult {
 
 export class GraphGeneratorHandler {
   private static readonly EMBEDDED_LABEL = 'Embedded';
+  private projectId: string | null = null;
 
   constructor(
     private readonly neo4jService: Neo4jService,
     private readonly embeddingsService: EmbeddingsService,
   ) {}
+
+  /**
+   * Set the projectId for project-scoped operations
+   */
+  setProjectId(projectId: string): void {
+    this.projectId = projectId;
+  }
+
   async generateGraph(
     graphJsonPath: string,
     batchSize = DEFAULTS.batchSize,
     clearExisting = true,
   ): Promise<ImportResult> {
     console.log(`Generating graph from JSON file: ${graphJsonPath}`);
-    await debugLog('Starting graph generation', { graphJsonPath, batchSize, clearExisting });
+    await debugLog('Starting graph generation', { graphJsonPath, batchSize, clearExisting, projectId: this.projectId });
 
     try {
       const graphData = await this.loadGraphData(graphJsonPath);
@@ -49,6 +58,7 @@ export class GraphGeneratorHandler {
         await this.clearExistingData();
       }
 
+      await this.createProjectIndexes();
       await this.importNodes(nodes, batchSize);
       await this.importEdges(edges, batchSize);
       await this.createVectorIndexes();
@@ -74,9 +84,24 @@ export class GraphGeneratorHandler {
   }
 
   private async clearExistingData(): Promise<void> {
-    console.log('Clearing existing graph data...');
-    await this.neo4jService.run(QUERIES.CLEAR_DATABASE);
-    await debugLog('Existing graph data cleared');
+    if (this.projectId) {
+      console.log(`Clearing existing graph data for project: ${this.projectId}...`);
+      await this.neo4jService.run(QUERIES.CLEAR_PROJECT, { projectId: this.projectId });
+      await debugLog('Existing project graph data cleared', { projectId: this.projectId });
+    } else {
+      console.log('Clearing ALL existing graph data (no projectId set)...');
+      await this.neo4jService.run(QUERIES.CLEAR_DATABASE);
+      await debugLog('Existing graph data cleared');
+    }
+  }
+
+  private async createProjectIndexes(): Promise<void> {
+    console.log('Creating project indexes...');
+    await this.neo4jService.run(QUERIES.CREATE_PROJECT_INDEX_EMBEDDED);
+    await this.neo4jService.run(QUERIES.CREATE_PROJECT_INDEX_SOURCEFILE);
+    await this.neo4jService.run(QUERIES.CREATE_PROJECT_ID_INDEX_EMBEDDED);
+    await this.neo4jService.run(QUERIES.CREATE_PROJECT_ID_INDEX_SOURCEFILE);
+    await debugLog('Project indexes created');
   }
 
   private async importNodes(nodes: Neo4jNode[], batchSize: number): Promise<void> {
@@ -97,20 +122,76 @@ export class GraphGeneratorHandler {
     }
   }
 
+  /**
+   * Process a batch of nodes with batched embedding calls.
+   * Collects all texts needing embedding, makes a single batched API call,
+   * then maps embeddings back to their respective nodes.
+   */
   private async processNodeBatch(nodes: any[]): Promise<any[]> {
-    return Promise.all(
-      nodes.map(async (node) => {
-        const embedding = await this.embedNodeSourceCode(node);
-        return {
+    // Separate nodes that need embedding from those that don't
+    const nodesNeedingEmbedding: { node: any; index: number; text: string }[] = [];
+    const nodeResults: any[] = new Array(nodes.length);
+
+    // First pass: identify nodes needing embedding and prepare texts
+    nodes.forEach((node, index) => {
+      if (node.properties?.sourceCode && !node.skipEmbedding) {
+        // Truncate to stay under embedding model's 8192 token limit (~4 chars/token)
+        const truncatedCode = node.properties.sourceCode.slice(0, DEFAULTS.maxEmbeddingChars);
+        // Include node name and type in embedding for better search matching
+        // e.g., "ProfileService ClassDeclaration" helps "profile service" queries match
+        const metadata = `${node.properties.name ?? ''} ${node.labels?.join(' ') ?? ''}`.trim();
+        const embeddingText = metadata ? `${metadata}\n${truncatedCode}` : truncatedCode;
+        nodesNeedingEmbedding.push({
+          node,
+          index,
+          text: embeddingText,
+        });
+      } else {
+        // Node doesn't need embedding - prepare it immediately
+        nodeResults[index] = {
           ...node,
-          labels: embedding ? [...node.labels, GraphGeneratorHandler.EMBEDDED_LABEL] : node.labels,
+          labels: node.labels,
           properties: {
             ...this.flattenProperties(node.properties),
-            embedding,
+            embedding: null,
           },
         };
-      }),
-    );
+      }
+    });
+
+    // Batch embed all texts that need it
+    if (nodesNeedingEmbedding.length > 0) {
+      const texts = nodesNeedingEmbedding.map((n) => n.text);
+
+      try {
+        const embeddings = await this.embeddingsService.embedTextsInBatches(texts, EMBEDDING_BATCH_CONFIG.maxBatchSize);
+
+        // Map embeddings back to their nodes
+        nodesNeedingEmbedding.forEach((item, i) => {
+          const embedding = embeddings[i];
+          nodeResults[item.index] = {
+            ...item.node,
+            labels: embedding ? [...item.node.labels, GraphGeneratorHandler.EMBEDDED_LABEL] : item.node.labels,
+            properties: {
+              ...this.flattenProperties(item.node.properties),
+              embedding,
+            },
+          };
+        });
+
+        await debugLog('Batch embedding completed', {
+          totalNodes: nodes.length,
+          nodesEmbedded: nodesNeedingEmbedding.length,
+          batchesUsed: Math.ceil(texts.length / EMBEDDING_BATCH_CONFIG.maxBatchSize),
+        });
+      } catch (error) {
+        // DON'T silently continue - propagate the error so user knows what's wrong
+        await debugLog('Embedding failed', { error: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
+    }
+
+    return nodeResults;
   }
 
   private async importEdges(edges: any[], batchSize: number): Promise<void> {
@@ -122,7 +203,10 @@ export class GraphGeneratorHandler {
         properties: this.flattenProperties(edge.properties),
       }));
 
-      const result = await this.neo4jService.run(QUERIES.CREATE_RELATIONSHIP, { edges: batch });
+      const result = await this.neo4jService.run(QUERIES.CREATE_RELATIONSHIP, {
+        edges: batch,
+        projectId: this.projectId,
+      });
 
       const batchEnd = Math.min(i + batchSize, edges.length);
       console.log(`Created ${result[0].created} edges in batch ${i + 1}-${batchEnd}`);
@@ -139,23 +223,6 @@ export class GraphGeneratorHandler {
     console.log('Creating vector indexes...');
     await this.neo4jService.run(QUERIES.CREATE_EMBEDDED_VECTOR_INDEX);
     await debugLog('Vector indexes created');
-  }
-
-  private async embedNodeSourceCode(node: any): Promise<number[] | null> {
-    if (!node.properties?.sourceCode || node.skipEmbedding) {
-      return null;
-    }
-
-    try {
-      const sourceCode = node.properties.sourceCode;
-      const embedding = await this.embeddingsService.embedText(sourceCode);
-      await debugLog('Node embedded', { nodeId: node.id, codeLength: sourceCode.length });
-      return embedding;
-    } catch (error) {
-      console.warn(`Failed to embed node ${node.id}:`, error);
-      await debugLog('Embedding failed', { nodeId: node.id, error });
-      return null;
-    }
   }
 
   private flattenProperties(properties: any): any {

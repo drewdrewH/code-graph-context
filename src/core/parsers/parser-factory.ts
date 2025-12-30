@@ -24,6 +24,8 @@ export interface ParserFactoryOptions {
   customFrameworkSchemas?: FrameworkSchema[];
   excludePatterns?: string[];
   excludedNodeTypes?: CoreNodeType[];
+  projectId?: string; // Optional - derived from workspacePath if not provided
+  lazyLoad?: boolean; // Set to true for large projects to avoid OOM
 }
 
 export class ParserFactory {
@@ -38,6 +40,8 @@ export class ParserFactory {
       customFrameworkSchemas = [],
       excludePatterns = EXCLUDE_PATTERNS_REGEX,
       excludedNodeTypes = [CoreNodeType.PARAMETER_DECLARATION],
+      projectId,
+      lazyLoad = false,
     } = options;
 
     // Select framework schemas based on project type
@@ -46,10 +50,18 @@ export class ParserFactory {
     console.log(`📦 Creating parser for ${projectType} project`);
     console.log(`📚 Framework schemas: ${frameworkSchemas.map((s) => s.name).join(', ')}`);
 
-    return new TypeScriptParser(workspacePath, tsConfigPath, CORE_TYPESCRIPT_SCHEMA, frameworkSchemas, {
-      excludePatterns,
-      excludedNodeTypes,
-    });
+    return new TypeScriptParser(
+      workspacePath,
+      tsConfigPath,
+      CORE_TYPESCRIPT_SCHEMA,
+      frameworkSchemas,
+      {
+        excludePatterns,
+        excludedNodeTypes,
+      },
+      projectId,
+      lazyLoad,
+    );
   }
 
   /**
@@ -122,7 +134,12 @@ export class ParserFactory {
   /**
    * Create parser with auto-detection
    */
-  static async createParserWithAutoDetection(workspacePath: string, tsConfigPath?: string): Promise<TypeScriptParser> {
+  static async createParserWithAutoDetection(
+    workspacePath: string,
+    tsConfigPath?: string,
+    projectId?: string,
+    lazyLoad: boolean = false,
+  ): Promise<TypeScriptParser> {
     const projectType = await this.detectProjectType(workspacePath);
     console.log(`🔍 Auto-detected project type: ${projectType}`);
 
@@ -130,6 +147,8 @@ export class ParserFactory {
       workspacePath,
       tsConfigPath,
       projectType,
+      projectId,
+      lazyLoad,
     });
   }
 }

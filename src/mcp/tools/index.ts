@@ -5,11 +5,16 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import { createCheckParseStatusTool } from './check-parse-status.tool.js';
 import { createHelloTool } from './hello.tool.js';
 import { createImpactAnalysisTool } from './impact-analysis.tool.js';
+import { createListProjectsTool } from './list-projects.tool.js';
+import { createListWatchersTool } from './list-watchers.tool.js';
 import { createNaturalLanguageToCypherTool } from './natural-language-to-cypher.tool.js';
 import { createParseTypescriptProjectTool } from './parse-typescript-project.tool.js';
 import { createSearchCodebaseTool } from './search-codebase.tool.js';
+import { createStartWatchProjectTool } from './start-watch-project.tool.js';
+import { createStopWatchProjectTool } from './stop-watch-project.tool.js';
 import { createTestNeo4jConnectionTool } from './test-neo4j-connection.tool.js';
 import { createTraverseFromNodeTool } from './traverse-from-node.tool.js';
 
@@ -27,6 +32,15 @@ export const registerAllTools = (server: McpServer): void => {
   createNaturalLanguageToCypherTool(server);
   createImpactAnalysisTool(server);
 
-  // Register project parsing tool
+  // Register project parsing tools
   createParseTypescriptProjectTool(server);
+  createCheckParseStatusTool(server);
+
+  // Register project management tools
+  createListProjectsTool(server);
+
+  // Register file watch tools
+  createStartWatchProjectTool(server);
+  createStopWatchProjectTool(server);
+  createListWatchersTool(server);
 };

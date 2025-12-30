@@ -3,9 +3,36 @@
  * Common utility functions used across the MCP server
  */
 
+import { resolveProjectIdFromInput } from '../core/utils/project-id.js';
+import { Neo4jService } from '../storage/neo4j/neo4j.service.js';
+
 import { MESSAGES } from './constants.js';
 
-export { debugLog } from '../utils/file-utils.js';
+export { debugLog } from '../core/utils/file-utils.js';
+
+/**
+ * Result type for project ID resolution
+ */
+export type ResolveProjectIdResult =
+  | { success: true; projectId: string }
+  | { success: false; error: ReturnType<typeof createErrorResponse> };
+
+/**
+ * Resolve project ID with standardized error handling
+ * Returns either the resolved projectId or an error response ready for tool return
+ */
+export const resolveProjectIdOrError = async (
+  projectId: string,
+  neo4jService: Neo4jService,
+): Promise<ResolveProjectIdResult> => {
+  try {
+    const resolved = await resolveProjectIdFromInput(projectId, neo4jService);
+    return { success: true, projectId: resolved };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: createErrorResponse(message) };
+  }
+};
 
 /**
  * Standard error response format for MCP tools
@@ -37,6 +64,30 @@ export const createSuccessResponse = (text: string): { content: Array<{ type: 't
 };
 
 /**
+ * Result type for code truncation
+ */
+export interface TruncateCodeResult {
+  text: string;
+  truncated?: number;
+  hasMore?: boolean;
+}
+
+/**
+ * Truncate code to specified max length, showing first and last portions
+ */
+export const truncateCode = (code: string, maxLength: number): TruncateCodeResult => {
+  if (code.length <= maxLength) {
+    return { text: code };
+  }
+  const half = Math.floor(maxLength / 2);
+  return {
+    text: code.substring(0, half) + '\n\n... [truncated] ...\n\n' + code.substring(code.length - half),
+    hasMore: true,
+    truncated: code.length - maxLength,
+  };
+};
+
+/**
  * Format node information as structured data
  */
 export const formatNodeInfo = (value: any, key: string): any => {
@@ -54,18 +105,11 @@ export const formatNodeInfo = (value: any, key: string): any => {
 
     // Include source code if available and not a SourceFile
     if (value.properties.sourceCode && value.properties.coreType !== 'SourceFile') {
-      const code = value.properties.sourceCode;
-      const maxLength = 1000; // Show max 1000 chars total
-
-      if (code.length <= maxLength) {
-        result.sourceCode = code;
-      } else {
-        // Show first 500 and last 500 characters
-        const half = Math.floor(maxLength / 2);
-        result.sourceCode =
-          code.substring(0, half) + '\n\n... [truncated] ...\n\n' + code.substring(code.length - half);
-        result.hasMore = true;
-        result.truncated = code.length - maxLength;
+      const truncateResult = truncateCode(value.properties.sourceCode, 1000);
+      result.sourceCode = truncateResult.text;
+      if (truncateResult.hasMore) {
+        result.hasMore = truncateResult.hasMore;
+        result.truncated = truncateResult.truncated;
       }
     }
 

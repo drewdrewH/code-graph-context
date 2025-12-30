@@ -3,26 +3,38 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'node:path';
 
+import { glob } from 'glob';
 import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
+
+import { createFrameworkEdgeData } from '../utils/edge-factory.js';
 
 /**
  * Generate a deterministic node ID based on stable properties.
  * This ensures the same node gets the same ID across reparses.
  *
- * Identity is based on: coreType + filePath + name (+ parentId for nested nodes)
+ * Identity is based on: projectId + coreType + filePath + name (+ parentId for nested nodes)
  * This is stable because when it matters (one side of edge not reparsed),
  * names are guaranteed unchanged (or imports would break, triggering reparse).
+ *
+ * Including projectId ensures nodes from different projects have unique IDs
+ * even if they have identical file paths and names.
  */
-const generateDeterministicId = (coreType: string, filePath: string, name: string, parentId?: string): string => {
-  const parts = parentId ? [coreType, filePath, parentId, name] : [coreType, filePath, name];
+const generateDeterministicId = (
+  projectId: string,
+  coreType: string,
+  filePath: string,
+  name: string,
+  parentId?: string,
+): string => {
+  const parts = parentId ? [projectId, coreType, filePath, parentId, name] : [projectId, coreType, filePath, name];
   const identity = parts.join('::');
   const hash = crypto.createHash('sha256').update(identity).digest('hex').substring(0, 16);
 
-  return `${coreType}:${hash}`;
+  return `${projectId}:${coreType}:${hash}`;
 };
 
-import { hashFile } from '../../utils/file-utils.js';
+import { debugLog, hashFile } from '../utils/file-utils.js';
 import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
 import {
   CoreNodeType,
@@ -45,9 +57,25 @@ import {
   ParsedNode,
   CoreNode,
 } from '../config/schema.js';
+import { resolveProjectId } from '../utils/project-id.js';
 
 // Re-export ParsedNode for convenience
 export type { ParsedNode };
+
+/**
+ * Common interface for parsers that support streaming import.
+ * Both TypeScriptParser and WorkspaceParser implement this.
+ */
+export interface StreamingParser {
+  getProjectId(): string;
+  discoverSourceFiles(): Promise<string[]>;
+  parseChunk(filePaths: string[], skipEdgeResolution?: boolean): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }>;
+  addExistingNodesFromChunk(nodes: Neo4jNode[]): void;
+  clearParsedData(): void;
+  resolveDeferredEdgesManually(): Promise<Neo4jEdge[]>;
+  applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]>;
+  getCurrentCounts(): { nodes: number; edges: number; deferredEdges: number };
+}
 
 export interface ParsedEdge {
   id: string;
@@ -88,8 +116,13 @@ export class TypeScriptParser {
     sourceNodeId: string;
     targetName: string;
     targetType: CoreNodeType;
+    targetFilePath?: string; // File path of target for precise matching (used for EXTENDS/IMPLEMENTS)
   }> = [];
   private sharedContext: ParsingContext = new Map(); // Shared context for custom data
+  private projectId: string; // Project identifier for multi-project isolation
+  private lazyLoad: boolean; // Whether to use lazy file loading for large projects
+  private discoveredFiles: string[] | null = null; // Cached file discovery results
+  private deferEdgeEnhancements: boolean = false; // When true, skip edge enhancements (parent will handle)
 
   constructor(
     private workspacePath: string,
@@ -97,23 +130,60 @@ export class TypeScriptParser {
     coreSchema: CoreTypeScriptSchema = CORE_TYPESCRIPT_SCHEMA,
     frameworkSchemas: FrameworkSchema[] = [NESTJS_FRAMEWORK_SCHEMA],
     parseConfig: ParseOptions = DEFAULT_PARSE_OPTIONS,
+    projectId?: string, // Optional - derived from workspacePath if not provided
+    lazyLoad: boolean = false, // Set to true for large projects to avoid OOM
   ) {
     this.coreSchema = coreSchema;
     this.frameworkSchemas = frameworkSchemas;
     this.parseConfig = parseConfig;
+    this.projectId = resolveProjectId(workspacePath, projectId);
+    this.lazyLoad = lazyLoad;
 
-    this.project = new Project({
-      tsConfigFilePath: tsConfigPath,
-      skipAddingFilesFromTsConfig: false,
-      compilerOptions: {
-        experimentalDecorators: true,
-        emitDecoratorMetadata: true,
-        target: 7,
-        module: 1,
-        esModuleInterop: true,
-      },
-    });
-    this.project.addSourceFilesAtPaths(path.join(workspacePath, '**/*.ts'));
+    console.log(`🆔 Project ID: ${this.projectId}`);
+    console.log(`📂 Lazy loading: ${lazyLoad ? 'enabled' : 'disabled'}`);
+
+    if (lazyLoad) {
+      // Lazy mode: create Project without loading any files
+      // Files will be added just-in-time during parseChunk()
+      this.project = new Project({
+        tsConfigFilePath: tsConfigPath,
+        skipAddingFilesFromTsConfig: true, // Don't load files from tsconfig
+        skipFileDependencyResolution: true, // Don't load node_modules types
+        compilerOptions: {
+          experimentalDecorators: true,
+          emitDecoratorMetadata: true,
+          target: 7,
+          module: 1,
+          esModuleInterop: true,
+          skipLibCheck: true,
+        },
+      });
+    } else {
+      // Eager mode: load all files upfront (original behavior for small projects)
+      this.project = new Project({
+        tsConfigFilePath: tsConfigPath,
+        skipAddingFilesFromTsConfig: false,
+        skipFileDependencyResolution: true,
+        compilerOptions: {
+          experimentalDecorators: true,
+          emitDecoratorMetadata: true,
+          target: 7,
+          module: 1,
+          esModuleInterop: true,
+          skipLibCheck: true,
+        },
+      });
+      // Include both .ts and .tsx files
+      this.project.addSourceFilesAtPaths(path.join(workspacePath, '**/*.{ts,tsx}'));
+    }
+  }
+
+  /**
+   * Get the projectId for this parser instance.
+   * This is used by tools to pass projectId to Neo4j queries.
+   */
+  getProjectId(): string {
+    return this.projectId;
   }
 
   /**
@@ -131,6 +201,7 @@ export class TypeScriptParser {
         labels: node.labels,
         properties: {
           id: node.id,
+          projectId: this.projectId,
           name: node.name,
           coreType: node.coreType as CoreNodeType,
           filePath: node.filePath,
@@ -147,8 +218,18 @@ export class TypeScriptParser {
     let sourceFiles: SourceFile[];
 
     if (filesToParse && filesToParse.length > 0) {
+      // In lazy mode, files may not be loaded yet - add them if needed
       sourceFiles = filesToParse
-        .map((filePath) => this.project.getSourceFile(filePath))
+        .map((filePath) => {
+          const existing = this.project.getSourceFile(filePath);
+          if (existing) return existing;
+          // Add file to project if not already loaded (lazy mode)
+          try {
+            return this.project.addSourceFileAtPath(filePath);
+          } catch {
+            return undefined;
+          }
+        })
         .filter((sf): sf is SourceFile => sf !== undefined);
     } else {
       sourceFiles = this.project.getSourceFiles();
@@ -159,7 +240,7 @@ export class TypeScriptParser {
       await this.parseCoreTypeScriptV2(sourceFile);
     }
 
-    this.resolveDeferredEdges();
+    await this.resolveDeferredEdges();
 
     await this.applyContextExtractors();
 
@@ -197,8 +278,8 @@ export class TypeScriptParser {
     const filePath = sourceFile.getFilePath();
     const stats = await fs.stat(filePath);
     const fileTrackingProperties: Partial<Neo4jNodeProperties> = {
-      size: stats.size,
-      mtime: stats.mtimeMs,
+      size: Number(stats.size),
+      mtime: Number(stats.mtimeMs),
       contentHash: await hashFile(filePath),
     };
 
@@ -206,6 +287,40 @@ export class TypeScriptParser {
     this.addNode(sourceFileNode);
 
     await this.parseChildNodes(this.coreSchema.nodeTypes[CoreNodeType.SOURCE_FILE], sourceFileNode, sourceFile);
+
+    // Queue IMPORTS edges for deferred resolution
+    // Note: ImportDeclaration nodes are already created by parseChildNodes via the schema
+    // This adds SourceFile → SourceFile IMPORTS edges for cross-file dependency tracking
+    for (const importDecl of sourceFile.getImportDeclarations()) {
+      const moduleSpecifier = importDecl.getModuleSpecifierValue();
+
+      // Skip external modules (node_modules) - only process relative and scoped imports
+      if (!moduleSpecifier.startsWith('.') && !moduleSpecifier.startsWith('@')) {
+        continue;
+      }
+
+      // Use ts-morph's module resolution to get the actual file path
+      // This correctly resolves relative imports like './auth.controller' to absolute paths
+      try {
+        const targetSourceFile = importDecl.getModuleSpecifierSourceFile();
+        if (targetSourceFile) {
+          this.deferredEdges.push({
+            edgeType: CoreEdgeType.IMPORTS,
+            sourceNodeId: sourceFileNode.id,
+            targetName: targetSourceFile.getFilePath(), // Store resolved absolute path
+            targetType: CoreNodeType.SOURCE_FILE,
+          });
+        }
+      } catch {
+        // If resolution fails, fall back to raw module specifier
+        this.deferredEdges.push({
+          edgeType: CoreEdgeType.IMPORTS,
+          sourceNodeId: sourceFileNode.id,
+          targetName: moduleSpecifier,
+          targetType: CoreNodeType.SOURCE_FILE,
+        });
+      }
+    }
 
     if (this.shouldParseVariables(sourceFile.getFilePath())) {
       for (const varStatement of sourceFile.getVariableStatements()) {
@@ -308,14 +423,51 @@ export class TypeScriptParser {
         const targetName = this.extractRelationshipTargetName(target);
         if (!targetName) continue;
 
+        // For EXTENDS/IMPLEMENTS, try to get the file path from the resolved declaration
+        let targetFilePath: string | undefined;
+        if (edgeType === CoreEdgeType.EXTENDS || edgeType === CoreEdgeType.IMPLEMENTS) {
+          targetFilePath = this.extractTargetFilePath(target);
+        }
+
         this.deferredEdges.push({
           edgeType: edgeType as CoreEdgeType,
           sourceNodeId: parsedNode.id,
           targetName,
           targetType: targetNodeType,
+          targetFilePath,
         });
       }
     }
+  }
+
+  /**
+   * Extract the file path from a resolved target declaration.
+   * Used for EXTENDS/IMPLEMENTS to enable precise matching.
+   */
+  private extractTargetFilePath(target: Node): string | undefined {
+    try {
+      // If target is already a ClassDeclaration or InterfaceDeclaration, get its source file
+      if (Node.isClassDeclaration(target) || Node.isInterfaceDeclaration(target)) {
+        return target.getSourceFile().getFilePath();
+      }
+
+      // If target is ExpressionWithTypeArguments (e.g., extends Foo<T>), resolve the type
+      if (Node.isExpressionWithTypeArguments(target)) {
+        const expression = target.getExpression();
+        if (Node.isIdentifier(expression)) {
+          // Try to get the definition of the type
+          const definitions = expression.getDefinitionNodes();
+          for (const def of definitions) {
+            if (Node.isClassDeclaration(def) || Node.isInterfaceDeclaration(def)) {
+              return def.getSourceFile().getFilePath();
+            }
+          }
+        }
+      }
+    } catch {
+      // If resolution fails (e.g., external type), return undefined
+    }
+    return undefined;
   }
 
   /**
@@ -335,34 +487,181 @@ export class TypeScriptParser {
 
   /**
    * Find a parsed node by name and core type
+   * For SourceFiles, implements smart import resolution:
+   * - Direct file path match
+   * - Relative import resolution (./foo, ../bar)
+   * - Scoped package imports (@workspace/ui, @ui/core)
+   *
+   * For ClassDeclaration/InterfaceDeclaration with filePath, uses precise matching.
    */
-  private findNodeByNameAndType(name: string, coreType: CoreNodeType): ParsedNode | undefined {
-    for (const node of this.parsedNodes.values()) {
+  private findNodeByNameAndType(name: string, coreType: CoreNodeType, filePath?: string): ParsedNode | undefined {
+    // Combine both node collections for searching
+    const allNodes = [...this.parsedNodes.values(), ...this.existingNodes.values()];
+
+    // If we have a file path and it's not a SOURCE_FILE, use precise matching first
+    if (filePath && coreType !== CoreNodeType.SOURCE_FILE) {
+      for (const node of allNodes) {
+        if (node.coreType === coreType && node.properties.name === name && node.properties.filePath === filePath) {
+          return node;
+        }
+      }
+      // If precise match fails, fall through to name-only matching below
+    }
+
+    // For SOURCE_FILE with import specifier, try multiple matching strategies
+    if (coreType === CoreNodeType.SOURCE_FILE) {
+      // Strategy 1: Direct file path match
+      for (const node of allNodes) {
+        if (node.coreType === coreType && node.properties.filePath === name) {
+          return node;
+        }
+      }
+
+      // Strategy 2: Resolve relative imports (./foo, ../bar, ../../baz)
+      if (name.startsWith('.')) {
+        // Normalize: remove all leading ./ or ../ segments (handles ../../foo, ./bar, etc.)
+        const normalizedPath = name.replace(/^(\.\.?\/)+/, '');
+
+        // Try matching with common extensions
+        const extensions = ['', '.ts', '.tsx', '/index.ts', '/index.tsx'];
+        for (const ext of extensions) {
+          const searchPath = normalizedPath + ext;
+          for (const node of allNodes) {
+            if (node.coreType === coreType) {
+              // Match if filePath ends with the normalized path
+              if (
+                node.properties.filePath.endsWith(searchPath) ||
+                node.properties.filePath.endsWith('/' + searchPath)
+              ) {
+                return node;
+              }
+            }
+          }
+        }
+      }
+
+      // Strategy 3: Workspace package imports (@workspace/ui, @ui/core)
+      if (name.startsWith('@')) {
+        const parts = name.split('/');
+        const packageName = parts.slice(0, 2).join('/'); // @scope/package
+        const subPath = parts.slice(2).join('/'); // rest of path after package name
+
+        // First, try to find an exact match with subpath
+        if (subPath) {
+          const extensions = ['', '.ts', '.tsx', '/index.ts', '/index.tsx'];
+          for (const ext of extensions) {
+            const searchPath = subPath + ext;
+            for (const node of allNodes) {
+              if (node.coreType === coreType && node.properties.packageName === packageName) {
+                if (
+                  node.properties.filePath.endsWith(searchPath) ||
+                  node.properties.filePath.endsWith('/' + searchPath)
+                ) {
+                  return node;
+                }
+              }
+            }
+          }
+        }
+
+        // For bare package imports (@workspace/ui), look for index files
+        if (!subPath) {
+          for (const node of allNodes) {
+            if (node.coreType === coreType && node.properties.packageName === packageName) {
+              const fileName = node.properties.name;
+              if (fileName === 'index.ts' || fileName === 'index.tsx') {
+                return node;
+              }
+            }
+          }
+          // If no index file, return any file from the package as a fallback
+          for (const node of allNodes) {
+            if (node.coreType === coreType && node.properties.packageName === packageName) {
+              return node;
+            }
+          }
+        }
+      }
+    }
+
+    // Default: exact name match (for non-SourceFile types like classes, interfaces)
+    for (const node of allNodes) {
       if (node.coreType === coreType && node.properties.name === name) {
         return node;
       }
     }
 
-    for (const node of this.existingNodes.values()) {
-      if (node.coreType === coreType && node.properties.name === name) {
-        return node;
-      }
-    }
     return undefined;
   }
 
   /**
    * Resolve deferred edges after all nodes have been parsed
    */
-  private resolveDeferredEdges(): void {
+  private async resolveDeferredEdges(): Promise<void> {
+    // Count edges by type for logging
+    const importsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.IMPORTS).length;
+    const extendsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.EXTENDS).length;
+    const implementsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.IMPLEMENTS).length;
+
+    let importsResolved = 0;
+    let extendsResolved = 0;
+    let implementsResolved = 0;
+    const unresolvedImports: string[] = [];
+    const unresolvedExtends: string[] = [];
+    const unresolvedImplements: string[] = [];
+
     for (const deferred of this.deferredEdges) {
-      const targetNode = this.findNodeByNameAndType(deferred.targetName, deferred.targetType);
+      // Pass filePath for precise matching (especially important for EXTENDS/IMPLEMENTS)
+      const targetNode = this.findNodeByNameAndType(deferred.targetName, deferred.targetType, deferred.targetFilePath);
+
       if (targetNode) {
         const edge = this.createCoreEdge(deferred.edgeType, deferred.sourceNodeId, targetNode.id);
         this.addEdge(edge);
+
+        // Track resolution by type
+        if (deferred.edgeType === CoreEdgeType.IMPORTS) {
+          importsResolved++;
+        } else if (deferred.edgeType === CoreEdgeType.EXTENDS) {
+          extendsResolved++;
+        } else if (deferred.edgeType === CoreEdgeType.IMPLEMENTS) {
+          implementsResolved++;
+        }
+      } else {
+        // Track unresolved by type
+        if (deferred.edgeType === CoreEdgeType.IMPORTS) {
+          unresolvedImports.push(deferred.targetName);
+        } else if (deferred.edgeType === CoreEdgeType.EXTENDS) {
+          unresolvedExtends.push(deferred.targetName);
+        } else if (deferred.edgeType === CoreEdgeType.IMPLEMENTS) {
+          unresolvedImplements.push(deferred.targetName);
+        }
       }
-      // If not found, it's likely an external type (from node_modules) - skip silently
     }
+
+    // Log import resolution stats
+    if (importsCount > 0) {
+      await debugLog('Import edge resolution', {
+        totalImports: importsCount,
+        resolved: importsResolved,
+        unresolvedCount: unresolvedImports.length,
+        unresolvedSample: unresolvedImports.slice(0, 10),
+      });
+    }
+
+    // Log inheritance (EXTENDS/IMPLEMENTS) resolution stats
+    if (extendsCount > 0 || implementsCount > 0) {
+      await debugLog('Inheritance edge resolution', {
+        extendsQueued: extendsCount,
+        extendsResolved,
+        extendsUnresolved: unresolvedExtends.length,
+        unresolvedExtendsSample: unresolvedExtends.slice(0, 10),
+        implementsQueued: implementsCount,
+        implementsResolved,
+        implementsUnresolved: unresolvedImplements.length,
+        unresolvedImplementsSample: unresolvedImplements.slice(0, 10),
+      });
+    }
+
     this.deferredEdges = [];
   }
 
@@ -495,6 +794,23 @@ export class TypeScriptParser {
         // File contains import relationship
         const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, importNode.id);
         this.addEdge(containsEdge);
+
+        // Try to resolve import to create SourceFile -> SourceFile IMPORTS edge
+        try {
+          const targetSourceFile = importDecl.getModuleSpecifierSourceFile();
+          if (targetSourceFile) {
+            const targetFilePath = targetSourceFile.getFilePath();
+            // Queue deferred edge - will be resolved after all files are parsed
+            this.deferredEdges.push({
+              edgeType: CoreEdgeType.IMPORTS,
+              sourceNodeId: sourceFileNode.id,
+              targetName: targetFilePath, // Use file path as "name" for SourceFiles
+              targetType: CoreNodeType.SOURCE_FILE,
+            });
+          }
+        } catch {
+          // Module resolution failed - external dependency, skip
+        }
       }
 
       // Parse variable declarations if framework schema specifies this file should have them parsed
@@ -523,11 +839,12 @@ export class TypeScriptParser {
   ): ParsedNode {
     const name = this.extractNodeName(astNode, coreType);
     const filePath = astNode.getSourceFile().getFilePath();
-    const nodeId = generateDeterministicId(coreType, filePath, name, parentId);
+    const nodeId = generateDeterministicId(this.projectId, coreType, filePath, name, parentId);
 
     // Extract base properties using schema
     const properties: Neo4jNodeProperties = {
       id: nodeId,
+      projectId: this.projectId,
       name,
       coreType,
       filePath,
@@ -610,6 +927,7 @@ export class TypeScriptParser {
       targetNodeId,
       properties: {
         coreType: relationshipType,
+        projectId: this.projectId,
         source: 'ast',
         confidence: 1.0,
         relationshipWeight,
@@ -793,24 +1111,17 @@ export class TypeScriptParser {
     context: Record<string, any> = {},
     relationshipWeight: number = 0.5,
   ): ParsedEdge {
-    // Generate deterministic edge ID based on type + source + target
-    const edgeIdentity = `${semanticType}::${sourceNodeId}::${targetNodeId}`;
-    const edgeHash = crypto.createHash('sha256').update(edgeIdentity).digest('hex').substring(0, 16);
-    const edgeId = `${semanticType}:${edgeHash}`;
-
-    const properties: Neo4jEdgeProperties = {
-      coreType: semanticType as any, // This might need adjustment based on schema
+    const { id, properties } = createFrameworkEdgeData({
       semanticType,
-      source: 'pattern',
-      confidence: 0.8,
-      relationshipWeight,
-      filePath: '',
-      createdAt: new Date().toISOString(),
+      sourceNodeId,
+      targetNodeId,
+      projectId: this.projectId,
       context,
-    };
+      relationshipWeight,
+    });
 
     return {
-      id: edgeId,
+      id,
       relationshipType,
       sourceNodeId,
       targetNodeId,
@@ -924,12 +1235,30 @@ export class TypeScriptParser {
     return excludedNodeTypes.includes(node.getKindName() as CoreNodeType);
   }
 
+  /**
+   * Safely test if a file path matches a pattern (string or regex).
+   * Falls back to literal string matching if the pattern is an invalid regex.
+   */
+  private matchesPattern(filePath: string, pattern: string): boolean {
+    // First try literal string match (always safe)
+    if (filePath.includes(pattern)) {
+      return true;
+    }
+    // Then try regex match with error handling
+    try {
+      return new RegExp(pattern).test(filePath);
+    } catch {
+      // Invalid regex pattern - already checked via includes() above
+      return false;
+    }
+  }
+
   private shouldSkipFile(sourceFile: SourceFile): boolean {
     const filePath = sourceFile.getFilePath();
     const excludedPatterns = this.parseConfig.excludePatterns ?? [];
 
     for (const pattern of excludedPatterns) {
-      if (filePath.includes(pattern) || filePath.match(new RegExp(pattern))) {
+      if (this.matchesPattern(filePath, pattern)) {
         return true;
       }
     }
@@ -1007,5 +1336,325 @@ export class TypeScriptParser {
     }));
 
     return { nodes, edges };
+  }
+
+  // ============================================
+  // CHUNK-AWARE PARSING METHODS
+  // For streaming/chunked parsing of large codebases
+  // ============================================
+
+  /**
+   * Export current chunk results without clearing internal state.
+   * Use this when importing chunks incrementally.
+   */
+  public exportChunkResults(): {
+    nodes: Neo4jNode[];
+    edges: Neo4jEdge[];
+    deferredEdges: Array<{
+      edgeType: CoreEdgeType;
+      sourceNodeId: string;
+      targetName: string;
+      targetType: CoreNodeType;
+    }>;
+  } {
+    const nodes = Array.from(this.parsedNodes.values()).map(this.toNeo4jNode);
+    const edges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
+
+    return {
+      nodes,
+      edges,
+      deferredEdges: [...this.deferredEdges],
+    };
+  }
+
+  /**
+   * Clear all parsed data (nodes, edges, deferred edges).
+   * Call this after importing a chunk to free memory.
+   */
+  public clearParsedData(): void {
+    this.parsedNodes.clear();
+    this.parsedEdges.clear();
+    this.deferredEdges = [];
+  }
+
+  /**
+   * Get count of currently parsed nodes and edges.
+   * Useful for progress reporting.
+   */
+  public getCurrentCounts(): { nodes: number; edges: number; deferredEdges: number } {
+    return {
+      nodes: this.parsedNodes.size,
+      edges: this.parsedEdges.size,
+      deferredEdges: this.deferredEdges.length,
+    };
+  }
+
+  /**
+   * Set the shared context for this parser.
+   * Use this to share context across multiple parsers (e.g., in WorkspaceParser).
+   * @param context The shared context map to use
+   */
+  public setSharedContext(context: ParsingContext): void {
+    this.sharedContext = context;
+  }
+
+  /**
+   * Get the shared context from this parser.
+   * Useful for aggregating context across multiple parsers.
+   */
+  public getSharedContext(): ParsingContext {
+    return this.sharedContext;
+  }
+
+  /**
+   * Get all parsed nodes (for cross-parser edge resolution).
+   * Returns the internal Map of ParsedNodes.
+   */
+  public getParsedNodes(): Map<string, ParsedNode> {
+    return this.parsedNodes;
+  }
+
+  /**
+   * Get the framework schemas used by this parser.
+   * Useful for WorkspaceParser to apply cross-package edge enhancements.
+   */
+  public getFrameworkSchemas(): FrameworkSchema[] {
+    return this.frameworkSchemas;
+  }
+
+  /**
+   * Defer edge enhancements to a parent parser (e.g., WorkspaceParser).
+   * When true, parseChunk() will skip applyEdgeEnhancements().
+   * The parent is responsible for calling applyEdgeEnhancementsManually() at the end.
+   */
+  public setDeferEdgeEnhancements(defer: boolean): void {
+    this.deferEdgeEnhancements = defer;
+  }
+
+  /**
+   * Get list of source files in the project.
+   * In lazy mode, uses glob to discover files without loading them into memory.
+   * Useful for determining total work and creating chunks.
+   */
+  public async discoverSourceFiles(): Promise<string[]> {
+    if (this.discoveredFiles !== null) {
+      return this.discoveredFiles;
+    }
+
+    if (this.lazyLoad) {
+      // Use glob to find files without loading them into ts-morph
+      // Include both .ts and .tsx files
+      const pattern = path.join(this.workspacePath, '**/*.{ts,tsx}');
+      const allFiles = await glob(pattern, {
+        ignore: ['**/node_modules/**', '**/*.d.ts'],
+        absolute: true,
+      });
+
+      // Apply exclude patterns from parseConfig
+      const excludedPatterns = this.parseConfig.excludePatterns ?? [];
+      this.discoveredFiles = allFiles.filter((filePath) => {
+        for (const excludePattern of excludedPatterns) {
+          if (this.matchesPattern(filePath, excludePattern)) {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      console.log(`🔍 Discovered ${this.discoveredFiles.length} TypeScript files (lazy mode)`);
+      return this.discoveredFiles;
+    } else {
+      // Eager mode - files are already loaded
+      this.discoveredFiles = this.project
+        .getSourceFiles()
+        .filter((sf) => !this.shouldSkipFile(sf))
+        .map((sf) => sf.getFilePath());
+      return this.discoveredFiles;
+    }
+  }
+
+  /**
+   * @deprecated Use discoverSourceFiles() instead for async file discovery
+   */
+  public getSourceFilePaths(): string[] {
+    if (this.lazyLoad) {
+      throw new Error('getSourceFilePaths() is not supported in lazy mode. Use discoverSourceFiles() instead.');
+    }
+    return this.project
+      .getSourceFiles()
+      .filter((sf) => !this.shouldSkipFile(sf))
+      .map((sf) => sf.getFilePath());
+  }
+
+  /**
+   * Parse a chunk of files without resolving deferred edges.
+   * Use this for streaming parsing where edges are resolved after all chunks.
+   * In lazy mode, files are added to the project just-in-time and removed after parsing.
+   * @param filePaths Specific file paths to parse
+   * @param skipEdgeResolution If true, deferred edges are not resolved (default: false)
+   */
+  async parseChunk(
+    filePaths: string[],
+    skipEdgeResolution: boolean = false,
+  ): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
+    // Declare sourceFiles outside try so it's available in finally
+    const sourceFiles: SourceFile[] = [];
+
+    try {
+      if (this.lazyLoad) {
+        // Lazy mode: add files to project just-in-time
+        for (const filePath of filePaths) {
+          try {
+            // Check if file already exists in project (shouldn't happen in lazy mode)
+            // Add the file to the project if not already present
+            const sourceFile = this.project.getSourceFile(filePath) ?? this.project.addSourceFileAtPath(filePath);
+            sourceFiles.push(sourceFile);
+          } catch (error) {
+            console.warn(`Failed to add source file ${filePath}:`, error);
+          }
+        }
+      } else {
+        // Eager mode: files are already loaded
+        const loadedFiles = filePaths
+          .map((filePath) => this.project.getSourceFile(filePath))
+          .filter((sf): sf is SourceFile => sf !== undefined);
+        sourceFiles.push(...loadedFiles);
+      }
+
+      for (const sourceFile of sourceFiles) {
+        if (this.shouldSkipFile(sourceFile)) continue;
+        await this.parseCoreTypeScriptV2(sourceFile);
+      }
+
+      // Only resolve edges if not skipping
+      if (!skipEdgeResolution) {
+        await this.resolveDeferredEdges();
+      }
+
+      await this.applyContextExtractors();
+
+      if (this.frameworkSchemas.length > 0) {
+        await this.applyFrameworkEnhancements();
+      }
+
+      // Apply edge enhancements unless deferred to parent (e.g., WorkspaceParser)
+      // When deferred, parent will call applyEdgeEnhancementsManually() at the end
+      // with all accumulated nodes for cross-package edge detection
+      if (!this.deferEdgeEnhancements) {
+        await this.applyEdgeEnhancements();
+      }
+
+      const neo4jNodes = Array.from(this.parsedNodes.values()).map(this.toNeo4jNode);
+      const neo4jEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
+
+      return { nodes: neo4jNodes, edges: neo4jEdges };
+    } finally {
+      // Always clean up in lazy mode to prevent memory leaks
+      if (this.lazyLoad) {
+        for (const sourceFile of sourceFiles) {
+          try {
+            this.project.removeSourceFile(sourceFile);
+          } catch {
+            // Ignore errors when removing files
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Resolve deferred edges against both parsed nodes and existing nodes.
+   * Call this after all chunks have been parsed.
+   * @returns Resolved edges
+   */
+  public async resolveDeferredEdgesManually(): Promise<Neo4jEdge[]> {
+    const resolvedEdges: ParsedEdge[] = [];
+
+    // Count edges by type for logging
+    const extendsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.EXTENDS).length;
+    const implementsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.IMPLEMENTS).length;
+    let extendsResolved = 0;
+    let implementsResolved = 0;
+    const unresolvedExtends: string[] = [];
+    const unresolvedImplements: string[] = [];
+
+    for (const deferred of this.deferredEdges) {
+      // Pass filePath for precise matching (especially important for EXTENDS/IMPLEMENTS)
+      const targetNode = this.findNodeByNameAndType(deferred.targetName, deferred.targetType, deferred.targetFilePath);
+
+      if (targetNode) {
+        const edge = this.createCoreEdge(deferred.edgeType, deferred.sourceNodeId, targetNode.id);
+        resolvedEdges.push(edge);
+        this.addEdge(edge);
+
+        if (deferred.edgeType === CoreEdgeType.EXTENDS) {
+          extendsResolved++;
+        } else if (deferred.edgeType === CoreEdgeType.IMPLEMENTS) {
+          implementsResolved++;
+        }
+      } else {
+        if (deferred.edgeType === CoreEdgeType.EXTENDS) {
+          unresolvedExtends.push(deferred.targetName);
+        } else if (deferred.edgeType === CoreEdgeType.IMPLEMENTS) {
+          unresolvedImplements.push(deferred.targetName);
+        }
+      }
+    }
+
+    // Log inheritance resolution stats
+    if (extendsCount > 0 || implementsCount > 0) {
+      await debugLog('Inheritance edge resolution (manual)', {
+        extendsQueued: extendsCount,
+        extendsResolved,
+        extendsUnresolved: unresolvedExtends.length,
+        unresolvedExtendsSample: unresolvedExtends.slice(0, 10),
+        implementsQueued: implementsCount,
+        implementsResolved,
+        implementsUnresolved: unresolvedImplements.length,
+        unresolvedImplementsSample: unresolvedImplements.slice(0, 10),
+      });
+    }
+
+    this.deferredEdges = [];
+    return resolvedEdges.map(this.toNeo4jEdge);
+  }
+
+  /**
+   * Apply edge enhancements on all accumulated nodes.
+   * Call this after all chunks have been parsed for streaming mode.
+   * This allows context-dependent edges (like INTERNAL_API_CALL) to be detected
+   * after all nodes and their context have been collected.
+   * @returns New edges created by edge enhancements
+   */
+  public async applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]> {
+    const edgeCountBefore = this.parsedEdges.size;
+
+    console.log(`🔗 Applying edge enhancements on ${this.parsedNodes.size} accumulated nodes...`);
+
+    await this.applyEdgeEnhancements();
+
+    const newEdgeCount = this.parsedEdges.size - edgeCountBefore;
+    console.log(`   ✅ Created ${newEdgeCount} edges from edge enhancements`);
+
+    // Return only the new edges (those created by edge enhancements)
+    const allEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
+    return allEdges.slice(edgeCountBefore);
+  }
+
+  /**
+   * Add nodes to the existing nodes map for cross-chunk edge resolution.
+   * These nodes are considered as potential edge targets but won't be exported.
+   */
+  public addExistingNodesFromChunk(nodes: Neo4jNode[]): void {
+    for (const node of nodes) {
+      const parsedNode: ParsedNode = {
+        id: node.id,
+        coreType: node.properties.coreType as CoreNodeType,
+        semanticType: node.properties.semanticType,
+        labels: node.labels,
+        properties: node.properties,
+      };
+      this.existingNodes.set(node.id, parsedNode);
+    }
   }
 }
