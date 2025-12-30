@@ -7,10 +7,15 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { NaturalLanguageToCypherService } from '../../core/embeddings/natural-language-to-cypher.service.js';
-import { resolveProjectIdFromInput } from '../../core/utils/project-id.js';
 import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA, MESSAGES } from '../constants.js';
-import { createErrorResponse, createSuccessResponse, formatQueryResults, debugLog } from '../utils.js';
+import {
+  createErrorResponse,
+  createSuccessResponse,
+  formatQueryResults,
+  debugLog,
+  resolveProjectIdOrError,
+} from '../utils.js';
 
 // Service instance - initialized asynchronously
 let naturalLanguageToCypherService: NaturalLanguageToCypherService | null = null;
@@ -48,13 +53,9 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
       const neo4jService = new Neo4jService();
       try {
         // Resolve project ID from name, path, or ID
-        let resolvedProjectId: string;
-        try {
-          resolvedProjectId = await resolveProjectIdFromInput(projectId, neo4jService);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          return createErrorResponse(message);
-        }
+        const projectResult = await resolveProjectIdOrError(projectId, neo4jService);
+        if (!projectResult.success) return projectResult.error;
+        const resolvedProjectId = projectResult.projectId;
 
         if (!naturalLanguageToCypherService) {
           await debugLog('Natural language service not available', { projectId: resolvedProjectId, query });

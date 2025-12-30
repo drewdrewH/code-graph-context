@@ -600,50 +600,6 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
         primaryLabel: FairSquareSemanticNodeType.FS_ROUTE_DEFINITION,
       },
     },
-
-    // HTTP Endpoint (Controller methods)
-    //   fairsquareHttpEndpoint: {
-    //     name: 'FairSquare HTTP Endpoint',
-    //     targetCoreType: CoreNodeType.METHOD_DECLARATION,
-    //     semanticType: FairSquareSemanticNodeType.FS_HTTP_ENDPOINT as any,
-    //     priority: 100,
-    //
-    //     detectionPatterns: [
-    //       {
-    //         type: 'function',
-    //         pattern: (node: Node) => {
-    //           if (!Node.isMethodDeclaration(node)) return false;
-    //           const methodName = node.getName().toLowerCase();
-    //           const httpMethods = ['get', 'post', 'put', 'delete', 'patch'];
-    //
-    //           // Check if method is HTTP verb AND parent is Controller
-    //           const parent = node.getParent();
-    //           const isController =
-    //             Node.isClassDeclaration(parent) &&
-    //             (parent.getName()?.endsWith('Controller') || parent.getExtends()?.getText() === 'Controller');
-    //
-    //           return httpMethods.includes(methodName) && isController;
-    //         },
-    //         confidence: 1.0,
-    //         priority: 10,
-    //       },
-    //     ],
-    //
-    //     contextExtractors: [
-    //       {
-    //         nodeType: CoreNodeType.METHOD_DECLARATION,
-    //         extractor: extractHttpEndpoint,
-    //         priority: 10,
-    //       },
-    //     ],
-    //
-    //     additionalRelationships: [FairSquareSemanticEdgeType.FS_EXPOSES_HTTP as any],
-    //
-    //     neo4j: {
-    //       additionalLabels: ['FairSquare', 'HttpEndpoint', 'API'],
-    //       primaryLabel: 'FairSquareHttpEndpoint',
-    //     },
-    //   },
   },
 
   // ============================================================================

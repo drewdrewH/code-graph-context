@@ -18,7 +18,6 @@ import { EXCLUDE_PATTERNS_GLOB } from '../../constants.js';
 import { CORE_TYPESCRIPT_SCHEMA } from '../../core/config/schema.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { ParserFactory, ProjectType } from '../../core/parsers/parser-factory.js';
-import { ExistingNode } from '../../core/parsers/typescript-parser.js';
 import {
   resolveProjectId,
   getProjectName,
@@ -28,6 +27,12 @@ import {
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { hashFile } from '../../utils/file-utils.js';
 import { TOOL_NAMES, TOOL_METADATA, DEFAULTS, FILE_PATHS, LOG_CONFIG } from '../constants.js';
+import {
+  CrossFileEdge,
+  deleteSourceFileSubgraphs,
+  loadExistingNodesForEdgeDetection,
+  getCrossFileEdges,
+} from '../handlers/cross-file-edge.helpers.js';
 import { GraphGeneratorHandler } from '../handlers/graph-generator.handler.js';
 import { StreamingImportHandler } from '../handlers/streaming-import.handler.js';
 import { jobManager } from '../services/job-manager.js';
@@ -473,13 +478,6 @@ interface ParseProjectOptions {
   projectType?: string;
 }
 
-interface CrossFileEdge {
-  startNodeId: string;
-  endNodeId: string;
-  edgeType: string;
-  edgeProperties: Record<string, any>;
-}
-
 interface ParseProjectResult {
   nodes: any[];
   edges: any[];
@@ -574,41 +572,12 @@ const parseProject = async (options: ParseProjectOptions): Promise<ParseProjectR
   };
 };
 
-const deleteSourceFileSubgraphs = async (
-  neo4jService: Neo4jService,
-  filePaths: string[],
-  projectId: string,
-): Promise<void> => {
-  await neo4jService.run(QUERIES.DELETE_SOURCE_FILE_SUBGRAPHS, { filePaths, projectId });
-};
-
-const loadExistingNodesForEdgeDetection = async (
-  neo4jService: Neo4jService,
-  excludeFilePaths: string[],
-  projectId: string,
-): Promise<ExistingNode[]> => {
-  const queryResult = await neo4jService.run(QUERIES.GET_EXISTING_NODES_FOR_EDGE_DETECTION, {
-    excludeFilePaths,
-    projectId,
-  });
-  return queryResult as ExistingNode[];
-};
-
 interface IndexedFileInfo {
   filePath: string;
   mtime: number;
   size: number;
   contentHash: string;
 }
-
-const getCrossFileEdges = async (
-  neo4jService: Neo4jService,
-  filePaths: string[],
-  projectId: string,
-): Promise<CrossFileEdge[]> => {
-  const queryResult = await neo4jService.run(QUERIES.GET_CROSS_FILE_EDGES, { filePaths, projectId });
-  return queryResult as CrossFileEdge[];
-};
 
 interface ChangedFilesResult {
   filesToReparse: string[];

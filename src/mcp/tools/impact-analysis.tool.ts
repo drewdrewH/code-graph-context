@@ -7,10 +7,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { resolveProjectIdFromInput } from '../../core/utils/project-id.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA } from '../constants.js';
-import { createErrorResponse, createSuccessResponse, debugLog } from '../utils.js';
+import { createErrorResponse, createSuccessResponse, debugLog, resolveProjectIdOrError } from '../utils.js';
 
 // Default relationship weights for core AST relationships
 const DEFAULT_RELATIONSHIP_WEIGHTS: Record<string, number> = {
@@ -88,13 +87,9 @@ export const createImpactAnalysisTool = (server: McpServer): void => {
       const neo4jService = new Neo4jService();
       try {
         // Resolve project ID from name, path, or ID
-        let resolvedProjectId: string;
-        try {
-          resolvedProjectId = await resolveProjectIdFromInput(projectId, neo4jService);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          return createErrorResponse(message);
-        }
+        const projectResult = await resolveProjectIdOrError(projectId, neo4jService);
+        if (!projectResult.success) return projectResult.error;
+        const resolvedProjectId = projectResult.projectId;
 
         if (!nodeId && !filePath) {
           return createErrorResponse('Either nodeId or filePath must be provided');

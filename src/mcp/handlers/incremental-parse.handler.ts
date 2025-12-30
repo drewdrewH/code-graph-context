@@ -13,21 +13,19 @@ import { EXCLUDE_PATTERNS_GLOB } from '../../constants.js';
 import { CORE_TYPESCRIPT_SCHEMA } from '../../core/config/schema.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { ParserFactory } from '../../core/parsers/parser-factory.js';
-import type { ExistingNode } from '../../core/parsers/typescript-parser.js';
 import { resolveProjectId, getProjectName, UPSERT_PROJECT_QUERY } from '../../core/utils/project-id.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { hashFile } from '../../utils/file-utils.js';
 import { DEFAULTS, FILE_PATHS, LOG_CONFIG } from '../constants.js';
 import { debugLog } from '../utils.js';
 
+import {
+  CrossFileEdge,
+  deleteSourceFileSubgraphs,
+  loadExistingNodesForEdgeDetection,
+  getCrossFileEdges,
+} from './cross-file-edge.helpers.js';
 import { GraphGeneratorHandler } from './graph-generator.handler.js';
-
-interface CrossFileEdge {
-  startNodeId: string;
-  endNodeId: string;
-  edgeType: string;
-  edgeProperties: Record<string, unknown>;
-}
 
 interface IncrementalParseResult {
   nodesUpdated: number;
@@ -187,37 +185,6 @@ export const performIncrementalParse = async (
   } finally {
     await neo4jService.close();
   }
-};
-
-// Helper functions (similar to parse-typescript-project.tool.ts)
-
-const deleteSourceFileSubgraphs = async (
-  neo4jService: Neo4jService,
-  filePaths: string[],
-  projectId: string,
-): Promise<void> => {
-  await neo4jService.run(QUERIES.DELETE_SOURCE_FILE_SUBGRAPHS, { filePaths, projectId });
-};
-
-const loadExistingNodesForEdgeDetection = async (
-  neo4jService: Neo4jService,
-  excludeFilePaths: string[],
-  projectId: string,
-): Promise<ExistingNode[]> => {
-  const queryResult = await neo4jService.run(QUERIES.GET_EXISTING_NODES_FOR_EDGE_DETECTION, {
-    excludeFilePaths,
-    projectId,
-  });
-  return queryResult as ExistingNode[];
-};
-
-const getCrossFileEdges = async (
-  neo4jService: Neo4jService,
-  filePaths: string[],
-  projectId: string,
-): Promise<CrossFileEdge[]> => {
-  const queryResult = await neo4jService.run(QUERIES.GET_CROSS_FILE_EDGES, { filePaths, projectId });
-  return queryResult as CrossFileEdge[];
 };
 
 interface IndexedFileInfo {

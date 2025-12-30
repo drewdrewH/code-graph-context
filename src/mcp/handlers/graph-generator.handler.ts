@@ -139,7 +139,7 @@ export class GraphGeneratorHandler {
         const truncatedCode = node.properties.sourceCode.slice(0, DEFAULTS.maxEmbeddingChars);
         // Include node name and type in embedding for better search matching
         // e.g., "ProfileService ClassDeclaration" helps "profile service" queries match
-        const metadata = `${node.properties.name || ''} ${node.labels?.join(' ') || ''}`.trim();
+        const metadata = `${node.properties.name ?? ''} ${node.labels?.join(' ') ?? ''}`.trim();
         const embeddingText = metadata ? `${metadata}\n${truncatedCode}` : truncatedCode;
         nodesNeedingEmbedding.push({
           node,

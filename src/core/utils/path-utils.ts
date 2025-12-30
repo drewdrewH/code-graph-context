@@ -10,7 +10,7 @@ import path from 'path';
  * - Resolves relative paths against cwd
  * - Normalizes separators and removes trailing slashes
  */
-export function normalizeFilePath(filePath: string): string {
+export const normalizeFilePath = (filePath: string): string => {
   if (!filePath) return '';
 
   // Resolve to absolute if relative
@@ -18,14 +18,14 @@ export function normalizeFilePath(filePath: string): string {
 
   // Normalize (resolves .. and . segments, consistent separators)
   return path.normalize(absolute);
-}
+};
 
 /**
  * Convert absolute path to relative from a root directory
  * - Uses path.relative() for correct handling
  * - Returns absolute if path is outside root
  */
-export function toRelativePath(absolutePath: string, projectRoot: string): string {
+export const toRelativePath = (absolutePath: string, projectRoot: string): string => {
   if (!absolutePath) return '';
   if (!projectRoot) return absolutePath;
 
@@ -37,14 +37,14 @@ export function toRelativePath(absolutePath: string, projectRoot: string): strin
   }
 
   return relative;
-}
+};
 
 /**
  * Find common root directory from array of file paths
  * - Uses path.dirname() and path.sep correctly
  * - Handles edge cases (single file, no common root)
  */
-export function getCommonRoot(filePaths: string[]): string {
+export const getCommonRoot = (filePaths: string[]): string => {
   const validPaths = filePaths.filter(Boolean);
 
   if (validPaths.length === 0) return process.cwd();
@@ -63,21 +63,21 @@ export function getCommonRoot(filePaths: string[]): string {
   }
 
   return commonParts.join(path.sep) || path.sep;
-}
+};
 
 /**
  * Check if a path is absolute
  * - Cross-platform using path.isAbsolute()
  */
-export function isAbsolutePath(filePath: string): boolean {
+export const isAbsolutePath = (filePath: string): boolean => {
   return path.isAbsolute(filePath);
-}
+};
 
 /**
  * Normalize path for comparison/matching
  * - Consistent separators using path.normalize()
  */
-export function normalizeForComparison(filePath: string): string {
+export const normalizeForComparison = (filePath: string): string => {
   if (!filePath) return '';
   return path.normalize(filePath);
-}
+};

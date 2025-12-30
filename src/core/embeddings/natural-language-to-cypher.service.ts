@@ -628,46 +628,4 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
       );
     }
   }
-
-  /**
-   * Create a new thread for a user
-   */
-  async createThread(): Promise<string> {
-    const thread = await this.openai.beta.threads.create();
-    return thread.id;
-  }
-
-  /**
-   * Get message history for a thread
-   */
-  // async getThreadMessages(threadId: string): Promise<any[]> {
-  //   const response = await this.openai.beta.threads.messages.list(threadId);
-  //   return response.data;
-  // }
-  //
-  // private async waitForRunCompletion(
-  //   threadId: string,
-  //   runId: string,
-  // ): Promise<any> {
-  //   let run = await this.openai.beta.threads.runs.retrieve(threadId, runId);
-  //
-  //   while (['queued', 'in_progress', 'requires_action'].includes(run.status)) {
-  //     if (run.status === 'requires_action') {
-  //       // Return here so the calling function can handle the tool outputs
-  //       return run;
-  //     }
-  //
-  //     // Wait before polling again
-  //     await new Promise((resolve) => setTimeout(resolve, 1000));
-  //
-  //     // Check status again
-  //     run = await this.openai.beta.threads.runs.retrieve(threadId, runId);
-  //   }
-  //
-  //   if (run.status !== 'completed') {
-  //     console.warn(`Run completed with non - success status: ${ run.status } `);
-  //   }
-  //
-  //   return run;
-  // }
 }

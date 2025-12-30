@@ -7,11 +7,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { MAX_TRAVERSAL_DEPTH } from '../../constants.js';
-import { resolveProjectIdFromInput } from '../../core/utils/project-id.js';
 import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA, DEFAULTS } from '../constants.js';
 import { TraversalHandler } from '../handlers/traversal.handler.js';
-import { createErrorResponse, sanitizeNumericInput, debugLog } from '../utils.js';
+import { createErrorResponse, sanitizeNumericInput, debugLog, resolveProjectIdOrError } from '../utils.js';
 
 export const createTraverseFromNodeTool = (server: McpServer): void => {
   server.registerTool(
@@ -113,13 +112,9 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
       const neo4jService = new Neo4jService();
       try {
         // Resolve project ID from name, path, or ID
-        let resolvedProjectId: string;
-        try {
-          resolvedProjectId = await resolveProjectIdFromInput(projectId, neo4jService);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          return createErrorResponse(message);
-        }
+        const projectResult = await resolveProjectIdOrError(projectId, neo4jService);
+        if (!projectResult.success) return projectResult.error;
+        const resolvedProjectId = projectResult.projectId;
 
         const traversalHandler = new TraversalHandler(neo4jService);
 

@@ -117,7 +117,7 @@ export class WorkspaceParser {
     console.log(`\n📦 Parsing package: ${pkg.name}`);
 
     // Create parser for this package with its own tsconfig
-    const tsConfigPath = pkg.tsConfigPath || path.join(pkg.path, 'tsconfig.json');
+    const tsConfigPath = pkg.tsConfigPath ?? path.join(pkg.path, 'tsconfig.json');
 
     const parser = new TypeScriptParser(
       pkg.path,
@@ -165,7 +165,7 @@ export class WorkspaceParser {
     for (const filePath of filePaths) {
       const pkg = this.findPackageForFile(filePath);
       if (pkg) {
-        const files = filesByPackage.get(pkg) || [];
+        const files = filesByPackage.get(pkg) ?? [];
         files.push(filePath);
         filesByPackage.set(pkg, files);
       }
@@ -177,7 +177,7 @@ export class WorkspaceParser {
     // Parse each package's files
     for (const [pkg, files] of filesByPackage) {
       // Use package's tsconfig if it exists, otherwise use root tsconfig
-      const tsConfigPath = pkg.tsConfigPath || path.join(this.config.rootPath, 'tsconfig.json');
+      const tsConfigPath = pkg.tsConfigPath ?? path.join(this.config.rootPath, 'tsconfig.json');
 
       try {
         const parser = new TypeScriptParser(
@@ -305,7 +305,7 @@ export class WorkspaceParser {
       if (targetNode) {
         // Find source node to get filePath
         const sourceNode = this.parsedNodes.get(deferred.sourceNodeId);
-        const filePath = sourceNode?.properties.filePath || '';
+        const filePath = sourceNode?.properties.filePath ?? '';
 
         // Get relationship weight from core schema
         const coreEdgeType = deferred.edgeType as CoreEdgeType;

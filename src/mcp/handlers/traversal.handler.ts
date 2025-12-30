@@ -10,7 +10,7 @@ import { Neo4jNode } from '../../core/config/schema.js';
 import { getCommonRoot, normalizeFilePath, toRelativePath } from '../../core/utils/path-utils.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { DEFAULTS } from '../constants.js';
-import { createErrorResponse, createSuccessResponse, debugLog } from '../utils.js';
+import { createErrorResponse, createSuccessResponse, debugLog, truncateCode } from '../utils.js';
 
 export interface TraversalResult {
   [x: string]: unknown;
@@ -487,18 +487,11 @@ export class TraversalHandler {
     }
 
     if (includeCode && node.properties.sourceCode && node.properties.coreType !== 'SourceFile') {
-      const code = node.properties.sourceCode;
-      const maxLength = snippetLength; // Use the provided snippet length
-
-      if (code.length <= maxLength) {
-        result.sourceCode = code;
-      } else {
-        // Show first half and last half of the snippet
-        const half = Math.floor(maxLength / 2);
-        result.sourceCode =
-          code.substring(0, half) + '\n\n... [truncated] ...\n\n' + code.substring(code.length - half);
-        result.hasMore = true;
-        result.truncated = code.length - maxLength;
+      const truncateResult = truncateCode(node.properties.sourceCode, snippetLength);
+      result.sourceCode = truncateResult.text;
+      if (truncateResult.hasMore) {
+        result.hasMore = truncateResult.hasMore;
+        result.truncated = truncateResult.truncated;
       }
     }
 
