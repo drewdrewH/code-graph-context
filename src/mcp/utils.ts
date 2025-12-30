@@ -8,7 +8,7 @@ import { Neo4jService } from '../storage/neo4j/neo4j.service.js';
 
 import { MESSAGES } from './constants.js';
 
-export { debugLog } from '../utils/file-utils.js';
+export { debugLog } from '../core/utils/file-utils.js';
 
 /**
  * Result type for project ID resolution

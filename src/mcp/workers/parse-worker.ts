@@ -19,7 +19,7 @@ import { WorkspaceParser } from '../../core/parsers/workspace-parser.js';
 import { getProjectName, UPSERT_PROJECT_QUERY, UPDATE_PROJECT_STATUS_QUERY } from '../../core/utils/project-id.js';
 import { WorkspaceDetector } from '../../core/workspace/index.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
-import { debugLog } from '../../utils/file-utils.js';
+import { debugLog } from '../../core/utils/file-utils.js';
 import { GraphGeneratorHandler } from '../handlers/graph-generator.handler.js';
 import { StreamingImportHandler } from '../handlers/streaming-import.handler.js';
 
@@ -112,7 +112,9 @@ const runParser = async (): Promise<void> => {
         type: workspaceConfig.type,
         packageCount: workspaceConfig.packages.length,
       });
-      parser = new WorkspaceParser(workspaceConfig, config.projectId, lazyLoad);
+      // for workspaces default to auto for now
+      // TODO: allow worker config to specify projectType array to support multi-framework monorepos
+      parser = new WorkspaceParser(workspaceConfig, config.projectId, lazyLoad, 'auto');
       resolvedProjectId = parser.getProjectId();
     } else {
       await debugLog('Using single project mode', {

@@ -9,7 +9,7 @@ import path from 'path';
 import { glob } from 'glob';
 import YAML from 'yaml';
 
-import { debugLog } from '../../utils/file-utils.js';
+import { debugLog } from '../utils/file-utils.js';
 
 export interface WorkspacePackage {
   name: string; // Package name from package.json (e.g., "@ui/auth")
