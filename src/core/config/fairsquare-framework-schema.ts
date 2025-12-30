@@ -95,6 +95,54 @@ const extractInjectableDependencies = (
 };
 
 /**
+ * Extract class property types for edge detection.
+ * This allows INTERNAL_API_CALL detection to work without AST access.
+ * Extracts both typed properties and instantiated properties.
+ */
+const extractPropertyTypes = (
+  parsedNode: ParsedNode,
+  _allNodes?: Map<string, ParsedNode>,
+  _sharedContext?: ParsingContext,
+): Record<string, any> => {
+  const node = parsedNode.sourceNode;
+  if (!node || !Node.isClassDeclaration(node)) return {};
+
+  const propertyTypes: string[] = [];
+
+  const properties = node.getProperties();
+  for (const prop of properties) {
+    // Get type from type annotation (e.g., `private client: PaymentsClient`)
+    const typeNode = prop.getTypeNode();
+    if (typeNode) {
+      propertyTypes.push(typeNode.getText());
+    }
+
+    // Get type from initializer (e.g., `private client = new PaymentsClient()`)
+    const initializer = prop.getInitializer();
+    if (initializer && Node.isNewExpression(initializer)) {
+      const expression = initializer.getExpression();
+      propertyTypes.push(expression.getText());
+    }
+  }
+
+  // Also check constructor parameters for injected dependencies
+  const constructors = node.getConstructors();
+  for (const ctor of constructors) {
+    for (const param of ctor.getParameters()) {
+      const typeNode = param.getTypeNode();
+      if (typeNode) {
+        propertyTypes.push(typeNode.getText());
+      }
+    }
+  }
+
+  return {
+    propertyTypes,
+    hasVendorClient: propertyTypes.some((t) => t.endsWith('Client')),
+  };
+};
+
+/**
  * Extract repository DAL dependencies
  * Uses the dependencies array from @Injectable([...]) decorator
  */
@@ -400,6 +448,11 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
           nodeType: CoreNodeType.CLASS_DECLARATION,
           extractor: extractInjectableDependencies,
           priority: 10,
+        },
+        {
+          nodeType: CoreNodeType.CLASS_DECLARATION,
+          extractor: extractPropertyTypes,
+          priority: 9, // Run after extractInjectableDependencies
         },
       ],
 
@@ -868,27 +921,11 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
         if (!vendorName) return false;
 
         // Check if service uses the corresponding VendorClient
-        const sourceNode = parsedSourceNode.sourceNode;
-        if (!sourceNode || !Node.isClassDeclaration(sourceNode)) return false;
-
+        // Use pre-extracted propertyTypes to avoid AST dependency (allows cross-chunk/cross-package detection)
+        const propertyTypes = parsedSourceNode.properties.context?.propertyTypes ?? [];
         const expectedClientName = `${vendorName.charAt(0).toUpperCase() + vendorName.slice(1)}Client`;
 
-        const properties = sourceNode.getProperties();
-        for (const prop of properties) {
-          const typeNode = prop.getTypeNode();
-          if (typeNode?.getText() === expectedClientName) {
-            return true;
-          }
-
-          const initializer = prop.getInitializer();
-          if (initializer && Node.isNewExpression(initializer)) {
-            if (initializer.getExpression().getText() === expectedClientName) {
-              return true;
-            }
-          }
-        }
-
-        return false;
+        return propertyTypes.includes(expectedClientName);
       },
       contextExtractor: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode, allParsedNodes, sharedContext) => {
         const vendorControllerMap = sharedContext?.get('vendorControllers') as Map<string, ParsedNode>;

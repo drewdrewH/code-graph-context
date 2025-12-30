@@ -160,6 +160,18 @@ export class StreamingImportHandler {
       console.log('ℹ️ No cross-chunk edges to resolve');
     }
 
+    // Phase 3b: Apply edge enhancements on all accumulated nodes
+    // This catches context-dependent edges (like INTERNAL_API_CALL) that span chunks
+    console.log('\n🔗 Applying edge enhancements on all nodes...');
+    const enhancedEdges = await parser.applyEdgeEnhancementsManually();
+    if (enhancedEdges.length > 0) {
+      await this.importEdgesToNeo4j(enhancedEdges);
+      totalEdgesImported += enhancedEdges.length;
+      console.log(`✅ Created ${enhancedEdges.length} edges from edge enhancements`);
+    } else {
+      console.log('ℹ️ No edges from edge enhancements');
+    }
+
     // Clear accumulated data now that edge resolution is complete
     parser.clearParsedData();
 
