@@ -199,7 +199,7 @@ Use this to poll for progress when parsing large codebases asynchronously.`,
 
 Returns:
 - projectId: The full project ID (e.g., "proj_a1b2c3d4e5f6")
-- name: Friendly project name from package.json (e.g., "any-backend")
+- name: Friendly project name from package.json (e.g., "backend")
 - path: Full filesystem path to the project
 - updatedAt: When the project was last parsed
 

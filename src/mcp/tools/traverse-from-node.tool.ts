@@ -20,7 +20,7 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
       title: TOOL_METADATA[TOOL_NAMES.traverseFromNode].title,
       description: TOOL_METADATA[TOOL_NAMES.traverseFromNode].description,
       inputSchema: {
-        projectId: z.string().describe('Project ID, name, or path (e.g., "any-backend" or "proj_a1b2c3d4e5f6")'),
+        projectId: z.string().describe('Project ID, name, or path (e.g., "backend" or "proj_a1b2c3d4e5f6")'),
         nodeId: z
           .string()
           .optional()

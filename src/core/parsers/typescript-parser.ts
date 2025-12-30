@@ -476,7 +476,7 @@ export class TypeScriptParser {
    * For SourceFiles, implements smart import resolution:
    * - Direct file path match
    * - Relative import resolution (./foo, ../bar)
-   * - Scoped package imports (@workspace/ui, @any-ui/core)
+   * - Scoped package imports (@workspace/ui, @ui/core)
    *
    * For ClassDeclaration/InterfaceDeclaration with filePath, uses precise matching.
    */
@@ -526,7 +526,7 @@ export class TypeScriptParser {
         }
       }
 
-      // Strategy 3: Workspace package imports (@workspace/ui, @any-ui/core)
+      // Strategy 3: Workspace package imports (@workspace/ui, @ui/core)
       if (name.startsWith('@')) {
         const parts = name.split('/');
         const packageName = parts.slice(0, 2).join('/'); // @scope/package

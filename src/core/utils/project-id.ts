@@ -166,7 +166,7 @@ export const LIST_PROJECTS_QUERY = `
  * Resolves a flexible project input (name, path, or projectId) to a valid projectId.
  * Looks up the project in Neo4j if needed.
  *
- * @param input - Project name ("any-backend"), path ("/Users/.../any-backend"), or projectId
+ * @param input - Project name ("backend"), path ("/Users/.../backend"), or projectId
  * @param resolver - Neo4j service or compatible resolver
  * @returns The resolved projectId
  * @throws Error if project not found
@@ -176,10 +176,10 @@ export const LIST_PROJECTS_QUERY = `
  * resolveProjectIdFromInput('proj_a1b2c3d4e5f6', neo4j) // => 'proj_a1b2c3d4e5f6'
  *
  * // Name looks up in Neo4j
- * resolveProjectIdFromInput('any-backend', neo4j) // => 'proj_a1b2c3d4e5f6'
+ * resolveProjectIdFromInput('backend', neo4j) // => 'proj_a1b2c3d4e5f6'
  *
  * // Path looks up in Neo4j, or generates if not found
- * resolveProjectIdFromInput('/Users/dev/any-backend', neo4j) // => 'proj_a1b2c3d4e5f6'
+ * resolveProjectIdFromInput('/Users/dev/backend', neo4j) // => 'proj_a1b2c3d4e5f6'
  */
 export const resolveProjectIdFromInput = async (input: string, resolver: ProjectResolver): Promise<string> => {
   // Already valid projectId format? Return as-is

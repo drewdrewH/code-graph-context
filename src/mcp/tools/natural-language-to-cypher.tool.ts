@@ -40,7 +40,7 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
       title: TOOL_METADATA[TOOL_NAMES.naturalLanguageToCypher].title,
       description: TOOL_METADATA[TOOL_NAMES.naturalLanguageToCypher].description,
       inputSchema: {
-        projectId: z.string().describe('Project ID, name, or path (e.g., "any-backend" or "proj_a1b2c3d4e5f6")'),
+        projectId: z.string().describe('Project ID, name, or path (e.g., "backend" or "proj_a1b2c3d4e5f6")'),
         query: z.string().describe('Natural language query to convert to Cypher'),
       },
     },

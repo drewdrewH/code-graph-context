@@ -136,7 +136,7 @@ export interface Neo4jNodeProperties {
 
   // === FREQUENTLY INDEXED ===
   filePath: string;
-  packageName?: string; // Package name for monorepo support (e.g., "@any-ui/auth")
+  packageName?: string; // Package name for monorepo support (e.g., "@ui/auth")
   isExported?: boolean;
   visibility?: 'public' | 'private' | 'protected';
 

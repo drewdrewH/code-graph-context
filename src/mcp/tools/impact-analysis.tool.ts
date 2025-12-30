@@ -62,7 +62,7 @@ export const createImpactAnalysisTool = (server: McpServer): void => {
       title: TOOL_METADATA[TOOL_NAMES.impactAnalysis].title,
       description: TOOL_METADATA[TOOL_NAMES.impactAnalysis].description,
       inputSchema: {
-        projectId: z.string().describe('Project ID, name, or path (e.g., "any-backend" or "proj_a1b2c3d4e5f6")'),
+        projectId: z.string().describe('Project ID, name, or path (e.g., "backend" or "proj_a1b2c3d4e5f6")'),
         nodeId: z
           .string()
           .optional()

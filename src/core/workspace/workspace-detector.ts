@@ -12,7 +12,7 @@ import YAML from 'yaml';
 import { debugLog } from '../../utils/file-utils.js';
 
 export interface WorkspacePackage {
-  name: string; // Package name from package.json (e.g., "@any-ui/auth")
+  name: string; // Package name from package.json (e.g., "@ui/auth")
   path: string; // Absolute path to package directory
   tsConfigPath: string | null; // Path to tsconfig.json if exists
   relativePath: string; // Relative path from workspace root (e.g., "packages/auth")
