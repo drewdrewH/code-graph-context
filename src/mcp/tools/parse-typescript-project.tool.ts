@@ -11,10 +11,8 @@ import { fileURLToPath } from 'url';
 import { Worker } from 'worker_threads';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { glob } from 'glob';
 import { z } from 'zod';
 
-import { EXCLUDE_PATTERNS_GLOB } from '../../constants.js';
 import { CORE_TYPESCRIPT_SCHEMA } from '../../core/config/schema.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { ParserFactory, ProjectType } from '../../core/parsers/parser-factory.js';
@@ -25,7 +23,6 @@ import {
   UPDATE_PROJECT_STATUS_QUERY,
 } from '../../core/utils/project-id.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
-import { hashFile } from '../../utils/file-utils.js';
 import { TOOL_NAMES, TOOL_METADATA, DEFAULTS, FILE_PATHS, LOG_CONFIG } from '../constants.js';
 import {
   CrossFileEdge,
@@ -33,6 +30,7 @@ import {
   loadExistingNodesForEdgeDetection,
   getCrossFileEdges,
 } from '../handlers/cross-file-edge.helpers.js';
+import { detectChangedFiles } from '../../core/utils/file-change-detection.js';
 import { GraphGeneratorHandler } from '../handlers/graph-generator.handler.js';
 import { StreamingImportHandler } from '../handlers/streaming-import.handler.js';
 import { jobManager } from '../services/job-manager.js';
@@ -570,101 +568,4 @@ const parseProject = async (options: ParseProjectOptions): Promise<ParseProjectR
       ...(incrementalStats && { incremental: incrementalStats }),
     },
   };
-};
-
-interface IndexedFileInfo {
-  filePath: string;
-  mtime: number;
-  size: number;
-  contentHash: string;
-}
-
-interface ChangedFilesResult {
-  filesToReparse: string[];
-  filesToDelete: string[];
-}
-
-const detectChangedFiles = async (
-  projectPath: string,
-  neo4jService: Neo4jService,
-  projectId: string,
-): Promise<ChangedFilesResult> => {
-  // SECURITY: Resolve project path to real path to handle symlinks consistently
-  const realProjectPath = await realpath(projectPath);
-
-  const relativeFiles = await glob('**/*.{ts,tsx}', { cwd: projectPath, ignore: EXCLUDE_PATTERNS_GLOB });
-
-  // SECURITY: Validate each file stays within project directory after symlink resolution
-  const validatedFiles: string[] = [];
-  for (const relFile of relativeFiles) {
-    const absolutePath = resolve(projectPath, relFile);
-    try {
-      const realFilePath = await realpath(absolutePath);
-      // Check that resolved path is within project
-      if (realFilePath.startsWith(realProjectPath + sep) || realFilePath === realProjectPath) {
-        // Use realFilePath for consistent path matching with Neo4j
-        validatedFiles.push(realFilePath);
-      } else {
-        console.warn(`SECURITY: Skipping file outside project directory: ${relFile}`);
-      }
-    } catch {
-      // File may have been deleted between glob and realpath - skip it
-      console.warn(`File no longer accessible: ${relFile}`);
-    }
-  }
-
-  const currentFiles = new Set(validatedFiles);
-
-  const queryResult = await neo4jService.run(QUERIES.GET_SOURCE_FILE_TRACKING_INFO, { projectId });
-  const indexedFiles = queryResult as IndexedFileInfo[];
-  const indexedMap = new Map(indexedFiles.map((f) => [f.filePath, f]));
-
-  const filesToReparse: string[] = [];
-  const filesToDelete: string[] = [];
-
-  for (const filePath of currentFiles) {
-    const indexed = indexedMap.get(filePath);
-
-    if (!indexed) {
-      filesToReparse.push(filePath);
-      continue;
-    }
-
-    try {
-      const fileStats = await stat(filePath);
-      const currentHash = await hashFile(filePath);
-
-      // Only skip if mtime, size, AND hash all match (correctness over optimization)
-      if (
-        fileStats.mtimeMs === indexed.mtime &&
-        fileStats.size === indexed.size &&
-        currentHash === indexed.contentHash
-      ) {
-        continue;
-      }
-
-      // Any mismatch means file changed
-      filesToReparse.push(filePath);
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === 'ENOENT') {
-        // File was deleted between glob and stat - will be caught in deletion logic below
-        console.warn(`File deleted between glob and stat: ${filePath}`);
-      } else if (nodeError.code === 'EACCES') {
-        // Permission denied - assume changed to be safe
-        console.warn(`Permission denied reading file: ${filePath}`);
-        filesToReparse.push(filePath);
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  for (const indexedPath of indexedMap.keys()) {
-    if (!currentFiles.has(indexedPath)) {
-      filesToDelete.push(indexedPath);
-    }
-  }
-
-  return { filesToReparse, filesToDelete };
 };

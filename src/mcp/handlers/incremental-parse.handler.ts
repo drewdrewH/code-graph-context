@@ -4,18 +4,14 @@
  */
 
 import { writeFileSync, unlinkSync } from 'fs';
-import { stat, realpath } from 'fs/promises';
-import { join, resolve, sep } from 'path';
+import { join } from 'path';
 
-import { glob } from 'glob';
-
-import { EXCLUDE_PATTERNS_GLOB } from '../../constants.js';
 import { CORE_TYPESCRIPT_SCHEMA } from '../../core/config/schema.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { ParserFactory } from '../../core/parsers/parser-factory.js';
+import { detectChangedFiles } from '../../core/utils/file-change-detection.js';
 import { resolveProjectId, getProjectName, UPSERT_PROJECT_QUERY } from '../../core/utils/project-id.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
-import { hashFile } from '../../utils/file-utils.js';
 import { DEFAULTS, FILE_PATHS, LOG_CONFIG } from '../constants.js';
 import { debugLog } from '../utils.js';
 
@@ -58,7 +54,7 @@ export const performIncrementalParse = async (
     const parser = await ParserFactory.createParserWithAutoDetection(projectPath, tsconfigPath, resolvedId, true);
 
     // Detect changed files
-    const { filesToReparse, filesToDelete } = await detectChangedFilesForWatch(projectPath, neo4jService, resolvedId);
+    const { filesToReparse, filesToDelete } = await detectChangedFiles(projectPath, neo4jService, resolvedId);
 
     await debugLog('Watch incremental change detection', {
       filesToReparse: filesToReparse.length,
@@ -185,88 +181,4 @@ export const performIncrementalParse = async (
   } finally {
     await neo4jService.close();
   }
-};
-
-interface IndexedFileInfo {
-  filePath: string;
-  mtime: number;
-  size: number;
-  contentHash: string;
-}
-
-interface ChangedFilesResult {
-  filesToReparse: string[];
-  filesToDelete: string[];
-}
-
-const detectChangedFilesForWatch = async (
-  projectPath: string,
-  neo4jService: Neo4jService,
-  projectId: string,
-): Promise<ChangedFilesResult> => {
-  const realProjectPath = await realpath(projectPath);
-  const relativeFiles = await glob('**/*.{ts,tsx}', { cwd: projectPath, ignore: EXCLUDE_PATTERNS_GLOB });
-
-  const validatedFiles: string[] = [];
-  for (const relFile of relativeFiles) {
-    const absolutePath = resolve(projectPath, relFile);
-    try {
-      const realFilePath = await realpath(absolutePath);
-      if (realFilePath.startsWith(realProjectPath + sep) || realFilePath === realProjectPath) {
-        validatedFiles.push(realFilePath);
-      }
-    } catch {
-      // File may have been deleted
-    }
-  }
-
-  const currentFiles = new Set(validatedFiles);
-
-  const queryResult = await neo4jService.run(QUERIES.GET_SOURCE_FILE_TRACKING_INFO, { projectId });
-  const indexedFiles = queryResult as IndexedFileInfo[];
-  const indexedMap = new Map(indexedFiles.map((f) => [f.filePath, f]));
-
-  const filesToReparse: string[] = [];
-  const filesToDelete: string[] = [];
-
-  for (const filePath of currentFiles) {
-    const indexed = indexedMap.get(filePath);
-
-    if (!indexed) {
-      filesToReparse.push(filePath);
-      continue;
-    }
-
-    try {
-      const fileStats = await stat(filePath);
-      const currentHash = await hashFile(filePath);
-
-      if (
-        fileStats.mtimeMs === indexed.mtime &&
-        fileStats.size === indexed.size &&
-        currentHash === indexed.contentHash
-      ) {
-        continue;
-      }
-
-      filesToReparse.push(filePath);
-    } catch (error: unknown) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === 'ENOENT') {
-        // Will be caught in deletion logic
-      } else if (nodeError.code === 'EACCES') {
-        filesToReparse.push(filePath);
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  for (const indexedPath of indexedMap.keys()) {
-    if (!currentFiles.has(indexedPath)) {
-      filesToDelete.push(indexedPath);
-    }
-  }
-
-  return { filesToReparse, filesToDelete };
 };
