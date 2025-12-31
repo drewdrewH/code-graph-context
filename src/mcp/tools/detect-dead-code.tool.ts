@@ -21,28 +21,10 @@ import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA } from '../constants.js';
 import { createErrorResponse, createSuccessResponse, debugLog, resolveProjectIdOrError } from '../utils.js';
 
-// Default semantic types to exclude as framework entry points
-const DEFAULT_ENTRY_POINT_SEMANTIC_TYPES = [
-  // NestJS
-  'NestController',
-  'NestModule',
-  'NestGuard',
-  'NestPipe',
-  'NestInterceptor',
-  'NestFilter',
-  'NestProvider',
-  'NestService',
-  'HttpEndpoint',
-  'MessageHandler',
-  // Fastify / inversify / general decorators
-  'Injectable',
-  'Controller',
-  'Service',
-  'Repository',
-  'Application',
-  'FastifyController',
-  'ExpressController',
-];
+// Result type for semantic types query
+interface SemanticTypeResult {
+  semanticType: string;
+}
 
 // Default file patterns to exclude
 const DEFAULT_ENTRY_POINT_FILE_PATTERNS = [
@@ -257,8 +239,14 @@ export const createDetectDeadCodeTool = (server: McpServer): void => {
           minConfidence,
         });
 
-        // Combine default and user-provided exclusions
-        const allExcludeSemanticTypes = [...DEFAULT_ENTRY_POINT_SEMANTIC_TYPES, ...excludeSemanticTypes];
+        // Query project's actual semantic types (data-driven, per-project detection)
+        const semanticTypesResult = (await neo4jService.run(QUERIES.GET_PROJECT_SEMANTIC_TYPES, {
+          projectId: resolvedProjectId,
+        })) as SemanticTypeResult[];
+        const projectSemanticTypes = semanticTypesResult.map((r) => r.semanticType);
+
+        // Combine project semantic types with user-provided exclusions
+        const allExcludeSemanticTypes = [...projectSemanticTypes, ...excludeSemanticTypes];
         const allExcludePatterns = [...DEFAULT_ENTRY_POINT_FILE_PATTERNS, ...excludePatterns];
 
         // Run all queries in parallel for better performance
@@ -276,9 +264,10 @@ export const createDetectDeadCodeTool = (server: McpServer): void => {
             neo4jService.run(QUERIES.FIND_UNREFERENCED_INTERFACES, {
               projectId: resolvedProjectId,
             }),
-            // 4. Get framework entry points for exclusion/audit
+            // 4. Get framework entry points for exclusion/audit (using project's semantic types)
             neo4jService.run(QUERIES.GET_FRAMEWORK_ENTRY_POINTS, {
               projectId: resolvedProjectId,
+              semanticTypes: allExcludeSemanticTypes,
             }),
           ]);
 

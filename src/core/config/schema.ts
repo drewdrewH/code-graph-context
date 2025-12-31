@@ -1140,8 +1140,16 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
 
     [CoreEdgeType.CALLS]: {
       coreType: CoreEdgeType.CALLS,
-      sourceTypes: [CoreNodeType.METHOD_DECLARATION, CoreNodeType.FUNCTION_DECLARATION, CoreNodeType.CONSTRUCTOR_DECLARATION],
-      targetTypes: [CoreNodeType.METHOD_DECLARATION, CoreNodeType.FUNCTION_DECLARATION, CoreNodeType.CONSTRUCTOR_DECLARATION],
+      sourceTypes: [
+        CoreNodeType.METHOD_DECLARATION,
+        CoreNodeType.FUNCTION_DECLARATION,
+        CoreNodeType.CONSTRUCTOR_DECLARATION,
+      ],
+      targetTypes: [
+        CoreNodeType.METHOD_DECLARATION,
+        CoreNodeType.FUNCTION_DECLARATION,
+        CoreNodeType.CONSTRUCTOR_DECLARATION,
+      ],
       properties: [
         {
           name: 'confidence',

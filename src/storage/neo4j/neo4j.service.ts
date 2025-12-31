@@ -702,18 +702,29 @@ export const QUERIES = {
   `,
 
   /**
+   * Get all distinct semantic types for a project.
+   * Used to dynamically determine framework entry points for dead code detection.
+   */
+  GET_PROJECT_SEMANTIC_TYPES: `
+    MATCH (n)
+    WHERE n.projectId = $projectId
+      AND n.semanticType IS NOT NULL
+      AND n.coreType IN ['ClassDeclaration', 'FunctionDeclaration', 'InterfaceDeclaration', 'MethodDeclaration']
+    RETURN DISTINCT n.semanticType AS semanticType
+  `,
+
+  /**
    * Get framework entry points that should be excluded from dead code analysis.
    * These are nodes that may appear unused but are actually framework-managed.
    * Filters by coreType to exclude ImportDeclarations and only return actual classes/functions/interfaces.
+   * Accepts $semanticTypes parameter for dynamic, per-project framework detection.
    */
   GET_FRAMEWORK_ENTRY_POINTS: `
     MATCH (n)
     WHERE n.projectId = $projectId
       AND n.coreType IN ['ClassDeclaration', 'FunctionDeclaration', 'InterfaceDeclaration']
       AND (
-        n.semanticType IN ['NestController', 'NestModule', 'NestGuard', 'NestPipe',
-                           'NestInterceptor', 'NestFilter', 'NestProvider',
-                           'HttpEndpoint', 'MessageHandler', 'NestService']
+        n.semanticType IN $semanticTypes
         OR n.filePath ENDS WITH 'main.ts'
         OR n.filePath ENDS WITH '.module.ts'
         OR n.filePath ENDS WITH '.controller.ts'
