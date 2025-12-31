@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { CORE_TYPESCRIPT_SCHEMA } from '../../core/config/schema.js';
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { ParserFactory, ProjectType } from '../../core/parsers/parser-factory.js';
+import { detectChangedFiles } from '../../core/utils/file-change-detection.js';
 import {
   resolveProjectId,
   getProjectName,
@@ -30,7 +31,6 @@ import {
   loadExistingNodesForEdgeDetection,
   getCrossFileEdges,
 } from '../handlers/cross-file-edge.helpers.js';
-import { detectChangedFiles } from '../../core/utils/file-change-detection.js';
 import { GraphGeneratorHandler } from '../handlers/graph-generator.handler.js';
 import { StreamingImportHandler } from '../handlers/streaming-import.handler.js';
 import { jobManager } from '../services/job-manager.js';

@@ -7,7 +7,31 @@ import { glob } from 'glob';
 import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
 
+import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
+import {
+  CoreNodeType,
+  Neo4jNodeProperties,
+  Neo4jEdgeProperties,
+  Neo4jNode,
+  Neo4jEdge,
+  CORE_TYPESCRIPT_SCHEMA,
+  CoreTypeScriptSchema,
+  DetectionPattern,
+  FrameworkSchema,
+  FrameworkEnhancement,
+  EdgeEnhancement,
+  ContextExtractor,
+  ParseOptions,
+  DEFAULT_PARSE_OPTIONS,
+  PropertyDefinition,
+  CoreEdgeType,
+  ParsingContext,
+  ParsedNode,
+  CoreNode,
+} from '../config/schema.js';
 import { createFrameworkEdgeData } from '../utils/edge-factory.js';
+import { debugLog, hashFile } from '../utils/file-utils.js';
+import { resolveProjectId } from '../utils/project-id.js';
 
 /**
  * Generate a deterministic node ID based on stable properties.
@@ -33,31 +57,6 @@ const generateDeterministicId = (
 
   return `${projectId}:${coreType}:${hash}`;
 };
-
-import { debugLog, hashFile } from '../utils/file-utils.js';
-import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
-import {
-  CoreNodeType,
-  Neo4jNodeProperties,
-  Neo4jEdgeProperties,
-  Neo4jNode,
-  Neo4jEdge,
-  CORE_TYPESCRIPT_SCHEMA,
-  CoreTypeScriptSchema,
-  DetectionPattern,
-  FrameworkSchema,
-  FrameworkEnhancement,
-  EdgeEnhancement,
-  ContextExtractor,
-  ParseOptions,
-  DEFAULT_PARSE_OPTIONS,
-  PropertyDefinition,
-  CoreEdgeType,
-  ParsingContext,
-  ParsedNode,
-  CoreNode,
-} from '../config/schema.js';
-import { resolveProjectId } from '../utils/project-id.js';
 
 // Re-export ParsedNode for convenience
 export type { ParsedNode };
