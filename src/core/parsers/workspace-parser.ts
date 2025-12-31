@@ -46,6 +46,7 @@ interface DeferredEdge {
  */
 interface LightweightParsedNode {
   id: string;
+  coreType?: string; // Needed for detection patterns that check node type
   semanticType?: string;
   properties: {
     name?: string;
@@ -255,10 +256,11 @@ export class WorkspaceParser {
         for (const [nodeId, parsedNode] of innerParsedNodes) {
           this.accumulatedParsedNodes.set(nodeId, {
             id: parsedNode.id,
+            coreType: parsedNode.coreType, // Needed for detection patterns
             semanticType: parsedNode.semanticType,
             properties: {
               name: parsedNode.properties.name,
-              context: parsedNode.properties.context, // Contains propertyTypes
+              context: parsedNode.properties.context, // Contains propertyTypes, dependencies
             },
           });
         }

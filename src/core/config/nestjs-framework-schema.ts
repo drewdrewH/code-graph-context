@@ -98,6 +98,43 @@ function extractInjectionToken(node: any): string | null {
   return null;
 }
 
+/**
+ * Extract constructor parameter types and @Inject tokens for edge detection.
+ * This allows INJECTS detection to work without AST access (for cross-chunk detection).
+ */
+function extractConstructorParamTypes(node: any): { types: string[]; injectTokens: Map<string, string> } {
+  const types: string[] = [];
+  const injectTokens = new Map<string, string>();
+
+  const constructors = node.getConstructors();
+  if (constructors.length === 0) return { types, injectTokens };
+
+  const constructor = constructors[0];
+  const parameters = constructor.getParameters();
+
+  for (const param of parameters) {
+    const typeNode = param.getTypeNode();
+    if (typeNode) {
+      const typeName = typeNode.getText();
+      types.push(typeName);
+
+      // Check for @Inject decorator
+      const decorators = param.getDecorators();
+      for (const decorator of decorators) {
+        if (decorator.getName() === 'Inject') {
+          const args = decorator.getArguments();
+          if (args.length > 0) {
+            const token = args[0].getText().replace(/['"]/g, '');
+            injectTokens.set(typeName, token);
+          }
+        }
+      }
+    }
+  }
+
+  return { types, injectTokens };
+}
+
 function hasDynamicMethods(node: any): boolean {
   const methods = node.getMethods();
   const dynamicMethods = ['forRoot', 'forFeature', 'forRootAsync', 'forFeatureAsync'];
@@ -295,47 +332,31 @@ function detectDependencyInjection(sourceNode: any, targetNode: any): boolean {
   if (sourceNode.properties?.coreType !== CoreNodeType.CLASS_DECLARATION) return false;
   if (targetNode.properties?.coreType !== CoreNodeType.CLASS_DECLARATION) return false;
 
-  const constructors = sourceNode.sourceNode?.getConstructors();
-  if (!constructors || constructors.length === 0) return false;
-
-  const constructor = constructors[0];
-  const parameters = constructor.getParameters();
   const targetName = targetNode.properties?.name;
+  if (!targetName) return false;
 
-  return parameters.some((param: any) => {
-    const paramType = param.getTypeNode()?.getText();
-    if (paramType === targetName) return true;
+  // Use pre-extracted constructor params from context (works after AST cleanup)
+  const constructorParamTypes = sourceNode.properties?.context?.constructorParamTypes ?? [];
+  const injectTokens = sourceNode.properties?.context?.injectTokens ?? {};
 
-    const decorators = param.getDecorators();
-    return decorators.some((decorator: any) => {
-      if (decorator.getName() === 'Inject') {
-        const args = decorator.getArguments();
-        if (args.length > 0) {
-          const token = args[0].getText().replace(/['"]/g, '');
-          return token === targetName;
-        }
-      }
-      return false;
-    });
-  });
+  // Check if target is in constructor params by type
+  if (constructorParamTypes.includes(targetName)) return true;
+
+  // Check if target is referenced via @Inject token
+  return Object.values(injectTokens).includes(targetName);
 }
 
 function extractInjectionTokenFromRelation(sourceNode: any, targetNode: any): string | null {
-  const constructors = sourceNode.sourceNode?.getConstructors();
-  if (!constructors || constructors.length === 0) return null;
+  const targetName = targetNode.properties?.name;
+  if (!targetName) return null;
 
-  const constructor = constructors[0];
-  const parameters = constructor.getParameters();
+  // Use pre-extracted inject tokens from context (works after AST cleanup)
+  const injectTokens = sourceNode.properties?.context?.injectTokens ?? {};
 
-  for (const param of parameters) {
-    const decorators = param.getDecorators();
-    for (const decorator of decorators) {
-      if (decorator.getName() === 'Inject') {
-        const args = decorator.getArguments();
-        if (args.length > 0) {
-          return args[0].getText().replace(/['"]/g, '');
-        }
-      }
+  // Find the token that maps to the target
+  for (const [typeName, token] of Object.entries(injectTokens)) {
+    if (token === targetName || typeName === targetName) {
+      return token as string;
     }
   }
 
@@ -343,17 +364,12 @@ function extractInjectionTokenFromRelation(sourceNode: any, targetNode: any): st
 }
 
 function findParameterIndex(sourceNode: any, targetNode: any): number {
-  const constructors = sourceNode.sourceNode?.getConstructors();
-  if (!constructors || constructors.length === 0) return 0;
-
-  const constructor = constructors[0];
-  const parameters = constructor.getParameters();
   const targetName = targetNode.properties?.name;
+  if (!targetName) return -1;
 
-  return parameters.findIndex((param: any) => {
-    const paramType = param.getTypeNode()?.getText();
-    return paramType === targetName;
-  });
+  // Use pre-extracted constructor params from context (works after AST cleanup)
+  const constructorParamTypes = sourceNode.properties?.context?.constructorParamTypes ?? [];
+  return constructorParamTypes.indexOf(targetName);
 }
 
 function computeFullPathFromNodes(sourceNode: any, targetNode: any): string {
@@ -847,6 +863,10 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
       extractor: (parsedNode: ParsedNode) => {
         const node = parsedNode.sourceNode;
         if (!node) return {};
+
+        // Extract constructor param types for INJECTS edge detection
+        const { types, injectTokens } = extractConstructorParamTypes(node);
+
         return {
           isAbstract: node.getAbstractKeyword() != null,
           isDefaultExport: node.isDefaultExport(),
@@ -856,6 +876,9 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
           methodCount: node.getMethods().length,
           propertyCount: node.getProperties().length,
           constructorParameterCount: countConstructorParameters(node),
+          // Pre-extracted for cross-chunk edge detection
+          constructorParamTypes: types,
+          injectTokens: Object.fromEntries(injectTokens),
         };
       },
       priority: 1,

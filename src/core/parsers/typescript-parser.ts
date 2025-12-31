@@ -1063,13 +1063,13 @@ export class TypeScriptParser {
 
   private async applyEdgeEnhancement(edgeEnhancement: EdgeEnhancement): Promise<void> {
     try {
-      // Combine parsed nodes and existing nodes for target matching
-      // Sources must be parsed (have AST), targets can be either
+      // Combine parsed nodes and existing nodes for edge matching
+      // Detection patterns should use pre-extracted context, not raw AST
       const allTargetNodes = new Map([...this.parsedNodes, ...this.existingNodes]);
 
       for (const [sourceId, sourceNode] of this.parsedNodes) {
-        // Skip if source doesn't have AST (shouldn't happen for parsedNodes, but be safe)
-        if (!sourceNode.sourceNode) continue;
+        // Note: sourceNode.sourceNode may be undefined after AST cleanup
+        // Detection patterns should use pre-extracted context from node.properties.context
 
         for (const [targetId, targetNode] of allTargetNodes) {
           if (sourceId === targetId) continue;
