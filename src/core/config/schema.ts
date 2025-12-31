@@ -148,6 +148,10 @@ export interface Neo4jNodeProperties {
   contentHash?: string;
   mtime?: number;
   size?: number;
+  parentClassName?: string; // Parent class name for methods/properties/constructors
+
+  // === DUPLICATE DETECTION ===
+  normalizedHash?: string; // SHA256 hash of normalized code for structural duplicate detection
 
   // === FRAMEWORK-SPECIFIC (Dynamic) ===
   context?: Record<string, any>;
@@ -1136,8 +1140,8 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
 
     [CoreEdgeType.CALLS]: {
       coreType: CoreEdgeType.CALLS,
-      sourceTypes: [CoreNodeType.METHOD_DECLARATION, CoreNodeType.FUNCTION_DECLARATION],
-      targetTypes: [CoreNodeType.METHOD_DECLARATION, CoreNodeType.FUNCTION_DECLARATION],
+      sourceTypes: [CoreNodeType.METHOD_DECLARATION, CoreNodeType.FUNCTION_DECLARATION, CoreNodeType.CONSTRUCTOR_DECLARATION],
+      targetTypes: [CoreNodeType.METHOD_DECLARATION, CoreNodeType.FUNCTION_DECLARATION, CoreNodeType.CONSTRUCTOR_DECLARATION],
       properties: [
         {
           name: 'confidence',

@@ -131,6 +131,9 @@ export const QUERIES = {
   CREATE_PROJECT_ID_INDEX_SOURCEFILE:
     'CREATE INDEX project_id_sourcefile_idx IF NOT EXISTS FOR (n:SourceFile) ON (n.projectId, n.id)',
 
+  // Create index on normalizedHash for efficient structural duplicate detection
+  CREATE_NORMALIZED_HASH_INDEX: 'CREATE INDEX normalized_hash_idx IF NOT EXISTS FOR (n:Embedded) ON (n.normalizedHash)',
+
   CREATE_NODE: `
     UNWIND $nodes AS nodeData
     CALL apoc.create.node(nodeData.labels, nodeData.properties) YIELD node
@@ -615,5 +618,180 @@ export const QUERIES = {
       depth,
       relationshipPath
     ORDER BY depth ASC
+  `,
+
+  // ============================================
+  // DEAD CODE DETECTION QUERIES
+  // ============================================
+
+  /**
+   * Find exported classes/functions/interfaces with no incoming references from other files.
+   * These are potentially dead code - exported but never imported or used.
+   */
+  FIND_UNREFERENCED_EXPORTS: `
+    MATCH (n)
+    WHERE n.projectId = $projectId
+      AND n.isExported = true
+      AND n.coreType IN ['ClassDeclaration', 'FunctionDeclaration', 'InterfaceDeclaration']
+    WITH n
+    OPTIONAL MATCH (other)-[r]->(n)
+    WHERE other.projectId = $projectId
+      AND other.filePath <> n.filePath
+      AND type(r) IN ['IMPORTS', 'EXTENDS', 'IMPLEMENTS', 'TYPED_AS', 'INJECTS', 'CALLS']
+    WITH n, count(other) AS incomingCount
+    WHERE incomingCount = 0
+    RETURN n.id AS nodeId,
+           n.name AS name,
+           n.coreType AS coreType,
+           n.semanticType AS semanticType,
+           n.filePath AS filePath,
+           n.startLine AS lineNumber,
+           n.isExported AS isExported,
+           'Exported but never imported or referenced' AS reason
+    ORDER BY n.filePath, n.startLine
+  `,
+
+  /**
+   * Find private methods with no incoming CALLS edges.
+   * Private methods that are never called are likely dead code.
+   */
+  FIND_UNCALLED_PRIVATE_METHODS: `
+    MATCH (n)
+    WHERE n.projectId = $projectId
+      AND n.coreType = 'MethodDeclaration'
+      AND n.visibility = 'private'
+    WITH n
+    OPTIONAL MATCH (caller)-[r:CALLS]->(n)
+    WHERE caller.projectId = $projectId
+    WITH n, count(caller) AS callCount
+    WHERE callCount = 0
+    RETURN n.id AS nodeId,
+           n.name AS name,
+           n.coreType AS coreType,
+           n.semanticType AS semanticType,
+           n.filePath AS filePath,
+           n.startLine AS lineNumber,
+           n.visibility AS visibility,
+           'Private method never called' AS reason
+    ORDER BY n.filePath, n.startLine
+  `,
+
+  /**
+   * Find interfaces that are never implemented or referenced.
+   * Interfaces without implementations may be dead code.
+   */
+  FIND_UNREFERENCED_INTERFACES: `
+    MATCH (n)
+    WHERE n.projectId = $projectId
+      AND n.coreType = 'InterfaceDeclaration'
+      AND n.isExported = true
+    WITH n
+    OPTIONAL MATCH (other)-[r]->(n)
+    WHERE other.projectId = $projectId
+      AND type(r) IN ['IMPLEMENTS', 'EXTENDS', 'TYPED_AS', 'IMPORTS']
+    WITH n, count(other) AS refCount
+    WHERE refCount = 0
+    RETURN n.id AS nodeId,
+           n.name AS name,
+           n.coreType AS coreType,
+           n.semanticType AS semanticType,
+           n.filePath AS filePath,
+           n.startLine AS lineNumber,
+           'Interface never implemented or referenced' AS reason
+    ORDER BY n.filePath, n.startLine
+  `,
+
+  /**
+   * Get framework entry points that should be excluded from dead code analysis.
+   * These are nodes that may appear unused but are actually framework-managed.
+   * Filters by coreType to exclude ImportDeclarations and only return actual classes/functions/interfaces.
+   */
+  GET_FRAMEWORK_ENTRY_POINTS: `
+    MATCH (n)
+    WHERE n.projectId = $projectId
+      AND n.coreType IN ['ClassDeclaration', 'FunctionDeclaration', 'InterfaceDeclaration']
+      AND (
+        n.semanticType IN ['NestController', 'NestModule', 'NestGuard', 'NestPipe',
+                           'NestInterceptor', 'NestFilter', 'NestProvider',
+                           'HttpEndpoint', 'MessageHandler', 'NestService']
+        OR n.filePath ENDS WITH 'main.ts'
+        OR n.filePath ENDS WITH '.module.ts'
+        OR n.filePath ENDS WITH '.controller.ts'
+        OR n.filePath ENDS WITH 'index.ts'
+      )
+    RETURN n.id AS nodeId,
+           n.name AS name,
+           n.coreType AS coreType,
+           n.semanticType AS semanticType,
+           n.filePath AS filePath
+    ORDER BY n.semanticType, n.name
+  `,
+
+  // ============================================================================
+  // DUPLICATE CODE DETECTION QUERIES
+  // ============================================================================
+
+  /**
+   * Find structural duplicates - nodes with identical normalizedHash.
+   * Returns all nodes that share the same normalized code hash.
+   * Limited to prevent memory issues on large codebases.
+   */
+  FIND_STRUCTURAL_DUPLICATES: `
+    MATCH (n)
+    WHERE n.projectId = $projectId
+      AND n.coreType IN $coreTypes
+      AND n.normalizedHash IS NOT NULL
+      AND n.normalizedHash <> ''
+    WITH n.normalizedHash AS hash, collect(n) AS nodes
+    WHERE size(nodes) >= 2
+    UNWIND nodes AS n
+    RETURN n.id AS nodeId,
+           n.name AS name,
+           n.coreType AS coreType,
+           n.semanticType AS semanticType,
+           n.filePath AS filePath,
+           n.startLine AS lineNumber,
+           n.normalizedHash AS normalizedHash,
+           n.sourceCode AS sourceCode
+    ORDER BY n.normalizedHash, n.filePath, n.startLine
+    LIMIT toInteger($limit)
+  `,
+
+  /**
+   * Find semantic duplicates - nodes with similar embeddings.
+   * Uses vector similarity search to find semantically similar code.
+   * Note: Requires the vector index 'embedded_nodes_idx' to exist.
+   */
+  FIND_SEMANTIC_DUPLICATES: `
+    MATCH (n1)
+    WHERE n1.projectId = $projectId
+      AND n1.coreType IN $coreTypes
+      AND n1.embedding IS NOT NULL
+    WITH n1
+    CALL db.index.vector.queryNodes('embedded_nodes_idx', toInteger($vectorNeighbors), n1.embedding)
+    YIELD node AS n2, score AS similarity
+    WHERE n2.projectId = $projectId
+      AND n2.coreType IN $coreTypes
+      AND n1.id < n2.id
+      AND similarity >= $minSimilarity
+      AND n1.filePath <> n2.filePath
+      AND (n1.normalizedHash IS NULL OR n2.normalizedHash IS NULL OR n1.normalizedHash <> n2.normalizedHash)
+    RETURN n1.id AS nodeId1,
+           n1.name AS name1,
+           n1.coreType AS coreType1,
+           n1.semanticType AS semanticType1,
+           n1.filePath AS filePath1,
+           n1.startLine AS lineNumber1,
+           n1.sourceCode AS sourceCode1,
+           n2.id AS nodeId2,
+           n2.name AS name2,
+           n2.coreType AS coreType2,
+           n2.semanticType AS semanticType2,
+           n2.filePath AS filePath2,
+           n2.startLine AS lineNumber2,
+           n2.sourceCode AS sourceCode2,
+           similarity
+    ORDER BY similarity DESC
+    LIMIT toInteger($limit)
   `,
 };
