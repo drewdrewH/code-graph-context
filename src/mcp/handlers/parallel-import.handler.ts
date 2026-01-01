@@ -128,7 +128,7 @@ export class ParallelImportHandler {
       },
     });
 
-    const resolvedEdges = await parser.resolveDeferredEdgesManually();
+    const resolvedEdges = await parser.resolveDeferredEdges();
     if (resolvedEdges.length > 0) {
       await this.importToNeo4j([], resolvedEdges);
       totalEdgesImported += resolvedEdges.length;

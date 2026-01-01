@@ -134,7 +134,7 @@ export class StreamingImportHandler {
 
     await this.progressReporter.reportResolving(0, totalEdgesImported);
 
-    const resolvedEdges = await parser.resolveDeferredEdgesManually();
+    const resolvedEdges = await parser.resolveDeferredEdges();
     if (resolvedEdges.length > 0) {
       await this.importEdgesToNeo4j(resolvedEdges);
       totalEdgesImported += resolvedEdges.length;
