@@ -186,18 +186,18 @@ export class WorkspaceParser {
    * Parse a single package and return its results
    */
   async parsePackage(pkg: WorkspacePackage): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
-    console.log(`\nParsing package: ${pkg.name}`);
+    await debugLog(`Parsing package: ${pkg.name}`);
 
     const parser = await this.createParserForPackage(pkg);
 
     // Discover files for this package
     const files = await this.discoverPackageFiles(pkg);
     if (files.length === 0) {
-      console.log(`   ⚠️ No TypeScript files found in ${pkg.name}`);
+      await debugLog(`No TypeScript files found in ${pkg.name}`);
       return { nodes: [], edges: [] };
     }
 
-    console.log(`   📄 ${files.length} files to parse`);
+    await debugLog(`${pkg.name}: ${files.length} files to parse`);
 
     // Parse all files in this package
     const result = await parser.parseChunk(files, true); // Skip edge resolution for now
@@ -207,7 +207,7 @@ export class WorkspaceParser {
       node.properties.packageName = pkg.name;
     }
 
-    console.log(`   ✅ ${result.nodes.length} nodes, ${result.edges.length} edges`);
+    await debugLog(`${pkg.name}: ${result.nodes.length} nodes, ${result.edges.length} edges`);
 
     return result;
   }
@@ -333,8 +333,7 @@ export class WorkspaceParser {
       });
     }
 
-    console.log(`\n🎉 Workspace parsing complete!`);
-    console.log(`   Total: ${allNodes.length} nodes, ${allEdges.length} edges`);
+    await debugLog(`Workspace parsing complete! Total: ${allNodes.length} nodes, ${allEdges.length} edges`);
 
     return {
       nodes: allNodes,
@@ -554,16 +553,16 @@ export class WorkspaceParser {
    */
   async applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]> {
     if (this.accumulatedParsedNodes.size === 0) {
-      console.log('WorkspaceParser: No accumulated nodes for edge enhancements');
+      await debugLog('WorkspaceParser: No accumulated nodes for edge enhancements');
       return [];
     }
 
     if (this.frameworkSchemas.length === 0) {
-      console.log('WorkspaceParser: No framework schemas for edge enhancements');
+      await debugLog('WorkspaceParser: No framework schemas for edge enhancements');
       return [];
     }
 
-    console.log(
+    await debugLog(
       `WorkspaceParser: Applying edge enhancements on ${this.accumulatedParsedNodes.size} accumulated nodes across all packages...`,
     );
 
@@ -581,7 +580,7 @@ export class WorkspaceParser {
     for (const [type, nodes] of nodesBySemanticType) {
       typeCounts[type] = nodes.size;
     }
-    console.log(`Node distribution by semantic type:`, typeCounts);
+    await debugLog(`Node distribution by semantic type: ${JSON.stringify(typeCounts)}`);
 
     const newEdges: Neo4jEdge[] = [];
     const edgeCountBefore = this.parsedEdges.size;
@@ -595,7 +594,7 @@ export class WorkspaceParser {
     }
 
     const newEdgeCount = this.parsedEdges.size - edgeCountBefore;
-    console.log(`Created ${newEdgeCount} cross-package edges from edge enhancements`);
+    await debugLog(`Created ${newEdgeCount} cross-package edges from edge enhancements`);
 
     return newEdges;
   }
