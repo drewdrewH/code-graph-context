@@ -302,6 +302,18 @@ export interface ParsedNode {
 }
 
 /**
+ * Parsed edge representation (after parsing)
+ * This is the structure stored in the parser's parsedEdges map
+ */
+export interface ParsedEdge {
+  id: string;
+  relationshipType: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  properties: Neo4jEdgeProperties;
+}
+
+/**
  * Context Extractor for Framework-Specific Properties
  * Receives the parsed node, all parsed nodes, and shared context
  * Access the AST node via parsedNode.sourceNode if needed

@@ -51,8 +51,21 @@ export interface ChunkWorkerReady {
 export type SerializedSharedContext = Array<[string, unknown]>;
 
 /**
+ * Context for CALLS edge resolution.
+ * Captures information about how a call was made to enable precise target matching.
+ */
+export interface SerializedCallContext {
+  receiverExpression?: string;
+  receiverType?: string;
+  receiverPropertyName?: string;
+  lineNumber: number;
+  isAsync: boolean;
+  argumentCount: number;
+}
+
+/**
  * Deferred edge that needs cross-chunk resolution.
- * These are EXTENDS, IMPLEMENTS, and IMPORTS edges where target wasn't found in same chunk.
+ * These are EXTENDS, IMPLEMENTS, IMPORTS, and CALLS edges where target wasn't found in same chunk.
  */
 export interface SerializedDeferredEdge {
   edgeType: string;
@@ -60,6 +73,7 @@ export interface SerializedDeferredEdge {
   targetName: string;
   targetType: string;
   targetFilePath?: string;
+  callContext?: SerializedCallContext;
 }
 
 /**
