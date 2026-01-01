@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'node:path';
 
@@ -7,11 +6,11 @@ import { glob } from 'glob';
 import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
 
+import { EXCLUDE_PATTERNS_GLOB, BUILT_IN_FUNCTIONS, BUILT_IN_METHODS, BUILT_IN_CLASSES } from '../../constants.js';
 import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
 import {
   CoreNodeType,
   Neo4jNodeProperties,
-  Neo4jEdgeProperties,
   Neo4jNode,
   Neo4jEdge,
   CORE_TYPESCRIPT_SCHEMA,
@@ -27,183 +26,34 @@ import {
   CoreEdgeType,
   ParsingContext,
   ParsedNode,
+  ParsedEdge,
   CoreNode,
 } from '../config/schema.js';
 import { normalizeCode } from '../utils/code-normalizer.js';
-import { createFrameworkEdgeData } from '../utils/edge-factory.js';
-import { debugLog, hashFile } from '../utils/file-utils.js';
+import { debugLog, hashFile, matchesPattern, cleanTypeName } from '../utils/file-utils.js';
+import {
+  createFrameworkEdgeData,
+  createCoreEdge as createCoreEdgeFactory,
+  createCallsEdge as createCallsEdgeFactory,
+  toNeo4jNode,
+  toNeo4jEdge,
+  toParsedEdge,
+  generateDeterministicId,
+} from '../utils/graph-factory.js';
 import { resolveProjectId } from '../utils/project-id.js';
 
-// Built-in function names to skip when extracting CALLS edges
-const BUILT_IN_FUNCTIONS = new Set([
-  'console',
-  'setTimeout',
-  'setInterval',
-  'clearTimeout',
-  'clearInterval',
-  'parseInt',
-  'parseFloat',
-  'isNaN',
-  'isFinite',
-  'encodeURI',
-  'decodeURI',
-  'encodeURIComponent',
-  'decodeURIComponent',
-  'JSON',
-  'Math',
-  'Date',
-  'Object',
-  'Array',
-  'String',
-  'Number',
-  'Boolean',
-  'Symbol',
-  'BigInt',
-  'Promise',
-  'require',
-  'eval',
-]);
-
-// Built-in method names to skip when extracting CALLS edges
-const BUILT_IN_METHODS = new Set([
-  // Array methods
-  'push',
-  'pop',
-  'shift',
-  'unshift',
-  'slice',
-  'splice',
-  'concat',
-  'join',
-  'reverse',
-  'sort',
-  'indexOf',
-  'lastIndexOf',
-  'includes',
-  'find',
-  'findIndex',
-  'filter',
-  'map',
-  'reduce',
-  'reduceRight',
-  'every',
-  'some',
-  'forEach',
-  'flat',
-  'flatMap',
-  'fill',
-  'entries',
-  'keys',
-  'values',
-  // String methods
-  'charAt',
-  'charCodeAt',
-  'substring',
-  'substr',
-  'split',
-  'trim',
-  'trimStart',
-  'trimEnd',
-  'toLowerCase',
-  'toUpperCase',
-  'replace',
-  'replaceAll',
-  'match',
-  'search',
-  'startsWith',
-  'endsWith',
-  'padStart',
-  'padEnd',
-  'repeat',
-  // Object methods
-  'hasOwnProperty',
-  'toString',
-  'valueOf',
-  'toJSON',
-  // Promise methods
-  'then',
-  'catch',
-  'finally',
-  // Console methods
-  'log',
-  'error',
-  'warn',
-  'info',
-  'debug',
-  'trace',
-  'dir',
-  'table',
-  // Common utilities
-  'bind',
-  'call',
-  'apply',
-]);
-
-// Built-in class names to skip when extracting constructor calls
-const BUILT_IN_CLASSES = new Set([
-  'Array',
-  'Object',
-  'String',
-  'Number',
-  'Boolean',
-  'Date',
-  'RegExp',
-  'Error',
-  'TypeError',
-  'RangeError',
-  'SyntaxError',
-  'ReferenceError',
-  'Map',
-  'Set',
-  'WeakMap',
-  'WeakSet',
-  'Promise',
-  'Proxy',
-  'Reflect',
-  'Symbol',
-  'BigInt',
-  'ArrayBuffer',
-  'DataView',
-  'Int8Array',
-  'Uint8Array',
-  'Int16Array',
-  'Uint16Array',
-  'Int32Array',
-  'Uint32Array',
-  'Float32Array',
-  'Float64Array',
-  'URL',
-  'URLSearchParams',
-  'TextEncoder',
-  'TextDecoder',
-  'Buffer',
-  'EventEmitter',
-]);
-
 /**
- * Generate a deterministic node ID based on stable properties.
- * This ensures the same node gets the same ID across reparses.
- *
- * Identity is based on: projectId + coreType + filePath + name (+ parentId for nested nodes)
- * This is stable because when it matters (one side of edge not reparsed),
- * names are guaranteed unchanged (or imports would break, triggering reparse).
- *
- * Including projectId ensures nodes from different projects have unique IDs
- * even if they have identical file paths and names.
+ * Context for CALLS edge resolution.
+ * Captures information about how a call was made to enable precise target matching.
  */
-const generateDeterministicId = (
-  projectId: string,
-  coreType: string,
-  filePath: string,
-  name: string,
-  parentId?: string,
-): string => {
-  const parts = parentId ? [projectId, coreType, filePath, parentId, name] : [projectId, coreType, filePath, name];
-  const identity = parts.join('::');
-  const hash = crypto.createHash('sha256').update(identity).digest('hex').substring(0, 16);
-
-  return `${projectId}:${coreType}:${hash}`;
-};
+export interface CallContext {
+  receiverExpression?: string; // 'this', 'this.userService', variable name
+  receiverType?: string; // Resolved type of receiver (e.g., 'UserService')
+  receiverPropertyName?: string; // Property name if this.xxx (e.g., 'userService')
+  lineNumber: number;
+  isAsync: boolean;
+  argumentCount: number;
+}
 
 // Re-export ParsedNode for convenience
 export type { ParsedNode };
@@ -217,19 +67,41 @@ export interface StreamingParser {
   discoverSourceFiles(): Promise<string[]>;
   parseChunk(filePaths: string[], skipEdgeResolution?: boolean): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }>;
   addExistingNodesFromChunk(nodes: Neo4jNode[]): void;
+  addParsedNodesFromChunk(nodes: Neo4jNode[]): void;
   clearParsedData(): void;
-  resolveDeferredEdgesManually(): Promise<Neo4jEdge[]>;
+  resolveDeferredEdges(): Promise<Neo4jEdge[]>;
   applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]>;
   getCurrentCounts(): { nodes: number; edges: number; deferredEdges: number };
+  setDeferEdgeEnhancements(defer: boolean): void;
+  loadFrameworkSchemasForType(projectType: string): void;
+  /** Get serialized shared context for parallel parsing */
+  getSerializedSharedContext(): Array<[string, unknown]>;
+  /** Merge serialized shared context from workers */
+  mergeSerializedSharedContext(serialized: Array<[string, unknown]>): void;
+  /** Get deferred edges for cross-chunk resolution */
+  getDeferredEdges(): Array<{
+    edgeType: string;
+    sourceNodeId: string;
+    targetName: string;
+    targetType: string;
+    targetFilePath?: string;
+    callContext?: CallContext;
+  }>;
+  /** Merge deferred edges from workers for resolution */
+  mergeDeferredEdges(
+    edges: Array<{
+      edgeType: string;
+      sourceNodeId: string;
+      targetName: string;
+      targetType: string;
+      targetFilePath?: string;
+      callContext?: CallContext;
+    }>,
+  ): void;
 }
 
-export interface ParsedEdge {
-  id: string;
-  relationshipType: string;
-  sourceNodeId: string;
-  targetNodeId: string;
-  properties: Neo4jEdgeProperties;
-}
+// Re-export ParsedEdge for convenience (now defined in schema.ts)
+export type { ParsedEdge };
 
 export interface ParseResult {
   nodes: Map<string, ParsedNode>;
@@ -250,7 +122,7 @@ export interface ExistingNode {
 }
 
 export class TypeScriptParser {
-  private project: Project;
+  private project!: Project; // initialized in constructor, undefined in resolver-only mode
   private coreSchema: CoreTypeScriptSchema;
   private parseConfig: ParseOptions;
   private frameworkSchemas: FrameworkSchema[];
@@ -263,15 +135,7 @@ export class TypeScriptParser {
     targetName: string;
     targetType: CoreNodeType;
     targetFilePath?: string; // File path of target for precise matching (used for EXTENDS/IMPLEMENTS)
-    // CALLS edge specific properties
-    callContext?: {
-      receiverExpression?: string; // 'this', 'this.userService', variable name
-      receiverType?: string; // Resolved type of receiver (e.g., 'UserService')
-      receiverPropertyName?: string; // Property name if this.xxx (e.g., 'userService')
-      lineNumber: number;
-      isAsync: boolean;
-      argumentCount: number;
-    };
+    callContext?: CallContext; // CALLS edge specific properties
   }> = [];
   private sharedContext: ParsingContext = new Map(); // Shared context for custom data
   private projectId: string; // Project identifier for multi-project isolation
@@ -282,24 +146,56 @@ export class TypeScriptParser {
   private methodsByClass: Map<string, Map<string, ParsedNode>> = new Map(); // className -> methodName -> node
   private functionsByName: Map<string, ParsedNode> = new Map(); // functionName -> node
   private constructorsByClass: Map<string, ParsedNode> = new Map(); // className -> constructor node
+  // Track already exported items to avoid returning duplicates in streaming mode
+  private exportedNodeIds: Set<string> = new Set();
+  private exportedEdgeIds: Set<string> = new Set();
+  private workspacePath: string;
+
+  /**
+   * Create a resolver-only instance for edge resolution without parsing.
+   * This mode doesn't initialize ts-morph and can only resolve edges from externally-added nodes.
+   */
+  public static createResolver(projectId: string): TypeScriptParser {
+    const instance = Object.create(TypeScriptParser.prototype) as TypeScriptParser;
+    // project is intentionally not initialized - resolver mode doesn't need ts-morph
+    instance.coreSchema = CORE_TYPESCRIPT_SCHEMA;
+    instance.parseConfig = DEFAULT_PARSE_OPTIONS;
+    instance.frameworkSchemas = [];
+    instance.parsedNodes = new Map();
+    instance.parsedEdges = new Map();
+    instance.existingNodes = new Map();
+    instance.deferredEdges = [];
+    instance.sharedContext = new Map();
+    instance.projectId = projectId;
+    instance.lazyLoad = true;
+    instance.discoveredFiles = null;
+    instance.deferEdgeEnhancements = false;
+    instance.methodsByClass = new Map();
+    instance.functionsByName = new Map();
+    instance.constructorsByClass = new Map();
+    instance.exportedNodeIds = new Set();
+    instance.exportedEdgeIds = new Set();
+    instance.workspacePath = '';
+    return instance;
+  }
 
   constructor(
-    private workspacePath: string,
-    private tsConfigPath: string = 'tsconfig.json',
+    workspacePath: string,
+    tsConfigPath: string = 'tsconfig.json',
     coreSchema: CoreTypeScriptSchema = CORE_TYPESCRIPT_SCHEMA,
     frameworkSchemas: FrameworkSchema[] = [NESTJS_FRAMEWORK_SCHEMA],
     parseConfig: ParseOptions = DEFAULT_PARSE_OPTIONS,
     projectId?: string, // Optional - derived from workspacePath if not provided
     lazyLoad: boolean = false, // Set to true for large projects to avoid OOM
   ) {
+    this.workspacePath = workspacePath;
     this.coreSchema = coreSchema;
     this.frameworkSchemas = frameworkSchemas;
     this.parseConfig = parseConfig;
     this.projectId = resolveProjectId(workspacePath, projectId);
     this.lazyLoad = lazyLoad;
 
-    console.log(`🆔 Project ID: ${this.projectId}`);
-    console.log(`📂 Lazy loading: ${lazyLoad ? 'enabled' : 'disabled'}`);
+    debugLog('Parser initialized', { projectId: this.projectId, lazyLoad });
 
     if (lazyLoad) {
       // Lazy mode: create Project without loading any files
@@ -346,6 +242,39 @@ export class TypeScriptParser {
   }
 
   /**
+   * Get all parsed nodes (for cross-parser edge resolution).
+   * Returns the internal Map of ParsedNodes.
+   */
+  public getParsedNodes(): Map<string, ParsedNode> {
+    return this.parsedNodes;
+  }
+
+  /**
+   * Get the framework schemas used by this parser.
+   * Useful for WorkspaceParser to apply cross-package edge enhancements.
+   */
+  public getFrameworkSchemas(): FrameworkSchema[] {
+    return this.frameworkSchemas;
+  }
+
+  /**
+   * Get the shared context from this parser.
+   * Useful for aggregating context across multiple parsers.
+   */
+  public getSharedContext(): ParsingContext {
+    return this.sharedContext;
+  }
+
+  /**
+   * Set the shared context for this parser.
+   * Use this to share context across multiple parsers (e.g., in WorkspaceParser).
+   * @param context The shared context map to use
+   */
+  public setSharedContext(context: ParsingContext): void {
+    this.sharedContext = context;
+  }
+
+  /**
    * Set existing nodes from Neo4j for edge target matching during incremental parsing.
    * These nodes will be available as targets for edge detection but won't be exported.
    */
@@ -370,35 +299,207 @@ export class TypeScriptParser {
       };
       this.existingNodes.set(node.id, parsedNode);
     }
-    console.log(`📦 Loaded ${nodes.length} existing nodes for edge detection`);
+    debugLog('Loaded existing nodes for edge detection', { count: nodes.length });
+  }
+
+  /**
+   * Defer edge enhancements to a parent parser (e.g., WorkspaceParser).
+   * When true, parseChunk() will skip applyEdgeEnhancements().
+   * The parent is responsible for calling applyEdgeEnhancementsManually() at the end.
+   */
+  public setDeferEdgeEnhancements(defer: boolean): void {
+    this.deferEdgeEnhancements = defer;
+  }
+
+  /**
+   * Load framework schemas for a specific project type.
+   * No-op for TypeScriptParser since schemas are loaded in constructor.
+   */
+  public loadFrameworkSchemasForType(_projectType: string): void {
+    // TypeScriptParser already has schemas loaded via constructor/ParserFactory
   }
 
   async parseWorkspace(filesToParse?: string[]): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
     let sourceFiles: SourceFile[];
 
+    // Determine which files to parse
+    let filePaths: string[];
     if (filesToParse && filesToParse.length > 0) {
-      // In lazy mode, files may not be loaded yet - add them if needed
-      sourceFiles = filesToParse
-        .map((filePath) => {
-          const existing = this.project.getSourceFile(filePath);
-          if (existing) return existing;
-          // Add file to project if not already loaded (lazy mode)
-          try {
-            return this.project.addSourceFileAtPath(filePath);
-          } catch {
-            return undefined;
-          }
-        })
-        .filter((sf): sf is SourceFile => sf !== undefined);
+      filePaths = filesToParse;
+    } else if (this.lazyLoad) {
+      // In lazy mode, use glob-based discovery (consistent with detectChangedFiles)
+      filePaths = await this.discoverSourceFiles();
     } else {
+      // Eager mode - files already loaded from tsconfig
       sourceFiles = this.project.getSourceFiles();
+      for (const sourceFile of sourceFiles) {
+        if (this.shouldSkipFile(sourceFile)) continue;
+        await this.parseCoreTypeScript(sourceFile);
+      }
+      return this.finishParsing();
     }
+
+    // Load files into project (for lazy mode or explicit file list)
+    sourceFiles = filePaths
+      .map((filePath) => {
+        const existing = this.project.getSourceFile(filePath);
+        if (existing) return existing;
+        try {
+          return this.project.addSourceFileAtPath(filePath);
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((sf): sf is SourceFile => sf !== undefined);
 
     for (const sourceFile of sourceFiles) {
       if (this.shouldSkipFile(sourceFile)) continue;
-      await this.parseCoreTypeScriptV2(sourceFile);
+      await this.parseCoreTypeScript(sourceFile);
     }
 
+    return this.finishParsing();
+  }
+
+  /**
+   * Parse a chunk of files without resolving deferred edges.
+   * Use this for streaming parsing where edges are resolved after all chunks.
+   * In lazy mode, files are added to the project just-in-time and removed after parsing.
+   * @param filePaths Specific file paths to parse
+   * @param skipEdgeResolution If true, deferred edges are not resolved (default: false)
+   */
+  async parseChunk(
+    filePaths: string[],
+    skipEdgeResolution: boolean = false,
+  ): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
+    // Declare sourceFiles outside try so it's available in finally
+    const sourceFiles: SourceFile[] = [];
+
+    try {
+      if (this.lazyLoad) {
+        // Lazy mode: add files to project just-in-time
+        for (const filePath of filePaths) {
+          try {
+            // Check if file already exists in project (shouldn't happen in lazy mode)
+            // Add the file to the project if not already present
+            const sourceFile = this.project.getSourceFile(filePath) ?? this.project.addSourceFileAtPath(filePath);
+            sourceFiles.push(sourceFile);
+          } catch (error) {
+            console.warn(`Failed to add source file ${filePath}:`, error);
+          }
+        }
+      } else {
+        // Eager mode: files are already loaded
+        const loadedFiles = filePaths
+          .map((filePath) => this.project.getSourceFile(filePath))
+          .filter((sf): sf is SourceFile => sf !== undefined);
+        sourceFiles.push(...loadedFiles);
+      }
+
+      for (const sourceFile of sourceFiles) {
+        if (this.shouldSkipFile(sourceFile)) continue;
+        await this.parseCoreTypeScript(sourceFile);
+      }
+
+      // Only resolve edges if not skipping
+      if (!skipEdgeResolution) {
+        await this.resolveDeferredEdges();
+      }
+
+      await this.applyContextExtractors();
+
+      if (this.frameworkSchemas.length > 0) {
+        await this.applyFrameworkEnhancements();
+      }
+
+      // Apply edge enhancements unless deferred to parent (e.g., WorkspaceParser)
+      // When deferred, parent will call applyEdgeEnhancementsManually() at the end
+      // with all accumulated nodes for cross-package edge detection
+      if (!this.deferEdgeEnhancements) {
+        await this.applyEdgeEnhancements();
+      }
+
+      // Only return nodes/edges that haven't been exported yet (prevents duplicate imports in streaming mode)
+      const newNodes: Neo4jNode[] = [];
+      const newEdges: Neo4jEdge[] = [];
+
+      for (const node of this.parsedNodes.values()) {
+        if (!this.exportedNodeIds.has(node.id)) {
+          newNodes.push(toNeo4jNode(node));
+          this.exportedNodeIds.add(node.id);
+        }
+      }
+
+      for (const edge of this.parsedEdges.values()) {
+        if (!this.exportedEdgeIds.has(edge.id)) {
+          newEdges.push(toNeo4jEdge(edge));
+          this.exportedEdgeIds.add(edge.id);
+        }
+      }
+
+      return { nodes: newNodes, edges: newEdges };
+    } finally {
+      // Always clean up in lazy mode to prevent memory leaks
+      if (this.lazyLoad) {
+        for (const sourceFile of sourceFiles) {
+          try {
+            this.project.removeSourceFile(sourceFile);
+          } catch {
+            // Ignore errors when removing files
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Get list of source files in the project.
+   * In lazy mode, uses glob to discover files without loading them into memory.
+   * Useful for determining total work and creating chunks.
+   */
+  public async discoverSourceFiles(): Promise<string[]> {
+    if (this.discoveredFiles !== null) {
+      return this.discoveredFiles;
+    }
+
+    if (this.lazyLoad) {
+      // Use glob to find files without loading them into ts-morph
+      // Use EXCLUDE_PATTERNS_GLOB for consistency with detectChangedFiles
+      const pattern = path.join(this.workspacePath, '**/*.{ts,tsx}');
+      this.discoveredFiles = await glob(pattern, {
+        ignore: EXCLUDE_PATTERNS_GLOB,
+        absolute: true,
+      });
+
+      debugLog('Discovered TypeScript files (lazy mode)', { count: this.discoveredFiles.length });
+      return this.discoveredFiles;
+    } else {
+      // Eager mode - files are already loaded
+      this.discoveredFiles = this.project
+        .getSourceFiles()
+        .filter((sf) => !this.shouldSkipFile(sf))
+        .map((sf) => sf.getFilePath());
+      return this.discoveredFiles;
+    }
+  }
+
+  /**
+   * @deprecated Use discoverSourceFiles() instead for async file discovery
+   */
+  public getSourceFilePaths(): string[] {
+    if (this.lazyLoad) {
+      throw new Error('getSourceFilePaths() is not supported in lazy mode. Use discoverSourceFiles() instead.');
+    }
+    return this.project
+      .getSourceFiles()
+      .filter((sf) => !this.shouldSkipFile(sf))
+      .map((sf) => sf.getFilePath());
+  }
+
+  /**
+   * Complete parsing by resolving edges and applying enhancements.
+   * Called after all source files have been parsed.
+   */
+  private async finishParsing(): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
     await this.resolveDeferredEdges();
 
     await this.applyContextExtractors();
@@ -409,31 +510,13 @@ export class TypeScriptParser {
 
     await this.applyEdgeEnhancements();
 
-    const neo4jNodes = Array.from(this.parsedNodes.values()).map(this.toNeo4jNode);
-    const neo4jEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
+    const neo4jNodes = Array.from(this.parsedNodes.values()).map(toNeo4jNode);
+    const neo4jEdges = Array.from(this.parsedEdges.values()).map(toNeo4jEdge);
 
     return { nodes: neo4jNodes, edges: neo4jEdges };
   }
 
-  /**
-   * Check if variable declarations should be parsed for this file
-   * based on framework schema configurations
-   */
-  private shouldParseVariables(filePath: string): boolean {
-    for (const schema of this.frameworkSchemas) {
-      const parsePatterns = schema.metadata.parseVariablesFrom;
-      if (parsePatterns) {
-        for (const pattern of parsePatterns) {
-          if (minimatch(filePath, pattern)) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
-  private async parseCoreTypeScriptV2(sourceFile: SourceFile): Promise<void> {
+  private async parseCoreTypeScript(sourceFile: SourceFile): Promise<void> {
     const filePath = sourceFile.getFilePath();
     const stats = await fs.stat(filePath);
     const fileTrackingProperties: Partial<Neo4jNodeProperties> = {
@@ -481,17 +564,21 @@ export class TypeScriptParser {
       }
     }
 
-    if (this.shouldParseVariables(sourceFile.getFilePath())) {
-      for (const varStatement of sourceFile.getVariableStatements()) {
-        for (const varDecl of varStatement.getDeclarations()) {
-          if (this.shouldSkipChildNode(varDecl)) continue;
+    for (const varStatement of sourceFile.getVariableStatements()) {
+      const isExported = varStatement.isExported();
+      if (!isExported && !this.shouldParseVariables(sourceFile.getFilePath())) continue;
+      for (const varDecl of varStatement.getDeclarations()) {
+        if (this.shouldSkipChildNode(varDecl)) continue;
 
-          const variableNode = this.createCoreNode(varDecl, CoreNodeType.VARIABLE_DECLARATION, {}, sourceFileNode.id);
-          this.addNode(variableNode);
-
-          const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, variableNode.id);
-          this.addEdge(containsEdge);
-        }
+        const variableNode = this.createCoreNode(
+          varDecl,
+          CoreNodeType.VARIABLE_DECLARATION,
+          { isExported },
+          sourceFileNode.id,
+        );
+        this.addNode(variableNode);
+        const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, variableNode.id);
+        this.addEdge(containsEdge);
       }
     }
   }
@@ -580,45 +667,126 @@ export class TypeScriptParser {
     }
   }
 
-  /**
-   * Queue relationship edges for deferred processing
-   * These are resolved after all nodes are parsed since the target may not exist yet
-   */
-  private queueRelationshipNodes(nodeConfig: CoreNode, parsedNode: ParsedNode, astNode: Node): void {
-    if (!nodeConfig.relationships || nodeConfig.relationships.length === 0) return;
+  private extractNodeName(astNode: Node, coreType: CoreNodeType): string {
+    try {
+      switch (coreType) {
+        case CoreNodeType.SOURCE_FILE:
+          if (Node.isSourceFile(astNode)) {
+            return astNode.getBaseName();
+          }
+          break;
 
-    for (const relationship of nodeConfig.relationships) {
-      const { edgeType, method, cardinality, targetNodeType } = relationship;
-      const astGetter = (astNode as any)[method];
+        case CoreNodeType.CLASS_DECLARATION:
+          if (Node.isClassDeclaration(astNode)) {
+            return astNode.getName() ?? 'AnonymousClass';
+          }
+          break;
 
-      if (typeof astGetter !== 'function') continue;
+        case CoreNodeType.METHOD_DECLARATION:
+          if (Node.isMethodDeclaration(astNode)) {
+            return astNode.getName();
+          }
+          break;
 
-      const result = astGetter.call(astNode);
-      if (!result) continue;
+        case CoreNodeType.FUNCTION_DECLARATION:
+          if (Node.isFunctionDeclaration(astNode)) {
+            return astNode.getName() ?? 'AnonymousFunction';
+          }
+          break;
 
-      const targets = cardinality === 'single' ? [result] : result;
+        case CoreNodeType.INTERFACE_DECLARATION:
+          if (Node.isInterfaceDeclaration(astNode)) {
+            return astNode.getName();
+          }
+          break;
 
-      for (const target of targets) {
-        if (!target) continue;
+        case CoreNodeType.PROPERTY_DECLARATION:
+          if (Node.isPropertyDeclaration(astNode)) {
+            return astNode.getName();
+          }
+          break;
 
-        const targetName = this.extractRelationshipTargetName(target);
-        if (!targetName) continue;
+        case CoreNodeType.PARAMETER_DECLARATION:
+          if (Node.isParameterDeclaration(astNode)) {
+            return astNode.getName();
+          }
+          break;
 
-        // For EXTENDS/IMPLEMENTS, try to get the file path from the resolved declaration
-        let targetFilePath: string | undefined;
-        if (edgeType === CoreEdgeType.EXTENDS || edgeType === CoreEdgeType.IMPLEMENTS) {
-          targetFilePath = this.extractTargetFilePath(target);
-        }
+        case CoreNodeType.IMPORT_DECLARATION:
+          if (Node.isImportDeclaration(astNode)) {
+            return astNode.getModuleSpecifierValue();
+          }
+          break;
 
-        this.deferredEdges.push({
-          edgeType: edgeType as CoreEdgeType,
-          sourceNodeId: parsedNode.id,
-          targetName,
-          targetType: targetNodeType,
-          targetFilePath,
-        });
+        case CoreNodeType.DECORATOR:
+          if (Node.isDecorator(astNode)) {
+            return astNode.getName();
+          }
+          break;
+
+        case CoreNodeType.TYPE_ALIAS:
+          if (Node.isTypeAliasDeclaration(astNode)) {
+            return astNode.getName();
+          }
+          break;
+
+        default:
+          return astNode.getKindName();
       }
+    } catch (error) {
+      console.warn(`Error extracting name for ${coreType}:`, error);
     }
+
+    return 'Unknown';
+  }
+
+  private extractProperty(astNode: Node, propDef: PropertyDefinition): any {
+    const { method, source, defaultValue } = propDef.extraction;
+
+    try {
+      switch (method) {
+        case 'ast':
+          if (typeof source === 'string') {
+            const fn = (astNode as any)[source];
+            return typeof fn === 'function' ? fn.call(astNode) : defaultValue;
+          }
+          return defaultValue;
+
+        case 'function':
+          if (typeof source === 'function') {
+            return source(astNode);
+          }
+          return defaultValue;
+
+        case 'static':
+          return defaultValue;
+
+        case 'context':
+          // Context properties are handled by context extractors
+          return undefined;
+
+        default:
+          return defaultValue;
+      }
+    } catch (error) {
+      console.warn(`Failed to extract property ${propDef.name}:`, error);
+      return defaultValue;
+    }
+  }
+
+  /**
+   * Extract the target name from an AST node returned by relationship methods
+   */
+  private extractRelationshipTargetName(target: Node): string | undefined {
+    if (Node.isClassDeclaration(target)) return target.getName();
+    if (Node.isInterfaceDeclaration(target)) return target.getName();
+    if (Node.isExpressionWithTypeArguments(target)) {
+      const expression = target.getExpression();
+      const text = expression.getText();
+      const genericIndex = text.indexOf('<');
+      return genericIndex > 0 ? text.substring(0, genericIndex) : text;
+    }
+    return undefined;
   }
 
   /**
@@ -647,21 +815,6 @@ export class TypeScriptParser {
       }
     } catch {
       // If resolution fails (e.g., external type), return undefined
-    }
-    return undefined;
-  }
-
-  /**
-   * Extract the target name from an AST node returned by relationship methods
-   */
-  private extractRelationshipTargetName(target: Node): string | undefined {
-    if (Node.isClassDeclaration(target)) return target.getName();
-    if (Node.isInterfaceDeclaration(target)) return target.getName();
-    if (Node.isExpressionWithTypeArguments(target)) {
-      const expression = target.getExpression();
-      const text = expression.getText();
-      const genericIndex = text.indexOf('<');
-      return genericIndex > 0 ? text.substring(0, genericIndex) : text;
     }
     return undefined;
   }
@@ -750,7 +903,7 @@ export class TypeScriptParser {
     if (Node.isIdentifier(expression)) {
       const targetName = expression.getText();
       // Skip built-in functions and common utilities
-      if (this.isBuiltInFunction(targetName)) return null;
+      if (BUILT_IN_FUNCTIONS.has(targetName)) return null;
 
       return {
         targetName,
@@ -767,7 +920,7 @@ export class TypeScriptParser {
       const receiver = expression.getExpression();
 
       // Skip common built-in method calls
-      if (this.isBuiltInMethod(methodName)) return null;
+      if (BUILT_IN_METHODS.has(methodName)) return null;
 
       // this.method() - internal class method call
       if (Node.isThisExpression(receiver)) {
@@ -810,7 +963,7 @@ export class TypeScriptParser {
         try {
           const typeText = receiver.getType().getText();
           // Clean up type (remove generics, imports)
-          receiverType = this.cleanTypeName(typeText);
+          receiverType = cleanTypeName(typeText);
         } catch {
           // Type resolution failed
         }
@@ -852,7 +1005,7 @@ export class TypeScriptParser {
       const className = expression.getText();
 
       // Skip built-in constructors
-      if (this.isBuiltInClass(className)) return null;
+      if (BUILT_IN_CLASSES.has(className)) return null;
 
       return {
         targetName: 'constructor',
@@ -942,62 +1095,219 @@ export class TypeScriptParser {
     return undefined;
   }
 
-  /**
-   * Find the parent class node for a method/property node.
-   * Uses the parentClassName property tracked during parsing.
-   */
-  private findParentClassNode(node: ParsedNode): ParsedNode | undefined {
-    const parentClassName = node.properties.parentClassName as string | undefined;
-    if (!parentClassName) return undefined;
+  private createCoreNode(
+    astNode: Node,
+    coreType: CoreNodeType,
+    baseProperties: Partial<Neo4jNodeProperties> = {},
+    parentId?: string,
+  ): ParsedNode {
+    const name = this.extractNodeName(astNode, coreType);
+    const filePath = astNode.getSourceFile().getFilePath();
+    const nodeId = generateDeterministicId(this.projectId, coreType, filePath, name, parentId);
 
-    // Find the class node by name and file path
-    for (const [, classNode] of this.parsedNodes) {
-      if (
-        classNode.coreType === CoreNodeType.CLASS_DECLARATION &&
-        classNode.properties.name === parentClassName &&
-        classNode.properties.filePath === node.properties.filePath
-      ) {
-        return classNode;
+    // Extract base properties using schema
+    const properties: Neo4jNodeProperties = {
+      id: nodeId,
+      projectId: this.projectId,
+      name,
+      coreType,
+      filePath,
+      startLine: astNode.getStartLineNumber(),
+      endLine: astNode.getEndLineNumber(),
+      sourceCode: astNode.getText(),
+      createdAt: new Date().toISOString(),
+      ...baseProperties,
+    };
+
+    // Extract schema-defined properties
+    const coreNodeDef = this.coreSchema.nodeTypes[coreType];
+    if (coreNodeDef) {
+      for (const propDef of coreNodeDef.properties) {
+        try {
+          const value = this.extractProperty(astNode, propDef);
+          if (value !== undefined && propDef.name !== 'context') {
+            (properties as any)[propDef.name] = value;
+          }
+        } catch (error) {
+          console.warn(`Failed to extract core property ${propDef.name}:`, error);
+        }
       }
     }
-    return undefined;
-  }
 
-  /**
-   * Clean up a type name by removing generics, imports, etc.
-   */
-  private cleanTypeName(typeName: string): string {
-    // Remove import paths: import("...").ClassName -> ClassName
-    let cleaned = typeName.replace(/import\([^)]+\)\./g, '');
-    // Remove generics: ClassName<T> -> ClassName
-    const genericIndex = cleaned.indexOf('<');
-    if (genericIndex > 0) {
-      cleaned = cleaned.substring(0, genericIndex);
+    // Compute normalizedHash for duplicate detection (methods, functions, constructors)
+    if (
+      coreType === CoreNodeType.METHOD_DECLARATION ||
+      coreType === CoreNodeType.FUNCTION_DECLARATION ||
+      coreType === CoreNodeType.CONSTRUCTOR_DECLARATION
+    ) {
+      try {
+        const { normalizedHash } = normalizeCode(properties.sourceCode);
+        if (normalizedHash) {
+          properties.normalizedHash = normalizedHash;
+        }
+      } catch (error) {
+        console.warn(`Failed to compute normalizedHash for ${nodeId}:`, error);
+      }
     }
-    // Remove array notation: ClassName[] -> ClassName
-    cleaned = cleaned.replace(/\[\]$/, '');
-    return cleaned.trim();
+
+    return {
+      id: nodeId,
+      coreType,
+      labels: [...(coreNodeDef?.neo4j.labels || [])],
+      properties,
+      sourceNode: astNode,
+      skipEmbedding: coreNodeDef?.neo4j.skipEmbedding ?? false,
+    };
+  }
+
+  private createCoreEdge(relationshipType: CoreEdgeType, sourceNodeId: string, targetNodeId: string): ParsedEdge {
+    return toParsedEdge(
+      createCoreEdgeFactory({
+        edgeType: relationshipType,
+        sourceNodeId,
+        targetNodeId,
+        projectId: this.projectId,
+      }),
+    );
+  }
+
+  private createCallsEdge(sourceNodeId: string, targetNodeId: string, callContext?: CallContext): ParsedEdge {
+    return toParsedEdge(
+      createCallsEdgeFactory({
+        sourceNodeId,
+        targetNodeId,
+        projectId: this.projectId,
+        callContext,
+      }),
+    );
+  }
+
+  private createFrameworkEdge(
+    semanticType: string,
+    relationshipType: string,
+    sourceNodeId: string,
+    targetNodeId: string,
+    context: Record<string, any> = {},
+    relationshipWeight: number = 0.5,
+  ): ParsedEdge {
+    const { id, properties } = createFrameworkEdgeData({
+      semanticType,
+      sourceNodeId,
+      targetNodeId,
+      projectId: this.projectId,
+      context,
+      relationshipWeight,
+    });
+
+    return {
+      id,
+      relationshipType,
+      sourceNodeId,
+      targetNodeId,
+      properties,
+    };
   }
 
   /**
-   * Check if a function name is a built-in JavaScript/Node.js function.
+   * Queue relationship edges for deferred processing
+   * These are resolved after all nodes are parsed since the target may not exist yet
    */
-  private isBuiltInFunction(name: string): boolean {
-    return BUILT_IN_FUNCTIONS.has(name);
+  private queueRelationshipNodes(nodeConfig: CoreNode, parsedNode: ParsedNode, astNode: Node): void {
+    if (!nodeConfig.relationships || nodeConfig.relationships.length === 0) return;
+
+    for (const relationship of nodeConfig.relationships) {
+      const { edgeType, method, cardinality, targetNodeType } = relationship;
+      const astGetter = (astNode as any)[method];
+
+      if (typeof astGetter !== 'function') continue;
+
+      const result = astGetter.call(astNode);
+      if (!result) continue;
+
+      const targets = cardinality === 'single' ? [result] : result;
+
+      for (const target of targets) {
+        if (!target) continue;
+
+        const targetName = this.extractRelationshipTargetName(target);
+        if (!targetName) continue;
+
+        // For EXTENDS/IMPLEMENTS, try to get the file path from the resolved declaration
+        let targetFilePath: string | undefined;
+        if (edgeType === CoreEdgeType.EXTENDS || edgeType === CoreEdgeType.IMPLEMENTS) {
+          targetFilePath = this.extractTargetFilePath(target);
+        }
+
+        this.deferredEdges.push({
+          edgeType: edgeType as CoreEdgeType,
+          sourceNodeId: parsedNode.id,
+          targetName,
+          targetType: targetNodeType,
+          targetFilePath,
+        });
+      }
+    }
   }
 
   /**
-   * Check if a method name is a common built-in method.
+   * Resolve the target node for a CALLS edge.
+   * Uses special resolution logic based on call context.
    */
-  private isBuiltInMethod(name: string): boolean {
-    return BUILT_IN_METHODS.has(name);
-  }
+  private resolveCallTarget(deferred: {
+    targetName: string;
+    targetType: CoreNodeType;
+    sourceNodeId: string;
+    callContext?: CallContext;
+  }): ParsedNode | undefined {
+    const { targetName, targetType, sourceNodeId, callContext } = deferred;
 
-  /**
-   * Check if a class name is a built-in JavaScript class.
-   */
-  private isBuiltInClass(name: string): boolean {
-    return BUILT_IN_CLASSES.has(name);
+    // Case 1: this.method() - internal class method call
+    if (callContext?.receiverExpression === 'this') {
+      // Find the caller's class, then look for method in same class
+      const sourceNode = this.parsedNodes.get(sourceNodeId) ?? this.existingNodes.get(sourceNodeId);
+      if (sourceNode) {
+        const className = this.getClassNameForNode(sourceNode);
+        if (className && this.methodsByClass.has(className)) {
+          const method = this.methodsByClass.get(className)!.get(targetName);
+          if (method) return method;
+        }
+      }
+    }
+
+    // Case 2: this.service.method() - dependency injection call
+    if (callContext?.receiverType) {
+      // Look for method in the receiver's class
+      const className = callContext.receiverType;
+      if (this.methodsByClass.has(className)) {
+        const method = this.methodsByClass.get(className)!.get(targetName);
+        if (method) return method;
+      }
+      // Fallback: search all nodes for a method with this name in a class matching the type
+      for (const [, node] of this.parsedNodes) {
+        if (node.coreType === CoreNodeType.METHOD_DECLARATION && node.properties.name === targetName) {
+          // Check if parent class matches the receiver type
+          const parentClass = this.findParentClassNode(node);
+          if (parentClass?.properties.name === className) {
+            return node;
+          }
+        }
+      }
+    }
+
+    // Case 3: Constructor call - find the constructor in the target class
+    if (targetType === CoreNodeType.CONSTRUCTOR_DECLARATION) {
+      const constructor = this.constructorsByClass.get(targetName);
+      if (constructor) return constructor;
+    }
+
+    // Case 4: Standalone function call
+    if (targetType === CoreNodeType.FUNCTION_DECLARATION) {
+      const func = this.functionsByName.get(targetName);
+      if (func) return func;
+    }
+
+    // Fallback: generic name matching
+    return this.findNodeByNameAndType(targetName, targetType);
   }
 
   /**
@@ -1110,15 +1420,18 @@ export class TypeScriptParser {
   }
 
   /**
-   * Resolve deferred edges after all nodes have been parsed
+   * Resolve deferred edges against both parsed nodes and existing nodes.
+   * Call this after all chunks have been parsed.
+   * @returns Resolved edges
    */
-  private async resolveDeferredEdges(): Promise<void> {
+  public async resolveDeferredEdges(): Promise<Neo4jEdge[]> {
+    const resolvedEdges: ParsedEdge[] = [];
+
     // Count edges by type for logging
     const importsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.IMPORTS).length;
     const extendsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.EXTENDS).length;
     const implementsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.IMPLEMENTS).length;
     const callsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.CALLS).length;
-
     let importsResolved = 0;
     let extendsResolved = 0;
     let implementsResolved = 0;
@@ -1129,12 +1442,13 @@ export class TypeScriptParser {
     const unresolvedCalls: string[] = [];
 
     for (const deferred of this.deferredEdges) {
-      // Special handling for CALLS edges
+      // Special handling for CALLS edges - uses resolveCallTarget for proper resolution
       if (deferred.edgeType === CoreEdgeType.CALLS) {
         const targetNode = this.resolveCallTarget(deferred);
 
         if (targetNode) {
           const edge = this.createCallsEdge(deferred.sourceNodeId, targetNode.id, deferred.callContext);
+          resolvedEdges.push(edge);
           this.addEdge(edge);
           callsResolved++;
         } else {
@@ -1151,9 +1465,9 @@ export class TypeScriptParser {
 
       if (targetNode) {
         const edge = this.createCoreEdge(deferred.edgeType, deferred.sourceNodeId, targetNode.id);
+        resolvedEdges.push(edge);
         this.addEdge(edge);
 
-        // Track resolution by type
         if (deferred.edgeType === CoreEdgeType.IMPORTS) {
           importsResolved++;
         } else if (deferred.edgeType === CoreEdgeType.EXTENDS) {
@@ -1162,7 +1476,6 @@ export class TypeScriptParser {
           implementsResolved++;
         }
       } else {
-        // Track unresolved by type
         if (deferred.edgeType === CoreEdgeType.IMPORTS) {
           unresolvedImports.push(deferred.targetName);
         } else if (deferred.edgeType === CoreEdgeType.EXTENDS) {
@@ -1173,396 +1486,42 @@ export class TypeScriptParser {
       }
     }
 
-    // Log import resolution stats
-    if (importsCount > 0) {
-      await debugLog('Import edge resolution', {
-        totalImports: importsCount,
+    // Log edge resolution stats
+    await debugLog('Edge resolution', {
+      totalDeferredEdges: this.deferredEdges.length,
+      totalNodesAvailable: this.parsedNodes.size + this.existingNodes.size,
+      imports: {
+        queued: importsCount,
         resolved: importsResolved,
-        unresolvedCount: unresolvedImports.length,
-        unresolvedSample: unresolvedImports.slice(0, 10),
-      });
-    }
-
-    // Log inheritance (EXTENDS/IMPLEMENTS) resolution stats
-    if (extendsCount > 0 || implementsCount > 0) {
-      await debugLog('Inheritance edge resolution', {
-        extendsQueued: extendsCount,
-        extendsResolved,
-        extendsUnresolved: unresolvedExtends.length,
-        unresolvedExtendsSample: unresolvedExtends.slice(0, 10),
-        implementsQueued: implementsCount,
-        implementsResolved,
-        implementsUnresolved: unresolvedImplements.length,
-        unresolvedImplementsSample: unresolvedImplements.slice(0, 10),
-      });
-    }
-
-    // Log CALLS resolution stats
-    if (callsCount > 0) {
-      await debugLog('CALLS edge resolution', {
-        totalCalls: callsCount,
+        unresolved: unresolvedImports.length,
+        sample: unresolvedImports.slice(0, 10),
+      },
+      extends: {
+        queued: extendsCount,
+        resolved: extendsResolved,
+        unresolved: unresolvedExtends.length,
+        sample: unresolvedExtends.slice(0, 10),
+      },
+      implements: {
+        queued: implementsCount,
+        resolved: implementsResolved,
+        unresolved: unresolvedImplements.length,
+        sample: unresolvedImplements.slice(0, 10),
+      },
+      calls: {
+        queued: callsCount,
         resolved: callsResolved,
-        unresolvedCount: unresolvedCalls.length,
-        unresolvedSample: unresolvedCalls.slice(0, 10),
-      });
-    }
+        unresolved: unresolvedCalls.length,
+        sample: unresolvedCalls.slice(0, 10),
+      },
+    });
 
     this.deferredEdges = [];
-  }
-
-  /**
-   * Resolve the target node for a CALLS edge.
-   * Uses special resolution logic based on call context.
-   */
-  private resolveCallTarget(deferred: {
-    targetName: string;
-    targetType: CoreNodeType;
-    sourceNodeId: string;
-    callContext?: {
-      receiverExpression?: string;
-      receiverType?: string;
-      receiverPropertyName?: string;
-      lineNumber: number;
-      isAsync: boolean;
-      argumentCount: number;
-    };
-  }): ParsedNode | undefined {
-    const { targetName, targetType, sourceNodeId, callContext } = deferred;
-
-    // Case 1: this.method() - internal class method call
-    if (callContext?.receiverExpression === 'this') {
-      // Find the caller's class, then look for method in same class
-      const sourceNode = this.parsedNodes.get(sourceNodeId) ?? this.existingNodes.get(sourceNodeId);
-      if (sourceNode) {
-        const className = this.getClassNameForNode(sourceNode);
-        if (className && this.methodsByClass.has(className)) {
-          const method = this.methodsByClass.get(className)!.get(targetName);
-          if (method) return method;
-        }
-      }
-    }
-
-    // Case 2: this.service.method() - dependency injection call
-    if (callContext?.receiverType) {
-      // Look for method in the receiver's class
-      const className = callContext.receiverType;
-      if (this.methodsByClass.has(className)) {
-        const method = this.methodsByClass.get(className)!.get(targetName);
-        if (method) return method;
-      }
-      // Fallback: search all nodes for a method with this name in a class matching the type
-      for (const [, node] of this.parsedNodes) {
-        if (node.coreType === CoreNodeType.METHOD_DECLARATION && node.properties.name === targetName) {
-          // Check if parent class matches the receiver type
-          const parentClass = this.findParentClassNode(node);
-          if (parentClass?.properties.name === className) {
-            return node;
-          }
-        }
-      }
-    }
-
-    // Case 3: Constructor call - find the constructor in the target class
-    if (targetType === CoreNodeType.CONSTRUCTOR_DECLARATION) {
-      const constructor = this.constructorsByClass.get(targetName);
-      if (constructor) return constructor;
-    }
-
-    // Case 4: Standalone function call
-    if (targetType === CoreNodeType.FUNCTION_DECLARATION) {
-      const func = this.functionsByName.get(targetName);
-      if (func) return func;
-    }
-
-    // Fallback: generic name matching
-    return this.findNodeByNameAndType(targetName, targetType);
-  }
-
-  /**
-   * Create a CALLS edge with call-specific context.
-   */
-  private createCallsEdge(
-    sourceNodeId: string,
-    targetNodeId: string,
-    callContext?: {
-      receiverExpression?: string;
-      receiverType?: string;
-      receiverPropertyName?: string;
-      lineNumber: number;
-      isAsync: boolean;
-      argumentCount: number;
-    },
-  ): ParsedEdge {
-    const coreEdgeSchema = CORE_TYPESCRIPT_SCHEMA.edgeTypes[CoreEdgeType.CALLS];
-    const relationshipWeight = coreEdgeSchema?.relationshipWeight ?? 0.85;
-
-    // Confidence: higher if we resolved the receiver type
-    const confidence = callContext?.receiverType ? 0.9 : 0.7;
-
-    // Generate deterministic edge ID based on type + source + target + line
-    const lineNum = callContext?.lineNumber ?? 0;
-    const edgeIdentity = `CALLS::${sourceNodeId}::${targetNodeId}::${lineNum}`;
-    const edgeHash = crypto.createHash('sha256').update(edgeIdentity).digest('hex').substring(0, 16);
-    const edgeId = `CALLS:${edgeHash}`;
-
-    return {
-      id: edgeId,
-      relationshipType: 'CALLS',
-      sourceNodeId,
-      targetNodeId,
-      properties: {
-        coreType: CoreEdgeType.CALLS,
-        projectId: this.projectId,
-        source: 'ast',
-        confidence,
-        relationshipWeight,
-        filePath: '',
-        createdAt: new Date().toISOString(),
-        lineNumber: callContext?.lineNumber,
-        context: callContext
-          ? {
-              isAsync: callContext.isAsync,
-              argumentCount: callContext.argumentCount,
-              receiverType: callContext.receiverType,
-            }
-          : undefined,
-      },
-    };
-  }
-
-  private async parseCoreTypeScript(sourceFile: SourceFile): Promise<void> {
-    try {
-      // Create source file node
-      const sourceFileNode = this.createCoreNode(sourceFile, CoreNodeType.SOURCE_FILE);
-      this.addNode(sourceFileNode);
-
-      // Parse classes
-      for (const classDecl of sourceFile.getClasses()) {
-        const classNode = this.createCoreNode(classDecl, CoreNodeType.CLASS_DECLARATION, {}, sourceFileNode.id);
-        this.addNode(classNode);
-
-        // File contains class relationship
-        const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, classNode.id);
-        this.addEdge(containsEdge);
-
-        // Parse class decorators
-        for (const decorator of classDecl.getDecorators()) {
-          const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR, {}, classNode.id);
-          this.addNode(decoratorNode);
-
-          // Class decorated with decorator relationship
-          const decoratedEdge = this.createCoreEdge(CoreEdgeType.DECORATED_WITH, classNode.id, decoratorNode.id);
-          this.addEdge(decoratedEdge);
-        }
-
-        // Parse methods
-        for (const method of classDecl.getMethods()) {
-          const methodNode = this.createCoreNode(method, CoreNodeType.METHOD_DECLARATION, {}, classNode.id);
-          this.addNode(methodNode);
-
-          // Class has method relationship
-          const hasMethodEdge = this.createCoreEdge(CoreEdgeType.HAS_MEMBER, classNode.id, methodNode.id);
-          this.addEdge(hasMethodEdge);
-
-          // Parse method decorators
-          for (const decorator of method.getDecorators()) {
-            const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR, {}, methodNode.id);
-            this.addNode(decoratorNode);
-
-            // Method decorated with decorator relationship
-            const decoratedEdge = this.createCoreEdge(CoreEdgeType.DECORATED_WITH, methodNode.id, decoratorNode.id);
-            this.addEdge(decoratedEdge);
-          }
-
-          // Parse method parameters
-          for (const param of method.getParameters()) {
-            const paramNode = this.createCoreNode(param, CoreNodeType.PARAMETER_DECLARATION, {}, methodNode.id);
-            this.addNode(paramNode);
-
-            // Method has parameter relationship
-            const hasParamEdge = this.createCoreEdge(CoreEdgeType.HAS_PARAMETER, methodNode.id, paramNode.id);
-            this.addEdge(hasParamEdge);
-
-            // Parse parameter decorators
-            for (const decorator of param.getDecorators()) {
-              const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR, {}, paramNode.id);
-              this.addNode(decoratorNode);
-
-              // Parameter decorated with decorator relationship
-              const decoratedEdge = this.createCoreEdge(CoreEdgeType.DECORATED_WITH, paramNode.id, decoratorNode.id);
-              this.addEdge(decoratedEdge);
-            }
-          }
-        }
-
-        // Parse properties
-        for (const property of classDecl.getProperties()) {
-          const propertyNode = this.createCoreNode(property, CoreNodeType.PROPERTY_DECLARATION, {}, classNode.id);
-          this.addNode(propertyNode);
-
-          // Class has property relationship
-          const hasPropertyEdge = this.createCoreEdge(CoreEdgeType.HAS_MEMBER, classNode.id, propertyNode.id);
-          this.addEdge(hasPropertyEdge);
-
-          // Parse property decorators
-          for (const decorator of property.getDecorators()) {
-            const decoratorNode = this.createCoreNode(decorator, CoreNodeType.DECORATOR, {}, propertyNode.id);
-            this.addNode(decoratorNode);
-
-            // Property decorated with decorator relationship
-            const decoratedEdge = this.createCoreEdge(CoreEdgeType.DECORATED_WITH, propertyNode.id, decoratorNode.id);
-            this.addEdge(decoratedEdge);
-          }
-        }
-      }
-
-      // Parse interfaces
-      for (const interfaceDecl of sourceFile.getInterfaces()) {
-        const interfaceNode = this.createCoreNode(
-          interfaceDecl,
-          CoreNodeType.INTERFACE_DECLARATION,
-          {},
-          sourceFileNode.id,
-        );
-        this.addNode(interfaceNode);
-
-        // File contains interface relationship
-        const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, interfaceNode.id);
-        this.addEdge(containsEdge);
-      }
-
-      // Parse functions
-      for (const funcDecl of sourceFile.getFunctions()) {
-        const functionNode = this.createCoreNode(funcDecl, CoreNodeType.FUNCTION_DECLARATION, {}, sourceFileNode.id);
-        this.addNode(functionNode);
-
-        // File contains function relationship
-        const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, functionNode.id);
-        this.addEdge(containsEdge);
-
-        // Parse function parameters
-        for (const param of funcDecl.getParameters()) {
-          const paramNode = this.createCoreNode(param, CoreNodeType.PARAMETER_DECLARATION, {}, functionNode.id);
-          this.addNode(paramNode);
-
-          // Function has parameter relationship
-          const hasParamEdge = this.createCoreEdge(CoreEdgeType.HAS_PARAMETER, functionNode.id, paramNode.id);
-          this.addEdge(hasParamEdge);
-        }
-      }
-
-      // Parse imports
-      for (const importDecl of sourceFile.getImportDeclarations()) {
-        const importNode = this.createCoreNode(importDecl, CoreNodeType.IMPORT_DECLARATION, {}, sourceFileNode.id);
-        this.addNode(importNode);
-
-        // File contains import relationship
-        const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, importNode.id);
-        this.addEdge(containsEdge);
-
-        // Try to resolve import to create SourceFile -> SourceFile IMPORTS edge
-        try {
-          const targetSourceFile = importDecl.getModuleSpecifierSourceFile();
-          if (targetSourceFile) {
-            const targetFilePath = targetSourceFile.getFilePath();
-            // Queue deferred edge - will be resolved after all files are parsed
-            this.deferredEdges.push({
-              edgeType: CoreEdgeType.IMPORTS,
-              sourceNodeId: sourceFileNode.id,
-              targetName: targetFilePath, // Use file path as "name" for SourceFiles
-              targetType: CoreNodeType.SOURCE_FILE,
-            });
-          }
-        } catch {
-          // Module resolution failed - external dependency, skip
-        }
-      }
-
-      // Parse variable declarations if framework schema specifies this file should have them parsed
-      if (this.shouldParseVariables(sourceFile.getFilePath())) {
-        for (const varStatement of sourceFile.getVariableStatements()) {
-          for (const varDecl of varStatement.getDeclarations()) {
-            const variableNode = this.createCoreNode(varDecl, CoreNodeType.VARIABLE_DECLARATION, {}, sourceFileNode.id);
-            this.addNode(variableNode);
-
-            // File contains variable relationship
-            const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, variableNode.id);
-            this.addEdge(containsEdge);
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Error parsing file ${sourceFile.getFilePath()}:`, error);
-    }
-  }
-
-  private createCoreNode(
-    astNode: Node,
-    coreType: CoreNodeType,
-    baseProperties: Partial<Neo4jNodeProperties> = {},
-    parentId?: string,
-  ): ParsedNode {
-    const name = this.extractNodeName(astNode, coreType);
-    const filePath = astNode.getSourceFile().getFilePath();
-    const nodeId = generateDeterministicId(this.projectId, coreType, filePath, name, parentId);
-
-    // Extract base properties using schema
-    const properties: Neo4jNodeProperties = {
-      id: nodeId,
-      projectId: this.projectId,
-      name,
-      coreType,
-      filePath,
-      startLine: astNode.getStartLineNumber(),
-      endLine: astNode.getEndLineNumber(),
-      sourceCode: astNode.getText(),
-      createdAt: new Date().toISOString(),
-      ...baseProperties,
-    };
-
-    // Extract schema-defined properties
-    const coreNodeDef = this.coreSchema.nodeTypes[coreType];
-    if (coreNodeDef) {
-      for (const propDef of coreNodeDef.properties) {
-        try {
-          const value = this.extractProperty(astNode, propDef);
-          if (value !== undefined && propDef.name !== 'context') {
-            (properties as any)[propDef.name] = value;
-          }
-        } catch (error) {
-          console.warn(`Failed to extract core property ${propDef.name}:`, error);
-        }
-      }
-    }
-
-    // Compute normalizedHash for duplicate detection (methods, functions, constructors)
-    if (
-      coreType === CoreNodeType.METHOD_DECLARATION ||
-      coreType === CoreNodeType.FUNCTION_DECLARATION ||
-      coreType === CoreNodeType.CONSTRUCTOR_DECLARATION
-    ) {
-      try {
-        const { normalizedHash } = normalizeCode(properties.sourceCode);
-        if (normalizedHash) {
-          properties.normalizedHash = normalizedHash;
-        }
-      } catch (error) {
-        console.warn(`Failed to compute normalizedHash for ${nodeId}:`, error);
-      }
-    }
-
-    return {
-      id: nodeId,
-      coreType,
-      labels: [...(coreNodeDef?.neo4j.labels || [])],
-      properties,
-      sourceNode: astNode,
-      skipEmbedding: coreNodeDef?.neo4j.skipEmbedding ?? false,
-    };
+    return resolvedEdges.map(toNeo4jEdge);
   }
 
   private async applyContextExtractors(): Promise<void> {
-    console.log('🔧 Applying context extractors...');
+    debugLog('Applying context extractors');
 
     // Apply global context extractors from framework schemas
     for (const frameworkSchema of this.frameworkSchemas) {
@@ -1591,42 +1550,12 @@ export class TypeScriptParser {
     }
   }
 
-  private createCoreEdge(relationshipType: CoreEdgeType, sourceNodeId: string, targetNodeId: string): ParsedEdge {
-    // Get the weight from the core schema
-    const coreEdgeSchema = CORE_TYPESCRIPT_SCHEMA.edgeTypes[relationshipType];
-    const relationshipWeight = coreEdgeSchema?.relationshipWeight ?? 0.5;
-
-    // Generate deterministic edge ID based on type + source + target
-    const edgeIdentity = `${relationshipType}::${sourceNodeId}::${targetNodeId}`;
-    const edgeHash = crypto.createHash('sha256').update(edgeIdentity).digest('hex').substring(0, 16);
-    const edgeId = `${relationshipType}:${edgeHash}`;
-
-    return {
-      id: edgeId,
-      relationshipType,
-      sourceNodeId,
-      targetNodeId,
-      properties: {
-        coreType: relationshipType,
-        projectId: this.projectId,
-        source: 'ast',
-        confidence: 1.0,
-        relationshipWeight,
-        filePath: '',
-        createdAt: new Date().toISOString(),
-      },
-    };
-  }
-
   private async applyFrameworkEnhancements(): Promise<void> {
-    console.log('🎯 Starting framework enhancements...');
+    await debugLog('Applying framework enhancements', { schemas: this.frameworkSchemas.map((s) => s.name) });
 
     for (const frameworkSchema of this.frameworkSchemas) {
-      console.log(`📦 Applying framework schema: ${frameworkSchema.name}`);
       await this.applyFrameworkSchema(frameworkSchema);
     }
-
-    console.log('✅ Framework enhancements complete');
   }
 
   private async applyFrameworkSchema(schema: FrameworkSchema): Promise<void> {
@@ -1736,7 +1665,7 @@ export class TypeScriptParser {
   }
 
   private async applyEdgeEnhancements(): Promise<void> {
-    console.log('🔗 Applying edge enhancements...');
+    await debugLog('Applying edge enhancements');
 
     for (const frameworkSchema of this.frameworkSchemas) {
       for (const edgeEnhancement of Object.values(frameworkSchema.edgeEnhancements)) {
@@ -1787,192 +1716,36 @@ export class TypeScriptParser {
     }
   }
 
-  private createFrameworkEdge(
-    semanticType: string,
-    relationshipType: string,
-    sourceNodeId: string,
-    targetNodeId: string,
-    context: Record<string, any> = {},
-    relationshipWeight: number = 0.5,
-  ): ParsedEdge {
-    const { id, properties } = createFrameworkEdgeData({
-      semanticType,
-      sourceNodeId,
-      targetNodeId,
-      projectId: this.projectId,
-      context,
-      relationshipWeight,
-    });
-
-    return {
-      id,
-      relationshipType,
-      sourceNodeId,
-      targetNodeId,
-      properties,
-    };
-  }
-
-  private extractProperty(astNode: Node, propDef: PropertyDefinition): any {
-    const { method, source, defaultValue } = propDef.extraction;
-
-    try {
-      switch (method) {
-        case 'ast':
-          if (typeof source === 'string') {
-            const fn = (astNode as any)[source];
-            return typeof fn === 'function' ? fn.call(astNode) : defaultValue;
-          }
-          return defaultValue;
-
-        case 'function':
-          if (typeof source === 'function') {
-            return source(astNode);
-          }
-          return defaultValue;
-
-        case 'static':
-          return defaultValue;
-
-        case 'context':
-          // Context properties are handled by context extractors
-          return undefined;
-
-        default:
-          return defaultValue;
-      }
-    } catch (error) {
-      console.warn(`Failed to extract property ${propDef.name}:`, error);
-      return defaultValue;
-    }
-  }
-
-  private extractNodeName(astNode: Node, coreType: CoreNodeType): string {
-    try {
-      switch (coreType) {
-        case CoreNodeType.SOURCE_FILE:
-          if (Node.isSourceFile(astNode)) {
-            return astNode.getBaseName();
-          }
-          break;
-
-        case CoreNodeType.CLASS_DECLARATION:
-          if (Node.isClassDeclaration(astNode)) {
-            return astNode.getName() ?? 'AnonymousClass';
-          }
-          break;
-
-        case CoreNodeType.METHOD_DECLARATION:
-          if (Node.isMethodDeclaration(astNode)) {
-            return astNode.getName();
-          }
-          break;
-
-        case CoreNodeType.FUNCTION_DECLARATION:
-          if (Node.isFunctionDeclaration(astNode)) {
-            return astNode.getName() ?? 'AnonymousFunction';
-          }
-          break;
-
-        case CoreNodeType.INTERFACE_DECLARATION:
-          if (Node.isInterfaceDeclaration(astNode)) {
-            return astNode.getName();
-          }
-          break;
-
-        case CoreNodeType.PROPERTY_DECLARATION:
-          if (Node.isPropertyDeclaration(astNode)) {
-            return astNode.getName();
-          }
-          break;
-
-        case CoreNodeType.PARAMETER_DECLARATION:
-          if (Node.isParameterDeclaration(astNode)) {
-            return astNode.getName();
-          }
-          break;
-
-        case CoreNodeType.IMPORT_DECLARATION:
-          if (Node.isImportDeclaration(astNode)) {
-            return astNode.getModuleSpecifierValue();
-          }
-          break;
-
-        case CoreNodeType.DECORATOR:
-          if (Node.isDecorator(astNode)) {
-            return astNode.getName();
-          }
-          break;
-
-        default:
-          return astNode.getKindName();
-      }
-    } catch (error) {
-      console.warn(`Error extracting name for ${coreType}:`, error);
-    }
-
-    return 'Unknown';
-  }
-
-  private shouldSkipChildNode(node: Node): boolean {
-    const excludedNodeTypes = this.parseConfig.excludedNodeTypes ?? [];
-    return excludedNodeTypes.includes(node.getKindName() as CoreNodeType);
-  }
-
   /**
-   * Safely test if a file path matches a pattern (string or regex).
-   * Falls back to literal string matching if the pattern is an invalid regex.
+   * Apply edge enhancements on all accumulated nodes.
+   * Call this after all chunks have been parsed for streaming mode.
+   * This allows context-dependent edges (like INTERNAL_API_CALL) to be detected
+   * after all nodes and their context have been collected.
+   * @returns New edges created by edge enhancements
    */
-  private matchesPattern(filePath: string, pattern: string): boolean {
-    // First try literal string match (always safe)
-    if (filePath.includes(pattern)) {
-      return true;
-    }
-    // Then try regex match with error handling
-    try {
-      return new RegExp(pattern).test(filePath);
-    } catch {
-      // Invalid regex pattern - already checked via includes() above
-      return false;
-    }
-  }
+  public async applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]> {
+    const edgeCountBefore = this.parsedEdges.size;
 
-  private shouldSkipFile(sourceFile: SourceFile): boolean {
-    const filePath = sourceFile.getFilePath();
-    const excludedPatterns = this.parseConfig.excludePatterns ?? [];
+    await this.applyEdgeEnhancements();
 
-    for (const pattern of excludedPatterns) {
-      if (this.matchesPattern(filePath, pattern)) {
-        return true;
-      }
-    }
+    const newEdgeCount = this.parsedEdges.size - edgeCountBefore;
+    await debugLog('Edge enhancements applied', { nodeCount: this.parsedNodes.size, newEdges: newEdgeCount });
 
-    return false;
-  }
-
-  private toNeo4jNode(parsedNode: ParsedNode): Neo4jNode {
-    return {
-      id: parsedNode.id,
-      labels: parsedNode.labels,
-      properties: parsedNode.properties,
-      skipEmbedding: parsedNode.skipEmbedding ?? false,
-    };
-  }
-
-  private toNeo4jEdge(parsedEdge: ParsedEdge): Neo4jEdge {
-    return {
-      id: parsedEdge.id,
-      type: parsedEdge.relationshipType,
-      startNodeId: parsedEdge.sourceNodeId,
-      endNodeId: parsedEdge.targetNodeId,
-      properties: parsedEdge.properties,
-    };
+    // Return only the new edges (those created by edge enhancements)
+    const allEdges = Array.from(this.parsedEdges.values()).map(toNeo4jEdge);
+    return allEdges.slice(edgeCountBefore);
   }
 
   private addNode(node: ParsedNode): void {
     this.parsedNodes.set(node.id, node);
+    this.indexNodeForCallsResolution(node);
+  }
 
-    // Build lookup indexes for CALLS edge resolution
+  /**
+   * Build lookup indexes for efficient CALLS edge resolution.
+   * Called when adding nodes during parsing or from external sources.
+   */
+  private indexNodeForCallsResolution(node: ParsedNode): void {
     if (node.coreType === CoreNodeType.METHOD_DECLARATION) {
       const className = this.getClassNameForNode(node);
       if (className) {
@@ -1991,6 +1764,10 @@ export class TypeScriptParser {
     }
   }
 
+  private addEdge(edge: ParsedEdge): void {
+    this.parsedEdges.set(edge.id, edge);
+  }
+
   /**
    * Get the class name for a node.
    * Uses the parentClassName property tracked during parsing.
@@ -2000,11 +1777,63 @@ export class TypeScriptParser {
     return node.properties.parentClassName as string | undefined;
   }
 
-  private addEdge(edge: ParsedEdge): void {
-    this.parsedEdges.set(edge.id, edge);
+  /**
+   * Find the parent class node for a method/property node.
+   * Uses the parentClassName property tracked during parsing.
+   */
+  private findParentClassNode(node: ParsedNode): ParsedNode | undefined {
+    const parentClassName = node.properties.parentClassName as string | undefined;
+    if (!parentClassName) return undefined;
+
+    // Find the class node by name and file path
+    for (const [, classNode] of this.parsedNodes) {
+      if (
+        classNode.coreType === CoreNodeType.CLASS_DECLARATION &&
+        classNode.properties.name === parentClassName &&
+        classNode.properties.filePath === node.properties.filePath
+      ) {
+        return classNode;
+      }
+    }
+    return undefined;
   }
 
-  // Helper methods for statistics and debugging
+  private shouldSkipFile(sourceFile: SourceFile): boolean {
+    const filePath = sourceFile.getFilePath();
+    const excludedPatterns = this.parseConfig.excludePatterns ?? [];
+
+    for (const pattern of excludedPatterns) {
+      if (matchesPattern(filePath, pattern)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private shouldSkipChildNode(node: Node): boolean {
+    const excludedNodeTypes = this.parseConfig.excludedNodeTypes ?? [];
+    return excludedNodeTypes.includes(node.getKindName() as CoreNodeType);
+  }
+
+  /**
+   * Check if variable declarations should be parsed for this file
+   * based on framework schema configurations
+   */
+  private shouldParseVariables(filePath: string): boolean {
+    for (const schema of this.frameworkSchemas) {
+      const parsePatterns = schema.metadata.parseVariablesFrom;
+      if (parsePatterns) {
+        for (const pattern of parsePatterns) {
+          if (minimatch(filePath, pattern)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   public getStats(): {
     totalNodes: number;
     totalEdges: number;
@@ -2049,10 +1878,17 @@ export class TypeScriptParser {
     return { nodes, edges };
   }
 
-  // ============================================
-  // CHUNK-AWARE PARSING METHODS
-  // For streaming/chunked parsing of large codebases
-  // ============================================
+  /**
+   * Get count of currently parsed nodes and edges.
+   * Useful for progress reporting.
+   */
+  public getCurrentCounts(): { nodes: number; edges: number; deferredEdges: number } {
+    return {
+      nodes: this.parsedNodes.size,
+      edges: this.parsedEdges.size,
+      deferredEdges: this.deferredEdges.length,
+    };
+  }
 
   /**
    * Export current chunk results without clearing internal state.
@@ -2066,10 +1902,12 @@ export class TypeScriptParser {
       sourceNodeId: string;
       targetName: string;
       targetType: CoreNodeType;
+      callContext?: CallContext;
+      targetFilePath?: string;
     }>;
   } {
-    const nodes = Array.from(this.parsedNodes.values()).map(this.toNeo4jNode);
-    const edges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
+    const nodes = Array.from(this.parsedNodes.values()).map(toNeo4jNode);
+    const edges = Array.from(this.parsedEdges.values()).map(toNeo4jEdge);
 
     return {
       nodes,
@@ -2090,270 +1928,8 @@ export class TypeScriptParser {
     this.methodsByClass.clear();
     this.functionsByName.clear();
     this.constructorsByClass.clear();
-  }
-
-  /**
-   * Get count of currently parsed nodes and edges.
-   * Useful for progress reporting.
-   */
-  public getCurrentCounts(): { nodes: number; edges: number; deferredEdges: number } {
-    return {
-      nodes: this.parsedNodes.size,
-      edges: this.parsedEdges.size,
-      deferredEdges: this.deferredEdges.length,
-    };
-  }
-
-  /**
-   * Set the shared context for this parser.
-   * Use this to share context across multiple parsers (e.g., in WorkspaceParser).
-   * @param context The shared context map to use
-   */
-  public setSharedContext(context: ParsingContext): void {
-    this.sharedContext = context;
-  }
-
-  /**
-   * Get the shared context from this parser.
-   * Useful for aggregating context across multiple parsers.
-   */
-  public getSharedContext(): ParsingContext {
-    return this.sharedContext;
-  }
-
-  /**
-   * Get all parsed nodes (for cross-parser edge resolution).
-   * Returns the internal Map of ParsedNodes.
-   */
-  public getParsedNodes(): Map<string, ParsedNode> {
-    return this.parsedNodes;
-  }
-
-  /**
-   * Get the framework schemas used by this parser.
-   * Useful for WorkspaceParser to apply cross-package edge enhancements.
-   */
-  public getFrameworkSchemas(): FrameworkSchema[] {
-    return this.frameworkSchemas;
-  }
-
-  /**
-   * Defer edge enhancements to a parent parser (e.g., WorkspaceParser).
-   * When true, parseChunk() will skip applyEdgeEnhancements().
-   * The parent is responsible for calling applyEdgeEnhancementsManually() at the end.
-   */
-  public setDeferEdgeEnhancements(defer: boolean): void {
-    this.deferEdgeEnhancements = defer;
-  }
-
-  /**
-   * Get list of source files in the project.
-   * In lazy mode, uses glob to discover files without loading them into memory.
-   * Useful for determining total work and creating chunks.
-   */
-  public async discoverSourceFiles(): Promise<string[]> {
-    if (this.discoveredFiles !== null) {
-      return this.discoveredFiles;
-    }
-
-    if (this.lazyLoad) {
-      // Use glob to find files without loading them into ts-morph
-      // Include both .ts and .tsx files
-      const pattern = path.join(this.workspacePath, '**/*.{ts,tsx}');
-      const allFiles = await glob(pattern, {
-        ignore: ['**/node_modules/**', '**/*.d.ts'],
-        absolute: true,
-      });
-
-      // Apply exclude patterns from parseConfig
-      const excludedPatterns = this.parseConfig.excludePatterns ?? [];
-      this.discoveredFiles = allFiles.filter((filePath) => {
-        for (const excludePattern of excludedPatterns) {
-          if (this.matchesPattern(filePath, excludePattern)) {
-            return false;
-          }
-        }
-        return true;
-      });
-
-      console.log(`🔍 Discovered ${this.discoveredFiles.length} TypeScript files (lazy mode)`);
-      return this.discoveredFiles;
-    } else {
-      // Eager mode - files are already loaded
-      this.discoveredFiles = this.project
-        .getSourceFiles()
-        .filter((sf) => !this.shouldSkipFile(sf))
-        .map((sf) => sf.getFilePath());
-      return this.discoveredFiles;
-    }
-  }
-
-  /**
-   * @deprecated Use discoverSourceFiles() instead for async file discovery
-   */
-  public getSourceFilePaths(): string[] {
-    if (this.lazyLoad) {
-      throw new Error('getSourceFilePaths() is not supported in lazy mode. Use discoverSourceFiles() instead.');
-    }
-    return this.project
-      .getSourceFiles()
-      .filter((sf) => !this.shouldSkipFile(sf))
-      .map((sf) => sf.getFilePath());
-  }
-
-  /**
-   * Parse a chunk of files without resolving deferred edges.
-   * Use this for streaming parsing where edges are resolved after all chunks.
-   * In lazy mode, files are added to the project just-in-time and removed after parsing.
-   * @param filePaths Specific file paths to parse
-   * @param skipEdgeResolution If true, deferred edges are not resolved (default: false)
-   */
-  async parseChunk(
-    filePaths: string[],
-    skipEdgeResolution: boolean = false,
-  ): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
-    // Declare sourceFiles outside try so it's available in finally
-    const sourceFiles: SourceFile[] = [];
-
-    try {
-      if (this.lazyLoad) {
-        // Lazy mode: add files to project just-in-time
-        for (const filePath of filePaths) {
-          try {
-            // Check if file already exists in project (shouldn't happen in lazy mode)
-            // Add the file to the project if not already present
-            const sourceFile = this.project.getSourceFile(filePath) ?? this.project.addSourceFileAtPath(filePath);
-            sourceFiles.push(sourceFile);
-          } catch (error) {
-            console.warn(`Failed to add source file ${filePath}:`, error);
-          }
-        }
-      } else {
-        // Eager mode: files are already loaded
-        const loadedFiles = filePaths
-          .map((filePath) => this.project.getSourceFile(filePath))
-          .filter((sf): sf is SourceFile => sf !== undefined);
-        sourceFiles.push(...loadedFiles);
-      }
-
-      for (const sourceFile of sourceFiles) {
-        if (this.shouldSkipFile(sourceFile)) continue;
-        await this.parseCoreTypeScriptV2(sourceFile);
-      }
-
-      // Only resolve edges if not skipping
-      if (!skipEdgeResolution) {
-        await this.resolveDeferredEdges();
-      }
-
-      await this.applyContextExtractors();
-
-      if (this.frameworkSchemas.length > 0) {
-        await this.applyFrameworkEnhancements();
-      }
-
-      // Apply edge enhancements unless deferred to parent (e.g., WorkspaceParser)
-      // When deferred, parent will call applyEdgeEnhancementsManually() at the end
-      // with all accumulated nodes for cross-package edge detection
-      if (!this.deferEdgeEnhancements) {
-        await this.applyEdgeEnhancements();
-      }
-
-      const neo4jNodes = Array.from(this.parsedNodes.values()).map(this.toNeo4jNode);
-      const neo4jEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
-
-      return { nodes: neo4jNodes, edges: neo4jEdges };
-    } finally {
-      // Always clean up in lazy mode to prevent memory leaks
-      if (this.lazyLoad) {
-        for (const sourceFile of sourceFiles) {
-          try {
-            this.project.removeSourceFile(sourceFile);
-          } catch {
-            // Ignore errors when removing files
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * Resolve deferred edges against both parsed nodes and existing nodes.
-   * Call this after all chunks have been parsed.
-   * @returns Resolved edges
-   */
-  public async resolveDeferredEdgesManually(): Promise<Neo4jEdge[]> {
-    const resolvedEdges: ParsedEdge[] = [];
-
-    // Count edges by type for logging
-    const extendsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.EXTENDS).length;
-    const implementsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.IMPLEMENTS).length;
-    let extendsResolved = 0;
-    let implementsResolved = 0;
-    const unresolvedExtends: string[] = [];
-    const unresolvedImplements: string[] = [];
-
-    for (const deferred of this.deferredEdges) {
-      // Pass filePath for precise matching (especially important for EXTENDS/IMPLEMENTS)
-      const targetNode = this.findNodeByNameAndType(deferred.targetName, deferred.targetType, deferred.targetFilePath);
-
-      if (targetNode) {
-        const edge = this.createCoreEdge(deferred.edgeType, deferred.sourceNodeId, targetNode.id);
-        resolvedEdges.push(edge);
-        this.addEdge(edge);
-
-        if (deferred.edgeType === CoreEdgeType.EXTENDS) {
-          extendsResolved++;
-        } else if (deferred.edgeType === CoreEdgeType.IMPLEMENTS) {
-          implementsResolved++;
-        }
-      } else {
-        if (deferred.edgeType === CoreEdgeType.EXTENDS) {
-          unresolvedExtends.push(deferred.targetName);
-        } else if (deferred.edgeType === CoreEdgeType.IMPLEMENTS) {
-          unresolvedImplements.push(deferred.targetName);
-        }
-      }
-    }
-
-    // Log inheritance resolution stats
-    if (extendsCount > 0 || implementsCount > 0) {
-      await debugLog('Inheritance edge resolution (manual)', {
-        extendsQueued: extendsCount,
-        extendsResolved,
-        extendsUnresolved: unresolvedExtends.length,
-        unresolvedExtendsSample: unresolvedExtends.slice(0, 10),
-        implementsQueued: implementsCount,
-        implementsResolved,
-        implementsUnresolved: unresolvedImplements.length,
-        unresolvedImplementsSample: unresolvedImplements.slice(0, 10),
-      });
-    }
-
-    this.deferredEdges = [];
-    return resolvedEdges.map(this.toNeo4jEdge);
-  }
-
-  /**
-   * Apply edge enhancements on all accumulated nodes.
-   * Call this after all chunks have been parsed for streaming mode.
-   * This allows context-dependent edges (like INTERNAL_API_CALL) to be detected
-   * after all nodes and their context have been collected.
-   * @returns New edges created by edge enhancements
-   */
-  public async applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]> {
-    const edgeCountBefore = this.parsedEdges.size;
-
-    console.log(`🔗 Applying edge enhancements on ${this.parsedNodes.size} accumulated nodes...`);
-
-    await this.applyEdgeEnhancements();
-
-    const newEdgeCount = this.parsedEdges.size - edgeCountBefore;
-    console.log(`   ✅ Created ${newEdgeCount} edges from edge enhancements`);
-
-    // Return only the new edges (those created by edge enhancements)
-    const allEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
-    return allEdges.slice(edgeCountBefore);
+    this.exportedNodeIds.clear();
+    this.exportedEdgeIds.clear();
   }
 
   /**
@@ -2370,6 +1946,112 @@ export class TypeScriptParser {
         properties: node.properties,
       };
       this.existingNodes.set(node.id, parsedNode);
+      this.indexNodeForCallsResolution(parsedNode);
+    }
+  }
+
+  /**
+   * Add nodes to parsedNodes for edge enhancement.
+   * Use this when coordinator needs to run edge enhancements on accumulated chunk results.
+   * Unlike addExistingNodesFromChunk, these nodes ARE used as edge sources.
+   */
+  public addParsedNodesFromChunk(nodes: Neo4jNode[]): void {
+    for (const node of nodes) {
+      const parsedNode: ParsedNode = {
+        id: node.id,
+        coreType: node.properties.coreType as CoreNodeType,
+        semanticType: node.properties.semanticType,
+        labels: node.labels,
+        properties: node.properties,
+      };
+      this.parsedNodes.set(node.id, parsedNode);
+      this.indexNodeForCallsResolution(parsedNode);
+    }
+  }
+
+  /**
+   * Get serialized shared context for parallel parsing.
+   * Converts Maps to arrays for structured clone compatibility.
+   */
+  public getSerializedSharedContext(): Array<[string, unknown]> {
+    const serialized: Array<[string, unknown]> = [];
+    for (const [key, value] of this.sharedContext) {
+      // Convert nested Maps to arrays
+      if (value instanceof Map) {
+        serialized.push([key, Array.from((value as Map<string, unknown>).entries())]);
+      } else {
+        serialized.push([key, value]);
+      }
+    }
+    return serialized;
+  }
+
+  /**
+   * Merge serialized shared context from workers.
+   * Handles Map merging by combining entries.
+   */
+  public mergeSerializedSharedContext(serialized: Array<[string, unknown]>): void {
+    for (const [key, value] of serialized) {
+      if (Array.isArray(value) && value.length > 0 && Array.isArray(value[0])) {
+        // It's a serialized Map - merge with existing
+        const existingMap = this.sharedContext.get(key) as Map<string, unknown> | undefined;
+        const newMap = existingMap ?? new Map<string, unknown>();
+        for (const [k, v] of value as Array<[string, unknown]>) {
+          newMap.set(k, v);
+        }
+        this.sharedContext.set(key, newMap as any);
+      } else {
+        // Simple value - just set it
+        this.sharedContext.set(key, value as any);
+      }
+    }
+  }
+
+  /**
+   * Get deferred edges for cross-chunk resolution.
+   * Returns serializable format for worker thread transfer.
+   */
+  public getDeferredEdges(): Array<{
+    edgeType: string;
+    sourceNodeId: string;
+    targetName: string;
+    targetType: string;
+    targetFilePath?: string;
+    callContext?: CallContext;
+  }> {
+    return this.deferredEdges.map((e) => ({
+      edgeType: e.edgeType,
+      sourceNodeId: e.sourceNodeId,
+      targetName: e.targetName,
+      targetType: e.targetType,
+      targetFilePath: e.targetFilePath,
+      callContext: e.callContext,
+    }));
+  }
+
+  /**
+   * Merge deferred edges from workers for resolution.
+   * Converts back to internal format with CoreEdgeType/CoreNodeType.
+   */
+  public mergeDeferredEdges(
+    edges: Array<{
+      edgeType: string;
+      sourceNodeId: string;
+      targetName: string;
+      targetType: string;
+      targetFilePath?: string;
+      callContext?: CallContext;
+    }>,
+  ): void {
+    for (const e of edges) {
+      this.deferredEdges.push({
+        edgeType: e.edgeType as CoreEdgeType,
+        sourceNodeId: e.sourceNodeId,
+        targetName: e.targetName,
+        targetType: e.targetType as CoreNodeType,
+        targetFilePath: e.targetFilePath,
+        callContext: e.callContext,
+      });
     }
   }
 }

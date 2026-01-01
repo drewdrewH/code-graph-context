@@ -8,6 +8,7 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import * as watcher from '@parcel/watcher';
 import type { AsyncSubscription } from '@parcel/watcher';
 
+import { WATCH } from '../constants.js';
 import { debugLog } from '../utils.js';
 
 export type WatchEventType = 'add' | 'change' | 'unlink';
@@ -78,19 +79,6 @@ export type IncrementalParseHandler = (
   tsconfigPath: string,
 ) => Promise<{ nodesUpdated: number; edgesUpdated: number }>;
 
-const DEFAULT_EXCLUDE_PATTERNS = [
-  '**/node_modules/**',
-  '**/dist/**',
-  '**/build/**',
-  '**/.git/**',
-  '**/*.d.ts',
-  '**/*.js.map',
-  '**/*.js',
-];
-
-const DEFAULT_DEBOUNCE_MS = 1000;
-const MAX_WATCHERS = 10;
-const MAX_PENDING_EVENTS = 1000;
 
 class WatchManager {
   private watchers: Map<string, WatcherState> = new Map();
@@ -145,9 +133,9 @@ class WatchManager {
     }
 
     // Enforce maximum watcher limit
-    if (this.watchers.size >= MAX_WATCHERS) {
+    if (this.watchers.size >= WATCH.maxWatchers) {
       throw new Error(
-        `Maximum watcher limit (${MAX_WATCHERS}) reached. ` + `Stop an existing watcher before starting a new one.`,
+        `Maximum watcher limit (${WATCH.maxWatchers}) reached. ` + `Stop an existing watcher before starting a new one.`,
       );
     }
 
@@ -155,8 +143,8 @@ class WatchManager {
       projectPath: config.projectPath,
       projectId: config.projectId,
       tsconfigPath: config.tsconfigPath,
-      debounceMs: config.debounceMs ?? DEFAULT_DEBOUNCE_MS,
-      excludePatterns: config.excludePatterns ?? DEFAULT_EXCLUDE_PATTERNS,
+      debounceMs: config.debounceMs ?? WATCH.defaultDebounceMs,
+      excludePatterns: config.excludePatterns ?? [...WATCH.excludePatterns],
     };
 
     await debugLog('Creating @parcel/watcher subscription', {
@@ -254,9 +242,9 @@ class WatchManager {
     };
 
     // Prevent unbounded event accumulation - drop oldest events if buffer is full
-    if (state.pendingEvents.length >= MAX_PENDING_EVENTS) {
+    if (state.pendingEvents.length >= WATCH.maxPendingEvents) {
       debugLog('Event buffer full, dropping oldest events', { projectId: state.projectId });
-      state.pendingEvents = state.pendingEvents.slice(-Math.floor(MAX_PENDING_EVENTS / 2));
+      state.pendingEvents = state.pendingEvents.slice(-Math.floor(WATCH.maxPendingEvents / 2));
     }
 
     state.pendingEvents.push(event);

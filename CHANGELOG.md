@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - Parallel Parsing & TypeAlias Support - 2025-01-XX
+
+### Added
+
+#### Parallel Parsing with Worker Pool
+
+- **Multi-Worker Architecture**: Parse large codebases using multiple CPU cores simultaneously
+  - Configurable worker pool based on available CPUs (default: `Math.min(cpus - 1, 8)`)
+  - Pull-based work distribution: workers signal ready, coordinator dispatches chunks
+  - Streaming results: chunks are imported as they complete for pipelined processing
+- **ChunkWorkerPool**: New infrastructure in `src/mcp/workers/chunk-worker-pool.ts`
+  - Graceful shutdown with proper worker cleanup
+  - Error propagation from worker threads
+  - Progress tracking with `OnChunkComplete` callbacks
+- **SerializedSharedContext**: Enables cross-worker shared state for edge resolution
+  - Node exports, import sources, and class hierarchies serialized between workers
+  - Deferred edges collected across chunks for final resolution
+
+#### TypeAlias Parsing
+
+- **TypeAlias Node Type**: Full support for TypeScript type aliases
+  - Parses `type Foo = ...` declarations into graph nodes
+  - Labels: `['TypeAlias', 'TypeScript']`
+  - Captured properties: `name`, `isExported`
+  - Embeddings skipped by default for type aliases
+
+#### Nx Workspace Support
+
+- **Nx Monorepo Detection**: Auto-detects Nx workspaces alongside existing support
+  - Reads `nx.json` and `workspace.json` / `project.json` configurations
+  - Discovers project targets and dependencies
+  - Integrates with existing Turborepo, pnpm, Yarn, and npm workspace detection
+
+#### Infrastructure Improvements
+
+- **Graph Factory Utilities**: Consolidated node/edge creation in `src/core/utils/graph-factory.ts`
+  - `generateDeterministicId()`: Stable node IDs across reparses
+  - `createCoreEdge()`, `createCallsEdge()`: Factory functions for edge creation
+  - `toNeo4jNode()`, `toNeo4jEdge()`: Conversion between parsed and Neo4j types
+- **Centralized Constants**: Shared constants for file patterns, logging config in `src/constants.ts`
+- **Consistent Debug Logging**: Migrated all `console.log` to `debugLog()` for configurable output
+
+### Changed
+
+- **NL-to-Cypher Prompts**: Now schema-driven rather than hardcoded
+  - Dynamically loads valid labels from `rawSchema` in schema file
+  - Improved error messages with AST-to-label mapping hints
+  - Framework relationships discovered from schema at runtime
+- **Edge Resolution**: Delegated from WorkspaceParser to TypeScriptParser
+  - Enables per-chunk edge resolution in parallel parsing
+  - Better separation of concerns between parsers
+- **Streaming Import Handler**: Fixed duplicate detection in cross-chunk scenarios
+
+### Fixed
+
+- Worker thread graceful shutdown preventing orphaned processes
+- Cross-chunk INTERNAL_API_CALL edge detection in streaming mode
+- Streaming duplicates from incorrect chunk boundary handling
+
+---
+
 ## [2.1.0] - Dead Code & Duplicate Detection - 2025-01-XX
 
 ### Added
@@ -281,7 +342,8 @@ Existing graphs created with previous versions are **not compatible** with this 
 
 ---
 
-[2.1.0]: https://github.com/drewdrewH/code-graph-context/compare/v1.2.0...v2.1.0
-[1.2.0]: https://github.com/drewdrewH/code-graph-context/compare/v1.1.0...v1.2.0
+[2.2.0]: https://github.com/drewdrewH/code-graph-context/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/drewdrewH/code-graph-context/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/drewdrewH/code-graph-context/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/drewdrewH/code-graph-context/compare/v0.1.0...v1.1.0
 [0.1.0]: https://github.com/drewdrewH/code-graph-context/releases/tag/v0.1.0

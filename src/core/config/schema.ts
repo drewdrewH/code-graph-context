@@ -20,6 +20,7 @@ export enum CoreNodeType {
   ENUM_DECLARATION = 'EnumDeclaration',
   FUNCTION_DECLARATION = 'FunctionDeclaration',
   VARIABLE_DECLARATION = 'VariableDeclaration',
+  TYPE_ALIAS = 'TypeAlias',
 
   // Class Members
   METHOD_DECLARATION = 'MethodDeclaration',
@@ -260,11 +261,31 @@ export interface DetectionPattern {
 }
 
 /**
- * Parsing Context - Shared state across all parsing phases
- * Simple map for custom data that can be shared between extractors and enhancements
- * e.g., store vendorClients: Map<string, ParsedNode> by project name
+ * Serializable value types for ParsingContext.
+ * Values must be serializable to support parallel parsing across worker threads.
+ * For complex objects, use JSON.stringify/parse.
  */
-export type ParsingContext = Map<string, any>;
+export type SerializableContextValue =
+  | string
+  | number
+  | boolean
+  | string[]
+  | number[]
+  | Map<string, string>
+  | Map<string, number>;
+
+/**
+ * Parsing Context - Shared state across all parsing phases.
+ * Simple map for custom data that can be shared between extractors and enhancements.
+ *
+ * IMPORTANT: Values must be serializable for parallel parsing support.
+ * - Store node IDs (strings), not ParsedNode objects
+ * - Use Map<string, string> for node lookups (e.g., vendorName → nodeId)
+ * - For complex objects, use JSON.stringify/parse
+ *
+ * Example: vendorControllers: Map<string, string> where value is nodeId
+ */
+export type ParsingContext = Map<string, SerializableContextValue>;
 
 /**
  * Parsed node representation (after parsing, not the raw AST node)
@@ -278,6 +299,18 @@ export interface ParsedNode {
   properties: Neo4jNodeProperties;
   sourceNode?: any; // The original ts-morph AST Node
   skipEmbedding?: boolean;
+}
+
+/**
+ * Parsed edge representation (after parsing)
+ * This is the structure stored in the parser's parsedEdges map
+ */
+export interface ParsedEdge {
+  id: string;
+  relationshipType: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  properties: Neo4jEdgeProperties;
 }
 
 /**
@@ -474,6 +507,7 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
     [CoreNodeType.FUNCTION_DECLARATION]: 'getFunctions',
     [CoreNodeType.IMPORT_DECLARATION]: 'getImportDeclarations',
     [CoreNodeType.VARIABLE_DECLARATION]: 'getDeclarations', // Called on VariableStatement
+    [CoreNodeType.TYPE_ALIAS]: 'getTypeAliases',
     [CoreNodeType.ENUM_DECLARATION]: 'getEnums',
     [CoreNodeType.CONSTRUCTOR_DECLARATION]: 'getConstructors',
     [CoreNodeType.EXPORT_DECLARATION]: 'getExportDeclarations',
@@ -511,6 +545,8 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         [CoreNodeType.FUNCTION_DECLARATION]: CoreEdgeType.CONTAINS,
         [CoreNodeType.IMPORT_DECLARATION]: CoreEdgeType.CONTAINS,
         [CoreNodeType.ENUM_DECLARATION]: CoreEdgeType.CONTAINS,
+        [CoreNodeType.VARIABLE_DECLARATION]: CoreEdgeType.CONTAINS,
+        [CoreNodeType.TYPE_ALIAS]: CoreEdgeType.CONTAINS,
       },
       neo4j: {
         labels: ['SourceFile', 'TypeScript'],
@@ -831,6 +867,12 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           extraction: { method: 'ast', source: 'getName' },
           neo4j: { indexed: true, unique: false, required: true },
         },
+        {
+          name: 'isExported',
+          type: 'boolean',
+          extraction: { method: 'static', defaultValue: false }, // We'll set this manually
+          neo4j: { indexed: true, unique: false, required: true },
+        },
       ],
       relationships: [],
       children: {},
@@ -841,7 +883,27 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         skipEmbedding: true,
       },
     },
-
+    [CoreNodeType.TYPE_ALIAS]: {
+      coreType: CoreNodeType.TYPE_ALIAS,
+      astNodeKind: 265,
+      astGetter: 'getTypeAliases',
+      properties: [
+        {
+          name: 'name',
+          type: 'string',
+          extraction: { method: 'ast', source: 'getName' },
+          neo4j: { indexed: true, unique: false, required: true },
+        },
+      ],
+      relationships: [],
+      children: {},
+      neo4j: {
+        labels: ['TypeAlias', 'TypeScript'],
+        primaryLabel: 'TypeAlias',
+        indexed: ['name'],
+        skipEmbedding: true,
+      },
+    },
     [CoreNodeType.CONSTRUCTOR_DECLARATION]: {
       coreType: CoreNodeType.CONSTRUCTOR_DECLARATION,
       astNodeKind: 175,

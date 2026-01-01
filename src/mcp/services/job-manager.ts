@@ -4,6 +4,7 @@
  */
 
 import { randomBytes } from 'crypto';
+import { JOBS } from '../constants.js';
 
 export type JobPhase = 'pending' | 'discovery' | 'parsing' | 'importing' | 'resolving' | 'complete';
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
@@ -50,11 +51,6 @@ const createInitialProgress = (): JobProgress => ({
   totalChunks: 0,
 });
 
-// Cleanup interval: 5 minutes
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
-
-// Maximum concurrent jobs to prevent memory exhaustion
-const MAX_JOBS = 100;
 
 class JobManager {
   private jobs: Map<string, ParseJob> = new Map();
@@ -77,7 +73,7 @@ class JobManager {
       if (cleaned > 0) {
         console.log(`[JobManager] Cleaned up ${cleaned} old jobs`);
       }
-    }, CLEANUP_INTERVAL_MS);
+    }, JOBS.cleanupIntervalMs);
 
     // Don't prevent Node.js from exiting if this is the only timer
     this.cleanupInterval.unref();
@@ -99,12 +95,12 @@ class JobManager {
    */
   createJob(projectPath: string, projectId: string): string {
     // SECURITY: Enforce maximum job limit to prevent memory exhaustion
-    if (this.jobs.size >= MAX_JOBS) {
+    if (this.jobs.size >= JOBS.maxJobs) {
       // Try to cleanup old jobs first
       const cleaned = this.cleanupOldJobs(0); // Remove all completed/failed jobs
-      if (this.jobs.size >= MAX_JOBS) {
+      if (this.jobs.size >= JOBS.maxJobs) {
         throw new Error(
-          `Maximum job limit (${MAX_JOBS}) reached. ` +
+          `Maximum job limit (${JOBS.maxJobs}) reached. ` +
             `${this.listJobs('running').length} jobs are currently running. ` +
             `Please wait for jobs to complete or cancel existing jobs.`,
         );

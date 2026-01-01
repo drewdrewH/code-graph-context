@@ -44,7 +44,7 @@ export const performIncrementalParse = async (
   const graphHandler = new GraphGeneratorHandler(neo4jService, embeddingsService);
 
   try {
-    await debugLog('Incremental parse started (watch)', { projectPath, projectId });
+    await debugLog('Incremental parse started', { projectPath, projectId });
 
     // Resolve project ID
     const resolvedId = resolveProjectId(projectPath, projectId);
@@ -56,14 +56,13 @@ export const performIncrementalParse = async (
     // Detect changed files
     const { filesToReparse, filesToDelete } = await detectChangedFiles(projectPath, neo4jService, resolvedId);
 
-    await debugLog('Watch incremental change detection', {
+    await debugLog('Incremental change detection', {
       filesToReparse: filesToReparse.length,
       filesToDelete: filesToDelete.length,
     });
 
     // If no changes, return early
     if (filesToReparse.length === 0 && filesToDelete.length === 0) {
-      await debugLog('Watch incremental: no changes detected');
       return {
         nodesUpdated: 0,
         edgesUpdated: 0,
@@ -78,7 +77,6 @@ export const performIncrementalParse = async (
     if (filesToRemoveFromGraph.length > 0) {
       // Save cross-file edges before deletion
       savedCrossFileEdges = await getCrossFileEdges(neo4jService, filesToRemoveFromGraph, resolvedId);
-      await debugLog('Watch: saved cross-file edges', { count: savedCrossFileEdges.length });
 
       // Delete old subgraphs
       await deleteSourceFileSubgraphs(neo4jService, filesToRemoveFromGraph, resolvedId);
@@ -97,6 +95,7 @@ export const performIncrementalParse = async (
 
       // Export graph data
       const { nodes, edges } = parser.exportToJson();
+
       // Get framework schemas if available (use unknown as intermediate to access private property)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parserAny = parser as any;
@@ -161,11 +160,10 @@ export const performIncrementalParse = async (
             ? Number(firstResult.recreatedCount) || 0
             : 0;
         edgesImported += recreatedCount;
-        await debugLog('Watch: cross-file edges recreated', { recreatedCount });
       }
     }
 
-    await debugLog('Watch incremental parse completed', {
+    await debugLog('Incremental parse completed', {
       nodesImported,
       edgesImported,
       filesReparsed: filesToReparse.length,

@@ -3,27 +3,21 @@
  * Orchestrates parsing of multi-package monorepos
  */
 
-import crypto from 'crypto';
 import path from 'path';
 
 import { glob } from 'glob';
 
-import {
-  Neo4jNode,
-  Neo4jEdge,
-  CoreEdgeType,
-  CORE_TYPESCRIPT_SCHEMA,
-  ParsingContext,
-  FrameworkSchema,
-  EdgeEnhancement,
-} from '../config/schema.js';
-import { createFrameworkEdgeData } from '../utils/edge-factory.js';
+import { EXCLUDE_PATTERNS_GLOB } from '../../constants.js';
+import { FAIRSQUARE_FRAMEWORK_SCHEMA } from '../config/fairsquare-framework-schema.js';
+import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
+import { Neo4jNode, Neo4jEdge, ParsingContext, FrameworkSchema, EdgeEnhancement } from '../config/schema.js';
 import { debugLog } from '../utils/file-utils.js';
+import { createFrameworkEdgeData } from '../utils/graph-factory.js';
 import { resolveProjectId } from '../utils/project-id.js';
 import { WorkspaceConfig, WorkspacePackage } from '../workspace/index.js';
 
 import { ParserFactory, ProjectType } from './parser-factory.js';
-import { TypeScriptParser } from './typescript-parser.js';
+import { CallContext, TypeScriptParser } from './typescript-parser.js';
 
 export interface WorkspaceParseResult {
   nodes: Neo4jNode[];
@@ -37,6 +31,7 @@ interface DeferredEdge {
   targetName: string;
   targetType: string;
   targetFilePath?: string; // File path of target for precise matching (used for EXTENDS/IMPLEMENTS)
+  callContext?: CallContext;
 }
 
 /**
@@ -69,6 +64,11 @@ export class WorkspaceParser {
   private accumulatedParsedNodes: Map<string, LightweightParsedNode> = new Map();
   // Framework schemas detected from packages (for edge enhancements)
   private frameworkSchemas: FrameworkSchema[] = [];
+  // Track already exported items to avoid returning duplicates in streaming mode
+  private exportedNodeIds: Set<string> = new Set();
+  private exportedEdgeIds: Set<string> = new Set();
+  // Resolver parser for delegating edge resolution to TypeScriptParser
+  private resolverParser: TypeScriptParser | null = null;
 
   constructor(
     config: WorkspaceConfig,
@@ -130,9 +130,10 @@ export class WorkspaceParser {
    */
   private async discoverPackageFiles(pkg: WorkspacePackage): Promise<string[]> {
     // Include both .ts and .tsx files
+    // Use EXCLUDE_PATTERNS_GLOB for consistency with detectChangedFiles and TypeScriptParser
     const pattern = path.join(pkg.path, '**/*.{ts,tsx}');
     const files = await glob(pattern, {
-      ignore: ['**/node_modules/**', '**/*.d.ts', '**/dist/**', '**/build/**'],
+      ignore: EXCLUDE_PATTERNS_GLOB,
       absolute: true,
     });
     return files;
@@ -185,18 +186,18 @@ export class WorkspaceParser {
    * Parse a single package and return its results
    */
   async parsePackage(pkg: WorkspacePackage): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
-    console.log(`\nParsing package: ${pkg.name}`);
+    await debugLog(`Parsing package: ${pkg.name}`);
 
     const parser = await this.createParserForPackage(pkg);
 
     // Discover files for this package
     const files = await this.discoverPackageFiles(pkg);
     if (files.length === 0) {
-      console.log(`   ⚠️ No TypeScript files found in ${pkg.name}`);
+      await debugLog(`No TypeScript files found in ${pkg.name}`);
       return { nodes: [], edges: [] };
     }
 
-    console.log(`   📄 ${files.length} files to parse`);
+    await debugLog(`${pkg.name}: ${files.length} files to parse`);
 
     // Parse all files in this package
     const result = await parser.parseChunk(files, true); // Skip edge resolution for now
@@ -206,7 +207,7 @@ export class WorkspaceParser {
       node.properties.packageName = pkg.name;
     }
 
-    console.log(`   ✅ ${result.nodes.length} nodes, ${result.edges.length} edges`);
+    await debugLog(`${pkg.name}: ${result.nodes.length} nodes, ${result.edges.length} edges`);
 
     return result;
   }
@@ -280,7 +281,24 @@ export class WorkspaceParser {
       }
     }
 
-    return { nodes: allNodes, edges: allEdges };
+    // Only return nodes/edges that haven't been exported yet (prevents duplicate imports in streaming mode)
+    const newNodes = allNodes.filter((node) => {
+      if (!this.exportedNodeIds.has(node.id)) {
+        this.exportedNodeIds.add(node.id);
+        return true;
+      }
+      return false;
+    });
+
+    const newEdges = allEdges.filter((edge) => {
+      if (!this.exportedEdgeIds.has(edge.id)) {
+        this.exportedEdgeIds.add(edge.id);
+        return true;
+      }
+      return false;
+    });
+
+    return { nodes: newNodes, edges: newEdges };
   }
 
   /**
@@ -315,8 +333,7 @@ export class WorkspaceParser {
       });
     }
 
-    console.log(`\n🎉 Workspace parsing complete!`);
-    console.log(`   Total: ${allNodes.length} nodes, ${allEdges.length} edges`);
+    await debugLog(`Workspace parsing complete! Total: ${allNodes.length} nodes, ${allEdges.length} edges`);
 
     return {
       nodes: allNodes,
@@ -332,6 +349,8 @@ export class WorkspaceParser {
   clearParsedData(): void {
     this.parsedNodes.clear();
     this.parsedEdges.clear();
+    this.exportedNodeIds.clear();
+    this.exportedEdgeIds.clear();
   }
 
   /**
@@ -340,6 +359,26 @@ export class WorkspaceParser {
   addExistingNodesFromChunk(nodes: Neo4jNode[]): void {
     for (const node of nodes) {
       this.parsedNodes.set(node.id, node);
+    }
+  }
+
+  /**
+   * Add nodes to accumulatedParsedNodes for edge enhancement.
+   * Converts Neo4jNode to LightweightParsedNode format.
+   */
+  addParsedNodesFromChunk(nodes: Neo4jNode[]): void {
+    for (const node of nodes) {
+      this.parsedNodes.set(node.id, node);
+      // Also add to accumulatedParsedNodes for edge enhancement detection
+      this.accumulatedParsedNodes.set(node.id, {
+        id: node.id,
+        coreType: node.properties.coreType as string,
+        semanticType: node.properties.semanticType as string | undefined,
+        properties: {
+          name: node.properties.name as string | undefined,
+          context: node.properties.context as Record<string, any> | undefined,
+        },
+      });
     }
   }
 
@@ -355,96 +394,148 @@ export class WorkspaceParser {
   }
 
   /**
+   * Set whether to defer edge enhancements.
+   * WorkspaceParser always defers edge enhancements to applyEdgeEnhancementsManually(),
+   * so this is a no-op for interface compliance.
+   */
+  setDeferEdgeEnhancements(_defer: boolean): void {
+    // No-op: WorkspaceParser always handles edge enhancements at the end
+  }
+
+  /**
+   * Load framework schemas for a specific project type.
+   * Used by parallel parsing coordinator to load schemas before edge enhancement.
+   * In sequential parsing, schemas are accumulated from inner parsers instead.
+   */
+  loadFrameworkSchemasForType(projectType: string): void {
+    // Load schemas based on project type (same logic as ParserFactory.selectFrameworkSchemas)
+    switch (projectType) {
+      case 'nestjs':
+        if (!this.frameworkSchemas.some((s) => s.name === NESTJS_FRAMEWORK_SCHEMA.name)) {
+          this.frameworkSchemas.push(NESTJS_FRAMEWORK_SCHEMA);
+        }
+        break;
+      case 'fairsquare':
+        if (!this.frameworkSchemas.some((s) => s.name === FAIRSQUARE_FRAMEWORK_SCHEMA.name)) {
+          this.frameworkSchemas.push(FAIRSQUARE_FRAMEWORK_SCHEMA);
+        }
+        break;
+      case 'both':
+        if (!this.frameworkSchemas.some((s) => s.name === FAIRSQUARE_FRAMEWORK_SCHEMA.name)) {
+          this.frameworkSchemas.push(FAIRSQUARE_FRAMEWORK_SCHEMA);
+        }
+        if (!this.frameworkSchemas.some((s) => s.name === NESTJS_FRAMEWORK_SCHEMA.name)) {
+          this.frameworkSchemas.push(NESTJS_FRAMEWORK_SCHEMA);
+        }
+        break;
+      // 'vanilla' and 'auto' - no framework schemas
+    }
+    debugLog('WorkspaceParser loaded framework schemas', { count: this.frameworkSchemas.length, projectType });
+  }
+
+  /**
+   * Get serialized shared context for parallel parsing.
+   * Converts Maps to arrays for structured clone compatibility.
+   */
+  getSerializedSharedContext(): Array<[string, unknown]> {
+    const serialized: Array<[string, unknown]> = [];
+    for (const [key, value] of this.sharedContext) {
+      if (value instanceof Map) {
+        serialized.push([key, Array.from((value as Map<string, unknown>).entries())]);
+      } else {
+        serialized.push([key, value]);
+      }
+    }
+    return serialized;
+  }
+
+  /**
+   * Merge serialized shared context from workers.
+   * Handles Map merging by combining entries.
+   */
+  mergeSerializedSharedContext(serialized: Array<[string, unknown]>): void {
+    for (const [key, value] of serialized) {
+      if (Array.isArray(value) && value.length > 0 && Array.isArray(value[0])) {
+        // It's a serialized Map - merge with existing
+        const existingMap = this.sharedContext.get(key) as Map<string, unknown> | undefined;
+        const newMap = existingMap ?? new Map<string, unknown>();
+        for (const [k, v] of value as Array<[string, unknown]>) {
+          newMap.set(k, v);
+        }
+        this.sharedContext.set(key, newMap as any);
+      } else {
+        // Simple value - just set it
+        this.sharedContext.set(key, value as any);
+      }
+    }
+  }
+
+  /**
+   * Get deferred edges for cross-chunk resolution.
+   * Returns serializable format for worker thread transfer.
+   */
+  getDeferredEdges(): Array<{
+    edgeType: string;
+    sourceNodeId: string;
+    targetName: string;
+    targetType: string;
+    targetFilePath?: string;
+  }> {
+    return this.accumulatedDeferredEdges.map((e) => ({
+      edgeType: e.edgeType,
+      sourceNodeId: e.sourceNodeId,
+      targetName: e.targetName,
+      targetType: e.targetType,
+      targetFilePath: e.targetFilePath,
+    }));
+  }
+
+  /**
+   * Merge deferred edges from workers for resolution.
+   */
+  mergeDeferredEdges(
+    edges: Array<{
+      edgeType: string;
+      sourceNodeId: string;
+      targetName: string;
+      targetType: string;
+      targetFilePath?: string;
+    }>,
+  ): void {
+    for (const e of edges) {
+      this.accumulatedDeferredEdges.push({
+        edgeType: e.edgeType,
+        sourceNodeId: e.sourceNodeId,
+        targetName: e.targetName,
+        targetType: e.targetType,
+        targetFilePath: e.targetFilePath,
+      });
+    }
+  }
+
+  /**
    * Resolve accumulated deferred edges against all parsed nodes
    * Call this after all chunks have been parsed
    */
-  async resolveDeferredEdgesManually(): Promise<Neo4jEdge[]> {
-    const resolvedEdges: Neo4jEdge[] = [];
-    const unresolvedImports: string[] = [];
-    const unresolvedExtends: string[] = [];
-    const unresolvedImplements: string[] = [];
-
-    // Count by edge type for logging
-    const importsCount = this.accumulatedDeferredEdges.filter((e) => e.edgeType === 'IMPORTS').length;
-    const extendsCount = this.accumulatedDeferredEdges.filter((e) => e.edgeType === 'EXTENDS').length;
-    const implementsCount = this.accumulatedDeferredEdges.filter((e) => e.edgeType === 'IMPLEMENTS').length;
-
-    for (const deferred of this.accumulatedDeferredEdges) {
-      // Find target node by name, type, and optionally file path from accumulated nodes
-      const targetNode = this.findNodeByNameAndType(deferred.targetName, deferred.targetType, deferred.targetFilePath);
-
-      if (targetNode) {
-        // Find source node to get filePath
-        const sourceNode = this.parsedNodes.get(deferred.sourceNodeId);
-        const filePath = sourceNode?.properties.filePath ?? '';
-
-        // Get relationship weight from core schema
-        const coreEdgeType = deferred.edgeType as CoreEdgeType;
-        const coreEdgeSchema = CORE_TYPESCRIPT_SCHEMA.edgeTypes[coreEdgeType];
-        const relationshipWeight = coreEdgeSchema?.relationshipWeight ?? 0.5;
-
-        // Generate a unique edge ID
-        const edgeHash = crypto
-          .createHash('md5')
-          .update(`${deferred.sourceNodeId}-${deferred.edgeType}-${targetNode.id}`)
-          .digest('hex')
-          .substring(0, 12);
-
-        const edge: Neo4jEdge = {
-          id: `${this.projectId}:${deferred.edgeType}:${edgeHash}`,
-          type: deferred.edgeType,
-          startNodeId: deferred.sourceNodeId,
-          endNodeId: targetNode.id,
-          properties: {
-            coreType: coreEdgeType,
-            projectId: this.projectId,
-            source: 'ast',
-            confidence: 1.0,
-            relationshipWeight,
-            filePath,
-            createdAt: new Date().toISOString(),
-          },
-        };
-        resolvedEdges.push(edge);
-      } else {
-        // Track unresolved by type
-        if (deferred.edgeType === 'IMPORTS') {
-          unresolvedImports.push(deferred.targetName);
-        } else if (deferred.edgeType === 'EXTENDS') {
-          unresolvedExtends.push(deferred.targetName);
-        } else if (deferred.edgeType === 'IMPLEMENTS') {
-          unresolvedImplements.push(deferred.targetName);
-        }
-      }
+  async resolveDeferredEdges(): Promise<Neo4jEdge[]> {
+    if (this.accumulatedDeferredEdges.length === 0) {
+      return [];
     }
 
-    // Log resolution stats
-    const importsResolved = resolvedEdges.filter((e) => e.type === 'IMPORTS').length;
-    const extendsResolved = resolvedEdges.filter((e) => e.type === 'EXTENDS').length;
-    const implementsResolved = resolvedEdges.filter((e) => e.type === 'IMPLEMENTS').length;
+    // Create or reuse resolver parser - delegates all resolution logic to TypeScriptParser
+    // Uses createResolver() which doesn't require ts-morph initialization
+    if (!this.resolverParser) {
+      this.resolverParser = TypeScriptParser.createResolver(this.projectId);
+    }
 
-    debugLog('WorkspaceParser edge resolution', {
-      totalDeferredEdges: this.accumulatedDeferredEdges.length,
-      totalNodesAvailable: this.parsedNodes.size,
-      imports: {
-        queued: importsCount,
-        resolved: importsResolved,
-        unresolved: unresolvedImports.length,
-        sample: unresolvedImports.slice(0, 10),
-      },
-      extends: {
-        queued: extendsCount,
-        resolved: extendsResolved,
-        unresolved: unresolvedExtends.length,
-        sample: unresolvedExtends.slice(0, 10),
-      },
-      implements: {
-        queued: implementsCount,
-        resolved: implementsResolved,
-        unresolved: unresolvedImplements.length,
-        sample: unresolvedImplements.slice(0, 10),
-      },
-    });
+    // Populate resolver with accumulated nodes (builds CALLS indexes automatically)
+    this.resolverParser.addParsedNodesFromChunk(Array.from(this.parsedNodes.values()));
+
+    // Transfer deferred edges to resolver
+    this.resolverParser.mergeDeferredEdges(this.accumulatedDeferredEdges);
+
+    // Delegate resolution to TypeScriptParser
+    const resolvedEdges = await this.resolverParser.resolveDeferredEdges();
 
     // Clear accumulated deferred edges after resolution
     this.accumulatedDeferredEdges = [];
@@ -462,16 +553,16 @@ export class WorkspaceParser {
    */
   async applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]> {
     if (this.accumulatedParsedNodes.size === 0) {
-      console.log('WorkspaceParser: No accumulated nodes for edge enhancements');
+      await debugLog('WorkspaceParser: No accumulated nodes for edge enhancements');
       return [];
     }
 
     if (this.frameworkSchemas.length === 0) {
-      console.log('WorkspaceParser: No framework schemas for edge enhancements');
+      await debugLog('WorkspaceParser: No framework schemas for edge enhancements');
       return [];
     }
 
-    console.log(
+    await debugLog(
       `WorkspaceParser: Applying edge enhancements on ${this.accumulatedParsedNodes.size} accumulated nodes across all packages...`,
     );
 
@@ -489,7 +580,7 @@ export class WorkspaceParser {
     for (const [type, nodes] of nodesBySemanticType) {
       typeCounts[type] = nodes.size;
     }
-    console.log(`Node distribution by semantic type:`, typeCounts);
+    await debugLog(`Node distribution by semantic type: ${JSON.stringify(typeCounts)}`);
 
     const newEdges: Neo4jEdge[] = [];
     const edgeCountBefore = this.parsedEdges.size;
@@ -503,7 +594,7 @@ export class WorkspaceParser {
     }
 
     const newEdgeCount = this.parsedEdges.size - edgeCountBefore;
-    console.log(`Created ${newEdgeCount} cross-package edges from edge enhancements`);
+    await debugLog(`Created ${newEdgeCount} cross-package edges from edge enhancements`);
 
     return newEdges;
   }
@@ -602,117 +693,5 @@ export class WorkspaceParser {
       endNodeId: targetId,
       properties,
     };
-  }
-
-  /**
-   * Find a node by name and type from accumulated nodes
-   * For SourceFiles, implements smart import resolution:
-   * - Direct file path match
-   * - Relative import resolution (./foo, ../bar)
-   * - Scoped package imports (@workspace/ui, @ui/core)
-   *
-   * For ClassDeclaration/InterfaceDeclaration with filePath, uses precise matching.
-   */
-  private findNodeByNameAndType(name: string, type: string, filePath?: string): Neo4jNode | undefined {
-    const allNodes = [...this.parsedNodes.values()];
-
-    // If we have a file path and it's not a SourceFile, use precise matching first
-    if (filePath && type !== 'SourceFile') {
-      for (const node of allNodes) {
-        if (
-          node.properties.coreType === type &&
-          node.properties.name === name &&
-          node.properties.filePath === filePath
-        ) {
-          return node;
-        }
-      }
-      // If precise match fails, fall through to name-only matching below
-    }
-
-    // For SOURCE_FILE with import specifier, try multiple matching strategies
-    if (type === 'SourceFile') {
-      // Strategy 1: Direct file path match
-      for (const node of allNodes) {
-        if (node.labels.includes(type) && node.properties.filePath === name) {
-          return node;
-        }
-      }
-
-      // Strategy 2: Resolve relative imports (./foo, ../bar)
-      if (name.startsWith('.')) {
-        // Normalize: remove leading ./ or ../
-        const normalizedPath = name.replace(/^\.\.\//, '').replace(/^\.\//, '');
-
-        // Try matching with common extensions
-        const extensions = ['', '.ts', '.tsx', '/index.ts', '/index.tsx'];
-        for (const ext of extensions) {
-          const searchPath = normalizedPath + ext;
-          for (const node of allNodes) {
-            if (node.labels.includes(type)) {
-              // Match if filePath ends with the normalized path
-              if (
-                node.properties.filePath.endsWith(searchPath) ||
-                node.properties.filePath.endsWith('/' + searchPath)
-              ) {
-                return node;
-              }
-            }
-          }
-        }
-      }
-
-      // Strategy 3: Workspace package imports (@workspace/ui, @ui/core)
-      if (name.startsWith('@')) {
-        const parts = name.split('/');
-        const packageName = parts.slice(0, 2).join('/'); // @scope/package
-        const subPath = parts.slice(2).join('/'); // rest of path after package name
-
-        // First, try to find an exact match with subpath
-        if (subPath) {
-          const extensions = ['', '.ts', '.tsx', '/index.ts', '/index.tsx'];
-          for (const ext of extensions) {
-            const searchPath = subPath + ext;
-            for (const node of allNodes) {
-              if (node.labels.includes(type) && node.properties.packageName === packageName) {
-                if (
-                  node.properties.filePath.endsWith(searchPath) ||
-                  node.properties.filePath.endsWith('/' + searchPath)
-                ) {
-                  return node;
-                }
-              }
-            }
-          }
-        }
-
-        // For bare package imports (@workspace/ui), look for index files
-        if (!subPath) {
-          for (const node of allNodes) {
-            if (node.labels.includes(type) && node.properties.packageName === packageName) {
-              const fileName = node.properties.name;
-              if (fileName === 'index.ts' || fileName === 'index.tsx') {
-                return node;
-              }
-            }
-          }
-          // If no index file, return any file from the package as a fallback
-          for (const node of allNodes) {
-            if (node.labels.includes(type) && node.properties.packageName === packageName) {
-              return node;
-            }
-          }
-        }
-      }
-    }
-
-    // Default: exact name match (for non-SourceFile types like classes, interfaces)
-    for (const node of allNodes) {
-      if (node.properties.coreType === type && node.properties.name === name) {
-        return node;
-      }
-    }
-
-    return undefined;
   }
 }

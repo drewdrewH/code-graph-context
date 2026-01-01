@@ -41,7 +41,7 @@ export class GraphGeneratorHandler {
 
   async generateGraph(
     graphJsonPath: string,
-    batchSize = DEFAULTS.batchSize,
+    batchSize: number = DEFAULTS.batchSize,
     clearExisting = true,
   ): Promise<ImportResult> {
     console.log(`Generating graph from JSON file: ${graphJsonPath}`);

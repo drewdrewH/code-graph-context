@@ -24,7 +24,7 @@ import {
   UPDATE_PROJECT_STATUS_QUERY,
 } from '../../core/utils/project-id.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
-import { TOOL_NAMES, TOOL_METADATA, DEFAULTS, FILE_PATHS, LOG_CONFIG } from '../constants.js';
+import { TOOL_NAMES, TOOL_METADATA, DEFAULTS, FILE_PATHS, LOG_CONFIG, PARSING } from '../constants.js';
 import {
   CrossFileEdge,
   deleteSourceFileSubgraphs,
@@ -42,12 +42,6 @@ import {
   formatParsePartialSuccess,
   debugLog,
 } from '../utils.js';
-
-// Threshold for using streaming import (files)
-const STREAMING_THRESHOLD = 100;
-
-// Worker thread timeout (30 minutes)
-const WORKER_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Validates that a path exists and is accessible
@@ -114,7 +108,7 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
         chunkSize: z
           .number()
           .optional()
-          .default(50)
+          .default(100)
           .describe('Files per chunk for streaming import (default: 50). Set to 0 to disable streaming.'),
         useStreaming: z
           .enum(['auto', 'always', 'never'])
@@ -187,7 +181,7 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
           // Get path to worker script
           const __filename = fileURLToPath(import.meta.url);
           const __dirname = dirname(__filename);
-          const workerPath = join(__dirname, '..', 'workers', 'parse-worker.js');
+          const workerPath = join(__dirname, '..', 'workers', 'parse-coordinator.js');
 
           // Create Worker thread to run parsing without blocking MCP server
           const worker = new Worker(workerPath, {
@@ -218,10 +212,10 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
           const timeoutId = setTimeout(async () => {
             const job = jobManager.getJob(jobId);
             if (job && job.status === 'running') {
-              jobManager.failJob(jobId, `Worker timed out after ${WORKER_TIMEOUT_MS / 60000} minutes`);
+              jobManager.failJob(jobId, `Worker timed out after ${PARSING.workerTimeoutMs / 60000} minutes`);
               await terminateWorker('timeout');
             }
-          }, WORKER_TIMEOUT_MS);
+          }, PARSING.workerTimeoutMs);
 
           // Handle progress messages from worker
           worker.on('message', (msg: any) => {
@@ -272,19 +266,22 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
         const graphGeneratorHandler = new GraphGeneratorHandler(neo4jService, embeddingsService);
 
         // Determine if we should use streaming import
+        // Use lazyLoad = true for consistent glob-based file discovery (matches incremental parse)
         const parser =
           projectType === 'auto'
-            ? await ParserFactory.createParserWithAutoDetection(projectPath, tsconfigPath, resolvedProjectId)
+            ? await ParserFactory.createParserWithAutoDetection(projectPath, tsconfigPath, resolvedProjectId, true)
             : ParserFactory.createParser({
                 workspacePath: projectPath,
                 tsConfigPath: tsconfigPath,
                 projectType: projectType as ProjectType,
                 projectId: resolvedProjectId,
+                lazyLoad: true,
               });
 
-        const totalFiles = parser.getSourceFilePaths().length;
+        const discoveredFiles = await parser.discoverSourceFiles();
+        const totalFiles = discoveredFiles.length;
         const shouldUseStreaming =
-          useStreaming === 'always' || (useStreaming === 'auto' && totalFiles > STREAMING_THRESHOLD && chunkSize > 0);
+          useStreaming === 'always' || (useStreaming === 'auto' && totalFiles > PARSING.streamingThreshold && chunkSize > 0);
 
         console.log(`📊 Project has ${totalFiles} files. Streaming: ${shouldUseStreaming ? 'enabled' : 'disabled'}`);
 
@@ -500,14 +497,16 @@ const parseProject = async (options: ParseProjectOptions): Promise<ParseProjectR
   // Resolve projectId early - needed for incremental queries before parser is created
   const resolvedId = resolveProjectId(projectPath, projectId);
 
+  // Use lazyLoad = true for consistent glob-based file discovery (matches incremental parse)
   const parser =
     projectType === 'auto'
-      ? await ParserFactory.createParserWithAutoDetection(projectPath, tsconfigPath, resolvedId)
+      ? await ParserFactory.createParserWithAutoDetection(projectPath, tsconfigPath, resolvedId, true)
       : ParserFactory.createParser({
           workspacePath: projectPath,
           tsConfigPath: tsconfigPath,
           projectType: projectType as ProjectType,
           projectId: resolvedId,
+          lazyLoad: true,
         });
 
   let incrementalStats: { filesReparsed: number; filesDeleted: number } | undefined;

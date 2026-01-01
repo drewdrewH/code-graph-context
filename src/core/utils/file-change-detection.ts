@@ -8,10 +8,23 @@ import { resolve, sep } from 'path';
 
 import { glob } from 'glob';
 
-import { EXCLUDE_PATTERNS_GLOB } from '../../constants.js';
+import { EXCLUDE_PATTERNS_GLOB, EXCLUDE_PATTERNS_REGEX } from '../../constants.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 
 import { hashFile } from './file-utils.js';
+
+/**
+ * Check if a file path matches any of the exclude patterns.
+ * Uses the same patterns as the TypeScript parser.
+ */
+const shouldExcludeFile = (filePath: string): boolean => {
+  for (const pattern of EXCLUDE_PATTERNS_REGEX) {
+    if (filePath.includes(pattern) || new RegExp(pattern).test(filePath)) {
+      return true;
+    }
+  }
+  return false;
+};
 
 /**
  * Information about a file indexed in Neo4j
@@ -98,7 +111,10 @@ export const detectChangedFiles = async (
     const indexed = indexedMap.get(filePath);
 
     if (!indexed) {
-      // New file - needs parsing
+      // New file - check if it should be excluded (same rules as parser)
+      if (shouldExcludeFile(filePath)) {
+        continue; // Skip excluded files
+      }
       filesToReparse.push(filePath);
       continue;
     }

@@ -28,52 +28,67 @@ export class NaturalLanguageToCypherService {
   private schemaPath: string | null = null;
   private cachedSemanticTypes: SemanticTypeCategories | null = null;
   private readonly messageInstructions = `
-=== CRITICAL - CLASS/SERVICE NAME HANDLING ===
-WRONG: (n:DbService), (n:UserService), (n:AuthController) - DO NOT USE CLASS NAMES AS LABELS
-CORRECT: (n:Class {name: 'DbService'}) - Match on the "name" property instead
+=== THE SCHEMA FILE IS THE SOURCE OF TRUTH ===
+ALWAYS read neo4j-apoc-schema.json FIRST before generating any query. It contains:
+1. rawSchema: All node labels (keys), their properties, and relationships from Neo4j APOC
+2. discoveredSchema (if available): Dynamically discovered nodeTypes, relationshipTypes, semanticTypes, commonPatterns
 
-Class/service names are NOT Neo4j labels. They are values of the "name" property on Class nodes.
+=== LABEL TYPES - TWO CATEGORIES ===
+Check rawSchema keys for ALL valid labels. Labels fall into two categories:
 
-The ONLY valid node labels are: SourceFile, Class, Method, Function, Property, Interface,
-Constructor, Parameter, Enum, Variable, Import, Export, Decorator
+1. CORE LABELS (base TypeScript AST):
+   SourceFile, Class, Function, Method, Interface, Property, Parameter, Constructor, Import, Export, Decorator, Enum, Variable, TypeAlias
+
+2. FRAMEWORK LABELS (from framework enhancements - check rawSchema keys):
+   These REPLACE the core label for enhanced nodes. Examples: Service, Controller, Module, Entity, DTO, Repository, HttpEndpoint, MessageHandler
+   A node with label "Service" was originally a Class but got enhanced - use the framework label.
+
+=== AST TYPE NAME MAPPING ===
+AST type names are NOT valid labels. Always map them:
+- ClassDeclaration → Class (or framework label: Service, Controller, etc.)
+- FunctionDeclaration → Function
+- MethodDeclaration → Method
+- InterfaceDeclaration → Interface
+- PropertyDeclaration → Property
+- ParameterDeclaration → Parameter
+
+=== FINDING SPECIFIC NODES ===
+Class/service names are property values, NOT labels:
+WRONG: (n:DbService), (n:UserController) - class names as labels
+CORRECT: (n:Service {name: 'DbService'}), (n:Controller {name: 'UserController'})
+CORRECT: (n:Class {name: 'SomeClass'}) - if no framework enhancement
 
 Examples:
-- "Find DbService" -> MATCH (n:Class {name: 'DbService'}) WHERE n.projectId = $projectId RETURN n
-- "Classes extending BaseService" -> MATCH (c:Class)-[:EXTENDS]->(p:Class {name: 'BaseService'}) WHERE c.projectId = $projectId RETURN c
-- "Methods in UserController" -> MATCH (c:Class {name: 'UserController'})-[:HAS_MEMBER]->(m:Method) WHERE c.projectId = $projectId RETURN m
-- "Classes with @Controller decorator" -> MATCH (c:Class) WHERE c.projectId = $projectId AND c.semanticType = 'NestController' RETURN c
-===============================================
+- "Count all classes" -> MATCH (n:Class) WHERE n.projectId = $projectId RETURN count(n)
+- "Find DbService" -> MATCH (n:Service {name: 'DbService'}) WHERE n.projectId = $projectId RETURN n
+- "Methods in UserController" -> MATCH (c:Controller {name: 'UserController'})-[:HAS_MEMBER]->(m:Method) WHERE c.projectId = $projectId RETURN m
 
-The schema file (neo4j-apoc-schema.json) contains two sections:
-1. rawSchema: Complete Neo4j APOC schema with all node labels, properties, and relationships in the graph
-2. discoveredSchema: Dynamically discovered graph structure including:
-   - nodeTypes: Array of {label, count, properties} for each node type in the graph
-   - relationshipTypes: Array of {type, count, connections} showing relationship types and what they connect
-   - semanticTypes: Array of {type, count} showing semantic node classifications (e.g., Service, Controller)
-   - commonPatterns: Array of {from, relationship, to, count} showing frequent relationship patterns
+=== PROJECT ISOLATION (REQUIRED) ===
+ALL queries MUST filter by projectId on every node pattern:
+WHERE n.projectId = $projectId
 
-IMPORTANT - Multi-Project Isolation:
-All nodes have a "projectId" property that isolates data between different projects.
-You MUST include a projectId filter in EVERY query to ensure project isolation.
-The projectId will be provided as a parameter ($projectId).
-
-Your response must be a valid JSON object with this exact structure:
+=== RESPONSE FORMAT ===
+Return ONLY valid JSON:
 {
-  "cypher": "MATCH (n:NodeType) WHERE n.projectId = $projectId AND n.property = $param RETURN n",
+  "cypher": "MATCH (n:Label) WHERE n.projectId = $projectId RETURN n",
   "parameters": { "param": "value" } | null,
-  "explanation": "Concise explanation of what the query does and why it matches the user's request"
+  "explanation": "What this query does"
 }
+Do NOT include projectId in parameters - it's injected automatically.
 
-Note: Do NOT include projectId in the parameters object - it will be injected automatically by the system.
-
-Query Generation Process:
-1. CHECK NODE TYPES: Look at discoveredSchema.nodeTypes to see available node labels and their properties
-2. CHECK RELATIONSHIPS: Look at discoveredSchema.relationshipTypes to understand how nodes connect
-3. CHECK SEMANTIC TYPES: Look at discoveredSchema.semanticTypes for higher-level node classifications
-4. REVIEW PATTERNS: Check discoveredSchema.commonPatterns for frequent relationship patterns in the graph
-5. EXAMINE PROPERTIES: Use rawSchema for exact property names and types
-6. GENERATE QUERY: Write the Cypher query using only node labels, relationships, and properties that exist in the schema
-7. ADD PROJECT FILTER: Always include WHERE n.projectId = $projectId for every node pattern in the query
+Query Generation Process - FOLLOW THIS EXACTLY:
+1. SEARCH THE SCHEMA FILE FIRST: Use file_search to read neo4j-apoc-schema.json BEFORE generating any query
+2. EXTRACT VALID LABELS: The keys in rawSchema ARE the valid labels (e.g., "Service", "Controller", "Class", "Method")
+   - rawSchema is ALWAYS available and contains all labels currently in the graph
+   - discoveredSchema.nodeTypes (if available) provides counts and sample properties
+3. CHECK RELATIONSHIPS: Look at rawSchema[label].relationships for each label to see available relationship types
+4. CHECK SEMANTIC TYPES: Look at discoveredSchema.semanticTypes (if available) for framework-specific classifications
+   - semanticTypes are PROPERTY values (e.g., semanticType = 'NestController'), not labels
+5. REVIEW PATTERNS: Check discoveredSchema.commonPatterns (if available) for frequent relationship patterns
+6. EXAMINE PROPERTIES: Use rawSchema[label].properties for exact property names and types
+7. GENERATE QUERY: Write the Cypher query using ONLY labels, relationships, and properties from the schema
+8. VALIDATE LABELS: Double-check that every label in your query exists as a key in rawSchema
+9. ADD PROJECT FILTER: Always include WHERE n.projectId = $projectId for every node pattern in the query
 
 Critical Rules:
 - ALWAYS filter by projectId on every node in the query (e.g., WHERE n.projectId = $projectId)
@@ -83,20 +98,22 @@ Critical Rules:
 - Use parameterized queries with $ syntax for any dynamic values
 - Return only the data relevant to the user's request
 
-RELATIONSHIP TYPE DEFINITIONS (use these exact types):
-- EXTENDS: Inheritance - one class/interface IS_A parent (use for "extends", "inherits from", "parent class", "subclass")
-- IMPLEMENTS: Contract - a class implements an interface (use for "implements", "conforms to")
-- HAS_MEMBER: Composition - a class/interface contains methods/properties (use for "has method", "contains property", "members")
-- CONTAINS: Structure - file contains declarations (use for "in file", "declared in", "defined in")
-- IMPORTS: Dependencies - file imports another (use for "imports", "depends on", "requires")
-- TYPED_AS: Type annotation - parameter/property has a type (use for "typed as", "has type", "returns")
-- HAS_PARAMETER: Function signature - method/function has parameters (use for "takes parameter", "accepts")
+=== CORE RELATIONSHIPS ===
+- CONTAINS: SourceFile contains declarations (use for "in file", "declared in", "defined in")
+- HAS_MEMBER: Class/Interface has methods/properties (use for "has method", "contains property", "members")
+- HAS_PARAMETER: Method/Function has parameters (use for "takes parameter", "accepts")
+- EXTENDS: Class/Interface extends parent (use for "extends", "inherits from", "parent class", "subclass")
+- IMPLEMENTS: Class implements Interface (use for "implements", "conforms to")
+- IMPORTS: SourceFile imports another (use for "imports", "depends on", "requires")
+- TYPED_AS: Parameter/Property has type annotation (use for "typed as", "has type", "returns")
+- CALLS: Method/Function calls another (use for "calls", "invokes", "uses")
+- DECORATED_WITH: Node has a Decorator (use for "decorated with", "has decorator", "@SomeDecorator")
 
-WARNING - NOT IMPLEMENTED (will return 0 results):
-- CALLS: Function call tracking is NOT YET IMPLEMENTED. Do not use this relationship type.
-  Instead, for "calls" or "uses" queries, suggest using IMPORTS to find file dependencies.
-- DECORATED_WITH: Decorator relationships are NOT IMPLEMENTED. Do not use this relationship type.
-  Instead, use the semanticType property (e.g., WHERE c.semanticType = 'NestController').
+=== FRAMEWORK RELATIONSHIPS ===
+Framework-specific relationships are defined in rawSchema. Check rawSchema[label].relationships for each label to discover:
+- What relationship types exist (e.g., INJECTS, EXPOSES, MODULE_IMPORTS, INTERNAL_API_CALL, etc.)
+- Direction (in/out) and target labels for each relationship
+- These vary by project - ALWAYS check the schema file for available relationships
 
 CRITICAL: Do NOT confuse EXTENDS (inheritance) with HAS_MEMBER (composition). "extends" always means EXTENDS relationship.
 
@@ -117,67 +134,52 @@ Examples:
   WHERE methodCount > 5
   RETURN c, methodCount
 
-SEMANTIC TYPES (Framework-Specific Classifications):
-The parser assigns semanticType based on decorators or naming patterns. The actual semantic types vary by framework.
+=== SEMANTIC TYPES (Framework Classifications) ===
+Nodes have a semanticType property set by framework detection. Check discoveredSchema.semanticTypes for actual values in this project.
 
-IMPORTANT: Do NOT assume NestJS semantic type names like 'NestController' or 'NestService'.
-Instead, refer to the SEMANTIC TYPES IN THIS PROJECT section below for the actual types discovered in this codebase.
+The semanticType is a PROPERTY, not a label. Query it like:
+- MATCH (c) WHERE c.projectId = $projectId AND c.semanticType = 'NestController' RETURN c
+- MATCH (c) WHERE c.projectId = $projectId AND c.semanticType CONTAINS 'Service' RETURN c
 
-Common semantic type patterns:
-- Controllers: Look for types containing 'Controller' (e.g., 'Controller', 'NestController')
-- Services: Look for types containing 'Service', 'Provider', or 'Injectable'
-- Repositories: Look for types containing 'Repository', 'DAL', or 'DAO'
-- Modules: Look for types containing 'Module'
+Common semantic type patterns (but ALWAYS verify against discoveredSchema.semanticTypes):
+- Controllers: types containing 'Controller'
+- Services: types containing 'Service', 'Provider', or 'Injectable'
+- Repositories: types containing 'Repository', 'DAL', or 'DAO'
+- Modules: types containing 'Module'
 
-If no semantic types are discovered, use name patterns as fallback:
+FALLBACK - If no semantic types are discovered, use name patterns:
 - "Find all controllers" -> MATCH (c:Class) WHERE c.projectId = $projectId AND c.name CONTAINS 'Controller' RETURN c
 - "Find all services" -> MATCH (c:Class) WHERE c.projectId = $projectId AND c.name CONTAINS 'Service' RETURN c
 
-NOTE: Do NOT use DECORATED_WITH relationships - they don't exist in the graph. Use semanticType property instead.
+=== DECORATOR QUERIES ===
+Use DECORATED_WITH relationship to find nodes with specific decorators:
+- "Classes with @Controller" -> MATCH (c:Class)-[:DECORATED_WITH]->(d:Decorator {name: 'Controller'}) WHERE c.projectId = $projectId RETURN c
+- "Methods with @Get" -> MATCH (m:Method)-[:DECORATED_WITH]->(d:Decorator {name: 'Get'}) WHERE m.projectId = $projectId RETURN m
 
-FRAMEWORK-SPECIFIC PATTERNS:
-
-React/Frontend Projects:
-- React functional components are stored as Function nodes, NOT Class nodes
-- Example: "Find component UserProfile" -> MATCH (f:Function {name: 'UserProfile'}) WHERE f.projectId = $projectId RETURN f
-- React hooks are also Function nodes (useAuth, useState, etc.)
-- JSX files (.tsx) contain functions that return JSX elements
-
-Decorator-Based Backend Projects (NestJS, custom frameworks, etc.):
-- Uses Class nodes with semanticType property set based on decorators
-- The actual semanticType values depend on the framework - check the discovered schema
-- Controllers: MATCH (c:Class) WHERE c.projectId = $projectId AND c.semanticType IN [discovered controller types] RETURN c
-- Services: MATCH (c:Class) WHERE c.projectId = $projectId AND c.semanticType IN [discovered service types] RETURN c
-
-IMPORTANT: When user asks about "components" or "hooks":
-- If asking about React -> query Function nodes
-- If asking about decorator-based frameworks -> query Class nodes with semanticType property (using discovered types)
-
-MODULE/DIRECTORY QUERIES:
-To find things "in a module" or "in a directory", use filePath pattern matching:
+=== MODULE/DIRECTORY QUERIES ===
+Use filePath property for location-based queries:
 - "in account module" -> WHERE n.filePath CONTAINS '/account/'
 - "in auth folder" -> WHERE n.filePath CONTAINS '/auth/'
-- "in src/services" -> WHERE n.filePath CONTAINS '/services/'
 
-Examples (use discovered semantic types from this project):
-- "Controllers in account module" ->
-  MATCH (c:Class)
-  WHERE c.projectId = $projectId AND c.semanticType IN [discovered controller types] AND c.filePath CONTAINS '/account/'
-  RETURN c
+Examples:
+- "Services in account folder" ->
+  MATCH (s:Service) WHERE s.projectId = $projectId AND s.filePath CONTAINS '/account/' RETURN s
+- FALLBACK (if no framework labels):
+  MATCH (c:Class) WHERE c.projectId = $projectId AND c.name CONTAINS 'Service' AND c.filePath CONTAINS '/account/' RETURN c
 
-- "All services in the auth folder" ->
-  MATCH (c:Class)
-  WHERE c.projectId = $projectId AND c.semanticType IN [discovered service types] AND c.filePath CONTAINS '/auth/'
-  RETURN c
+=== FRAMEWORK-SPECIFIC PATTERNS ===
 
-FALLBACK (when semantic types not available):
-- "Controllers in account module" ->
-  MATCH (c:Class)
-  WHERE c.projectId = $projectId AND c.name CONTAINS 'Controller' AND c.filePath CONTAINS '/account/'
-  RETURN c
+Backend Projects (decorator-based like NestJS):
+- Check rawSchema for framework labels (Service, Controller, Module, etc.) that REPLACE Class label
+- Use framework relationships (INJECTS, EXPOSES, etc.) from rawSchema[label].relationships
+- Check discoveredSchema.semanticTypes for framework classifications
 
-NOTE: Do NOT assume packageName exists - use filePath for directory-based queries.
-NOTE: Do NOT use DECORATED_WITH - use semanticType property instead.
+Frontend Projects (React, functional):
+- React components are typically Function nodes, NOT Class nodes
+- Hooks are Function nodes (useAuth, useState, etc.)
+- Example: "Find UserProfile component" -> MATCH (f:Function {name: 'UserProfile'}) WHERE f.projectId = $projectId RETURN f
+
+Tip: Check rawSchema keys to understand if project uses framework labels or just core TypeScript labels.
 
 IMPORTANT - Cypher Syntax (NOT SQL):
 - Cypher does NOT use GROUP BY. Aggregation happens automatically in RETURN.
@@ -584,12 +586,12 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
   }
 
   /**
-   * Validates that the generated Cypher query uses only valid node labels.
-   * Class/service names should be matched via {name: 'ClassName'}, not as labels.
+   * Load valid labels dynamically from the schema file.
+   * Returns all keys from rawSchema which represent actual Neo4j labels.
    */
-  private validateLabelUsage(cypher: string): void {
-    // Valid labels from the schema (actual Neo4j labels, not AST type names)
-    const validLabels = new Set([
+  private loadValidLabelsFromSchema(): Set<string> {
+    // Fallback to core TypeScript labels if schema not available
+    const coreLabels = new Set([
       'SourceFile',
       'Class',
       'Method',
@@ -603,7 +605,54 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
       'Import',
       'Export',
       'Decorator',
+      'TypeAlias',
+      'TypeScript',
+      'Embedded',
     ]);
+
+    if (!this.schemaPath) {
+      return coreLabels;
+    }
+
+    try {
+      const content = fs.readFileSync(this.schemaPath, 'utf-8');
+      const schema = JSON.parse(content);
+
+      if (!schema.rawSchema?.records?.[0]?._fields?.[0]) {
+        return coreLabels;
+      }
+
+      // Extract all keys from rawSchema - these are the valid labels
+      const schemaLabels = Object.keys(schema.rawSchema.records[0]._fields[0]);
+      return new Set([...coreLabels, ...schemaLabels]);
+    } catch {
+      return coreLabels;
+    }
+  }
+
+  /**
+   * Validates that the generated Cypher query uses only valid node labels.
+   * AST type names (ClassDeclaration) must be mapped to Neo4j labels (Class).
+   * Class/service names should be matched via {name: 'ClassName'}, not as labels.
+   */
+  private validateLabelUsage(cypher: string): void {
+    // Load valid labels dynamically from schema file
+    const validLabels = this.loadValidLabelsFromSchema();
+
+    // Mapping from AST type names to correct Neo4j labels
+    const astTypeToLabel: Record<string, string> = {
+      ClassDeclaration: 'Class',
+      FunctionDeclaration: 'Function',
+      MethodDeclaration: 'Method',
+      InterfaceDeclaration: 'Interface',
+      PropertyDeclaration: 'Property',
+      ParameterDeclaration: 'Parameter',
+      ConstructorDeclaration: 'Constructor',
+      ImportDeclaration: 'Import',
+      ExportDeclaration: 'Export',
+      EnumDeclaration: 'Enum',
+      VariableDeclaration: 'Variable',
+    };
 
     // Extract all labels from query (matches :LabelName patterns in node definitions)
     // This regex matches labels after : in patterns like (n:Label) or (:Label)
@@ -620,12 +669,26 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
 
     if (invalidLabels.length > 0) {
       const label = invalidLabels[0];
-      throw new Error(
-        `Invalid label ":${label}" in query. ` +
-          `Class/service names should be matched via {name: '${label}'}, not as labels.\n` +
-          `Example: (n:Class {name: '${label}'}) instead of (n:${label})\n` +
-          `Query: ${cypher}`,
-      );
+      const correctLabel = astTypeToLabel[label];
+
+      if (correctLabel) {
+        // AST type name used instead of Neo4j label
+        throw new Error(
+          `Invalid label ":${label}" in query. ` +
+            `Use the Neo4j label ":${correctLabel}" instead of the AST type name ":${label}".\n` +
+            `Example: (n:${correctLabel}) instead of (n:${label})\n` +
+            `Query: ${cypher}`,
+        );
+      } else {
+        // Unknown label - likely a class/service name used as label
+        throw new Error(
+          `Invalid label ":${label}" in query. ` +
+            `Class/service names should be matched via {name: '${label}'}, not as labels.\n` +
+            `Example: (n:Class {name: '${label}'}) instead of (n:${label})\n` +
+            `Valid labels: ${Array.from(validLabels).join(', ')}\n` +
+            `Query: ${cypher}`,
+        );
+      }
     }
   }
 }
