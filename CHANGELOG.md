@@ -5,16 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - Multi-Project Support - 2024-12-30
+## [2.1.0] - Dead Code & Duplicate Detection - 2025-01-XX
+
+### Added
+
+#### New MCP Tools
+
+- **`detect_dead_code`**: Identifies potentially dead code including:
+
+  - Unreferenced exports (exported but never imported)
+  - Uncalled private methods (no internal callers)
+  - Unreferenced interfaces (never implemented/extended/typed)
+  - Confidence scoring (HIGH/MEDIUM/LOW) with explanations
+  - Risk level assessment (LOW/MEDIUM/HIGH/CRITICAL)
+  - Framework-aware exclusions (NestJS controllers, modules, guards, pipes, interceptors, filters, providers, services)
+  - Customizable exclusion patterns and semantic types
+  - Pagination with limit/offset
+
+- **`detect_duplicate_code`**: Identifies duplicate code using:
+  - Structural duplicates (identical normalized AST hash)
+  - Semantic duplicates (similar embeddings via vector search)
+  - Configurable scope (methods, functions, classes, all)
+  - Similarity thresholds and confidence scoring
+  - Category detection (UI component, cross-app, same-file, cross-file)
+  - Refactoring recommendations
+
+#### Parser Enhancements
+
+- **Code Normalization**: Generates `normalizedHash` for all code nodes
+  - Removes comments and whitespace
+  - Replaces string/numeric literals with placeholders
+  - Replaces variable names with sequential placeholders
+  - SHA256 hash for structural comparison
+- **Parent Class Tracking**: Adds `parentClassName` property for methods/properties/constructors
+- **CALLS Edge Support**: Parser now generates CALLS edges for method/function invocations
+
+#### New Neo4j Queries
+
+- `FIND_UNREFERENCED_EXPORTS` - Exports with no imports/references
+- `FIND_UNCALLED_PRIVATE_METHODS` - Private methods with no CALLS edges
+- `FIND_UNREFERENCED_INTERFACES` - Interfaces never used
+- `GET_FRAMEWORK_ENTRY_POINTS` - Framework entry points for exclusion
+- `FIND_STRUCTURAL_DUPLICATES` - Nodes with identical normalizedHash
+- `FIND_SEMANTIC_DUPLICATES` - Nodes with similar embeddings
+
+#### Infrastructure
+
+- **normalizedHash Index**: New Neo4j index for efficient structural duplicate detection
+- **Shared Utilities**: Common interfaces and helpers in `src/core/utils/shared-utils.ts`
+- **Code Normalizer**: AST-based normalization in `src/core/utils/code-normalizer.ts`
+
+### Changed
+
+- CALLS edge schema now includes CONSTRUCTOR_DECLARATION in source/target types
+- Improved cross-platform path handling in shared utilities (Windows/Unix compatibility)
+
+---
+
+## [2.0.0] - Multi-Project Support - 2024-12-30
 
 ### Added
 
 #### Multi-Project Isolation
+
 - **Project ID System**: All nodes now include a `projectId` prefix (`proj_<12-hex-chars>`) enabling complete data isolation between projects in a single Neo4j database
 - **Deterministic ID Generation**: Same project path always generates the same projectId, ensuring reproducibility across reparses
 - **Flexible Project Resolution**: All query tools accept project ID, project name, or project path - resolved automatically via `resolveProjectIdFromInput()`
 
 #### New MCP Tools
+
 - **`list_projects`**: List all parsed projects in the database with status, node/edge counts, and timestamps
 - **`check_parse_status`**: Monitor async parsing jobs with real-time progress (phase, files processed, chunks, nodes/edges created)
 - **`start_watch_project`**: Start file watching for a parsed project with configurable debounce
@@ -22,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`list_watchers`**: List all active file watchers with status, pending changes, and last update time
 
 #### File Watching & Live Updates
+
 - **Real-Time File Monitoring**: Uses `@parcel/watcher` for cross-platform native file watching
 - **Watch Mode in parse_typescript_project**: New `watch: true` parameter starts watching after synchronous parse (requires `async: false`)
 - **Automatic Incremental Updates**: File changes trigger re-parsing of only affected files
@@ -31,28 +91,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Resource Limits**: Maximum 10 concurrent watchers, 1000 pending events per watcher
 
 #### Async & Streaming Parsing
+
 - **Async Parsing Mode**: New `async: true` parameter runs parsing in Worker threads without blocking the MCP server. Returns job ID for status monitoring
 - **Streaming Import**: Large projects (>100 files) automatically use chunked processing to prevent OOM errors. Configurable via `useStreaming` and `chunkSize` parameters
 - **Worker Thread Isolation**: Background parsing with 8GB heap limit and 30-minute timeout protection
 - **Progress Reporting**: Real-time progress updates through all phases: discovery → parsing → importing → resolving → complete
 
 #### Workspace & Monorepo Support
+
 - **Auto-Detection**: Automatically detects workspace type (Turborepo, pnpm, Yarn workspaces, npm workspaces, or single project)
 - **WorkspaceParser**: New parser that handles monorepo structures, discovering and parsing all packages
 - **Package Discovery**: Reads workspace configuration from `turbo.json`, `pnpm-workspace.yaml`, or `package.json` workspaces field
 
 #### Incremental Parsing
+
 - **Change Detection**: Detects file changes using mtime, size, and content hash comparison
 - **Selective Reparse**: Only reparses files that have actually changed when `clearExisting: false`
 - **Cross-File Edge Preservation**: Saves and recreates edges between changed and unchanged files
 
 #### Impact Analysis Enhancements
+
 - **File-Based Analysis**: Analyze impact of entire files, not just individual nodes
 - **Risk Scoring System**: Four-factor scoring (dependent count, relationship weights, high-risk types, transitive impact) producing LOW/MEDIUM/HIGH/CRITICAL risk levels
 - **Relationship Weights**: Configurable weights for different relationship types (EXTENDS: 0.95, CALLS: 0.75, IMPORTS: 0.5, etc.)
 - **Framework Configuration**: Custom `frameworkConfig` parameter for framework-specific risk assessment
 
 #### New Utility Modules
+
 - **`src/core/utils/project-id.ts`**: Project ID generation, validation, and resolution utilities
 - **`src/core/utils/retry.ts`**: Generic retry wrapper with exponential backoff and jitter
 - **`src/core/utils/progress-reporter.ts`**: Structured progress tracking through parsing phases
@@ -60,6 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/core/config/timeouts.ts`**: Centralized timeout configuration with environment variable overrides
 
 #### Infrastructure
+
 - **Project Node Tracking**: Creates `Project` nodes in Neo4j tracking status (parsing/complete/failed), node counts, edge counts, and timestamps
 - **Job Manager**: In-memory job tracking with automatic cleanup (1 hour TTL, 100 job max limit)
 - **Cross-Chunk Edge Resolution**: Handles edges that span multiple parse chunks in streaming mode
@@ -67,17 +133,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 #### Tool Parameter Changes
+
 - **`search_codebase`**: Now requires `projectId` parameter; added `useWeightedTraversal` (default: true) and improved similarity scoring
 - **`traverse_from_node`**: Now requires `projectId` parameter; added `filePath` as alternative to `nodeId` for file-based traversal
 - **`impact_analysis`**: Now requires `projectId` parameter; added `frameworkConfig` for custom relationship weights and high-risk type configuration
 - **`natural_language_to_cypher`**: Now requires `projectId` parameter; added security validations and framework detection
 
 #### Parser Improvements
+
 - **Lazy Loading Mode**: New `lazyLoad` constructor option enables just-in-time file loading for large projects
 - **Streaming Interface**: New `StreamingParser` interface with `discoverSourceFiles()`, `parseChunk()`, `resolveDeferredEdgesManually()` methods
 - **Existing Nodes Support**: Parser can now load existing nodes from Neo4j for accurate edge target matching during incremental parsing
 
 #### Neo4j Service
+
 - Added 15+ new Cypher queries for:
   - Project management (`CLEAR_PROJECT`, `UPSERT_PROJECT_QUERY`, `UPDATE_PROJECT_STATUS_QUERY`)
   - Incremental parsing (`GET_CROSS_FILE_EDGES`, `DELETE_SOURCE_FILE_SUBGRAPHS`, `RECREATE_CROSS_FILE_EDGES`)
@@ -86,6 +155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Weighted traversal with scoring (edge weight × node similarity × depth penalty)
 
 #### Natural Language to Cypher
+
 - Enhanced prompt instructions with multi-project isolation requirements
 - Auto-detects framework type based on graph composition
 - Schema context injection for better query generation
@@ -106,7 +176,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking Changes
 
 #### projectId Required
+
 All query tools now require a `projectId` parameter:
+
 ```typescript
 search_codebase({ projectId, query, ... })
 traverse_from_node({ projectId, nodeId, ... })
@@ -115,32 +187,39 @@ natural_language_to_cypher({ projectId, prompt })
 ```
 
 #### Node ID Format Change
+
 Node IDs now include project prefix:
+
 - **Old format**: `CoreType:hash` (e.g., `ClassDeclaration:abc123`)
 - **New format**: `proj_xxx:CoreType:hash` (e.g., `proj_a1b2c3d4e5f6:ClassDeclaration:abc123`)
 
 #### Database Incompatibility
+
 Existing graphs created with previous versions are **not compatible** with this release:
+
 - Old node IDs won't match new query patterns
 - Queries will fail to find nodes without projectId filter
 
 ### Migration Guide
 
 1. **Clear and Re-parse**: Clear your Neo4j database and re-parse all projects
+
    ```bash
    # Projects will auto-generate projectId from path
    ```
 
 2. **Update Tool Calls**: Add `projectId` to all query tool invocations
+
    ```typescript
    // Before
-   search_codebase({ query: "UserService" })
+   search_codebase({ query: 'UserService' });
 
    // After
-   search_codebase({ projectId: "my-project", query: "UserService" })
+   search_codebase({ projectId: 'my-project', query: 'UserService' });
    ```
 
 3. **Discover Projects**: Use `list_projects` to see available projects and their IDs
+
    ```
    list_projects()
    → Shows: name, projectId, path, status, node/edge counts
@@ -149,9 +228,9 @@ Existing graphs created with previous versions are **not compatible** with this 
 4. **Use Friendly Names**: You can use project names instead of full IDs
    ```typescript
    // These are equivalent:
-   search_codebase({ projectId: "proj_a1b2c3d4e5f6", query: "..." })
-   search_codebase({ projectId: "my-backend", query: "..." })
-   search_codebase({ projectId: "/path/to/my-backend", query: "..." })
+   search_codebase({ projectId: 'proj_a1b2c3d4e5f6', query: '...' });
+   search_codebase({ projectId: 'my-backend', query: '...' });
+   search_codebase({ projectId: '/path/to/my-backend', query: '...' });
    ```
 
 ---
@@ -159,6 +238,7 @@ Existing graphs created with previous versions are **not compatible** with this 
 ## [1.1.0] - 2024-12-15
 
 ### Added
+
 - `impact_analysis` tool for dependency risk assessment
 - Graph efficiency improvements
 
@@ -167,6 +247,7 @@ Existing graphs created with previous versions are **not compatible** with this 
 ## [0.1.0] - 2025-01-13
 
 ### Added
+
 - Initial release of Code Graph Context MCP server
 - TypeScript codebase parsing with AST analysis
 - Neo4j graph storage with vector indexing
@@ -185,11 +266,13 @@ Existing graphs created with previous versions are **not compatible** with this 
 - Comprehensive README with examples and workflows
 
 ### Framework Support
+
 - Decorator-based frameworks (Controllers, Services, Modules, Guards, Pipes, Interceptors, DTOs, Entities)
 - Custom framework schema system (see FairSquare example)
 - Vanilla TypeScript projects
 
 ### Infrastructure
+
 - MIT License
 - Contributing guidelines
 - Example projects and custom framework templates
@@ -198,6 +281,7 @@ Existing graphs created with previous versions are **not compatible** with this 
 
 ---
 
+[2.1.0]: https://github.com/drewdrewH/code-graph-context/compare/v1.2.0...v2.1.0
 [1.2.0]: https://github.com/drewdrewH/code-graph-context/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/drewdrewH/code-graph-context/compare/v0.1.0...v1.1.0
 [0.1.0]: https://github.com/drewdrewH/code-graph-context/releases/tag/v0.1.0

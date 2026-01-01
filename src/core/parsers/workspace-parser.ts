@@ -8,7 +8,6 @@ import path from 'path';
 
 import { glob } from 'glob';
 
-import { debugLog } from '../utils/file-utils.js';
 import {
   Neo4jNode,
   Neo4jEdge,
@@ -19,6 +18,7 @@ import {
   EdgeEnhancement,
 } from '../config/schema.js';
 import { createFrameworkEdgeData } from '../utils/edge-factory.js';
+import { debugLog } from '../utils/file-utils.js';
 import { resolveProjectId } from '../utils/project-id.js';
 import { WorkspaceConfig, WorkspacePackage } from '../workspace/index.js';
 
@@ -153,7 +153,7 @@ export class WorkspaceParser {
    * Injects the shared context so context is shared across all packages.
    */
   private async createParserForPackage(pkg: WorkspacePackage): Promise<TypeScriptParser> {
-    const tsConfigPath = pkg.tsConfigPath || path.join(pkg.path, 'tsconfig.json');
+    const tsConfigPath = pkg.tsConfigPath ?? path.join(pkg.path, 'tsconfig.json');
 
     let parser: TypeScriptParser;
     if (this.projectType === 'auto') {
@@ -478,7 +478,7 @@ export class WorkspaceParser {
     // Pre-index nodes by semantic type for O(1) lookups
     const nodesBySemanticType = new Map<string, Map<string, LightweightParsedNode>>();
     for (const [nodeId, node] of this.accumulatedParsedNodes) {
-      const semanticType = node.semanticType || 'unknown';
+      const semanticType = node.semanticType ?? 'unknown';
       if (!nodesBySemanticType.has(semanticType)) {
         nodesBySemanticType.set(semanticType, new Map());
       }

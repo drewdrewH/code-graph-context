@@ -26,6 +26,8 @@ A Model Context Protocol (MCP) server that builds rich code graphs to provide de
 - **Incremental Parsing**: Only reparse changed files for faster updates
 - **File Watching**: Real-time monitoring with automatic incremental graph updates on file changes
 - **Impact Analysis**: Assess refactoring risk with dependency analysis (LOW/MEDIUM/HIGH/CRITICAL scoring)
+- **Dead Code Detection**: Find unreferenced exports, uncalled private methods, unused interfaces with confidence scoring
+- **Duplicate Code Detection**: Identify structural duplicates (identical AST) and semantic duplicates (similar logic via embeddings)
 - **High Performance**: Optimized Neo4j storage with vector indexing for fast retrieval
 - **MCP Integration**: Seamless integration with Claude Code and other MCP-compatible tools
 
@@ -249,6 +251,8 @@ npm run build
 | `stop_watch_project` | Stop file watching for a project | **Resource management** - stop monitoring |
 | `list_watchers` | List all active file watchers | **Monitoring** - see what's being watched |
 | `natural_language_to_cypher` | Convert natural language to Cypher | **Advanced queries** - complex graph queries |
+| `detect_dead_code` | Find unreferenced exports, uncalled methods, unused interfaces | **Code cleanup** - identify potentially removable code |
+| `detect_duplicate_code` | Find structural and semantic code duplicates | **Refactoring** - identify DRY violations |
 | `test_neo4j_connection` | Verify database connectivity | **Health check** - troubleshooting |
 
 > **Note**: All query tools (`search_codebase`, `traverse_from_node`, `impact_analysis`, `natural_language_to_cypher`) require a `projectId` parameter. Use `list_projects` to discover available projects.
@@ -562,7 +566,155 @@ await mcp.call('test_neo4j_connection');
 APOC plugin available with 438 functions"
 ```
 
-#### 5. File Watching Tools
+#### 5. `detect_dead_code` - Code Cleanup Analysis
+**Purpose**: Identify potentially dead code including unreferenced exports, uncalled private methods, and unused interfaces.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `projectId` | string | required | Project ID, name, or path |
+| `excludePatterns` | string[] | [] | Additional file patterns to exclude (e.g., `["*.config.ts"]`) |
+| `excludeSemanticTypes` | string[] | [] | Additional semantic types to exclude (e.g., `["EntityClass"]`) |
+| `minConfidence` | enum | "LOW" | Minimum confidence: "LOW", "MEDIUM", "HIGH" |
+| `summaryOnly` | boolean | false | Return only statistics, not full list |
+| `limit` | number | 100 | Maximum items to return |
+| `offset` | number | 0 | Pagination offset |
+
+**Response Structure:**
+```json
+{
+  "summary": "Found 15 potentially dead code items",
+  "riskLevel": "MEDIUM",
+  "statistics": {
+    "total": 15,
+    "byConfidence": { "HIGH": 5, "MEDIUM": 7, "LOW": 3 },
+    "byCategory": { "internal-unused": 10, "library-export": 3, "ui-component": 2 },
+    "byType": { "FunctionDeclaration": 8, "InterfaceDeclaration": 4, "MethodDeclaration": 3 }
+  },
+  "deadCode": [
+    {
+      "nodeId": "proj_xxx:FunctionDeclaration:abc123",
+      "name": "unusedHelper",
+      "type": "FunctionDeclaration",
+      "filePath": "/src/utils/helpers.ts",
+      "lineNumber": 42,
+      "confidence": "HIGH",
+      "confidenceReason": "Exported but never imported anywhere",
+      "category": "internal-unused",
+      "reason": "Exported but never imported or referenced"
+    }
+  ]
+}
+```
+
+**Framework-Aware Exclusions:**
+- Automatically excludes NestJS entry points (controllers, modules, guards, etc.)
+- Excludes common entry point files (`main.ts`, `*.module.ts`, `*.controller.ts`)
+- Excludes Next.js/React patterns (`page.tsx`, `layout.tsx`, `route.tsx`)
+
+```typescript
+// Basic usage
+await mcp.call('detect_dead_code', {
+  projectId: 'my-backend'
+});
+
+// High confidence only with custom exclusions
+await mcp.call('detect_dead_code', {
+  projectId: 'my-backend',
+  minConfidence: 'HIGH',
+  excludePatterns: ['*.seed.ts', '*.fixture.ts'],
+  excludeSemanticTypes: ['EntityClass', 'DTOClass']
+});
+```
+
+#### 6. `detect_duplicate_code` - DRY Violation Detection
+**Purpose**: Identify duplicate code using structural (identical AST) and semantic (similar embeddings) analysis.
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `projectId` | string | required | Project ID, name, or path |
+| `type` | enum | "all" | Detection type: "structural", "semantic", "all" |
+| `scope` | enum | "all" | Scope: "methods", "functions", "classes", "all" |
+| `minSimilarity` | number | 0.8 | Minimum similarity threshold (0.5-1.0) |
+| `maxResults` | number | 50 | Maximum duplicate groups to return |
+| `includeCode` | boolean | true | Include source code snippets |
+| `summaryOnly` | boolean | false | Return only statistics |
+
+**Response Structure:**
+```json
+{
+  "summary": "Found 8 duplicate code groups across 12 files",
+  "statistics": {
+    "totalGroups": 8,
+    "totalDuplicates": 24,
+    "byType": {
+      "structural": { "groups": 3, "items": 9 },
+      "semantic": { "groups": 5, "items": 15 }
+    },
+    "byConfidence": { "HIGH": 4, "MEDIUM": 3, "LOW": 1 }
+  },
+  "duplicates": [
+    {
+      "groupId": "dup_1",
+      "type": "structural",
+      "similarity": 1.0,
+      "confidence": "HIGH",
+      "category": "cross-file",
+      "recommendation": "Extract to shared utility",
+      "items": [
+        {
+          "nodeId": "proj_xxx:MethodDeclaration:abc",
+          "name": "formatDate",
+          "filePath": "/src/utils/date.ts",
+          "lineNumber": 15,
+          "sourceCode": "formatDate(date: Date): string { ... }"
+        },
+        {
+          "nodeId": "proj_xxx:MethodDeclaration:def",
+          "name": "formatDate",
+          "filePath": "/src/helpers/formatting.ts",
+          "lineNumber": 42,
+          "sourceCode": "formatDate(date: Date): string { ... }"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Detection Types:**
+- **Structural**: Identical normalized code (same AST after removing comments, normalizing names)
+- **Semantic**: Similar logic via vector embeddings (requires embeddings enabled during parse)
+
+**Categories:**
+- `ui-component`: Duplicates in UI component directories
+- `cross-app`: Duplicates across monorepo apps
+- `same-file`: Duplicates within the same file
+- `cross-file`: Duplicates across different files
+
+```typescript
+// Find all duplicates
+await mcp.call('detect_duplicate_code', {
+  projectId: 'my-backend'
+});
+
+// Only structural duplicates in methods
+await mcp.call('detect_duplicate_code', {
+  projectId: 'my-backend',
+  type: 'structural',
+  scope: 'methods'
+});
+
+// High similarity semantic duplicates
+await mcp.call('detect_duplicate_code', {
+  projectId: 'my-backend',
+  type: 'semantic',
+  minSimilarity: 0.9
+});
+```
+
+#### 7. File Watching Tools
 **Purpose**: Monitor file changes and automatically update the graph.
 
 ```typescript

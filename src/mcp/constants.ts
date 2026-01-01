@@ -30,6 +30,8 @@ export const TOOL_NAMES = {
   startWatchProject: 'start_watch_project',
   stopWatchProject: 'stop_watch_project',
   listWatchers: 'list_watchers',
+  detectDeadCode: 'detect_dead_code',
+  detectDuplicateCode: 'detect_duplicate_code',
 } as const;
 
 // Tool Metadata
@@ -98,8 +100,25 @@ Use list_projects to see available projects and get the project name.
 **Tips:**
 - Import nodes store file paths, not module names (use 'path containing X')
 - Node types: SourceFile, ClassDeclaration, FunctionDeclaration, MethodDeclaration, InterfaceDeclaration
-- Relationships: CONTAINS, IMPORTS, HAS_PARAMETER, IMPLEMENTS, EXTENDS, HAS_MEMBER
 - For NestJS, use semanticType property instead of decorators (e.g., semanticType = 'NestController')
+
+**Relationships (Core):**
+- CONTAINS: File/class contains members
+- HAS_MEMBER: Class/interface has methods/properties
+- HAS_PARAMETER: Method/function has parameters
+- IMPORTS: SourceFile imports another
+- EXPORTS: SourceFile exports items
+- EXTENDS: Class/interface extends another
+- IMPLEMENTS: Class implements interface(s)
+- CALLS: Method/function calls another
+- TYPED_AS: Parameter/property has type annotation
+- DECORATED_WITH: Node has decorators
+
+**Relationships (NestJS/Framework):**
+- INJECTS: Service/controller injects dependency
+- EXPOSES: Controller exposes HTTP endpoints
+- MODULE_IMPORTS, MODULE_PROVIDES, MODULE_EXPORTS: NestJS module system
+- GUARDED_BY, TRANSFORMED_BY, INTERCEPTED_BY: Security/middleware
 
 **Query Phrasing:**
 Phrase queries using properties known to exist (filePath, name) rather than abstract concepts:
@@ -255,6 +274,86 @@ Returns information about each watcher:
 - errorMessage: Error details if status is "error"
 
 Use stop_watch_project to stop a watcher.`,
+  },
+  [TOOL_NAMES.detectDeadCode]: {
+    title: 'Detect Dead Code',
+    description: `Identify potentially unused code in the codebase including exports never imported, private methods never called, and orphan interfaces.
+
+**Before analyzing:**
+Use list_projects to see available projects and get the project name.
+
+Returns:
+- Risk level (LOW/MEDIUM/HIGH/CRITICAL) based on dead code count
+- Dead code items with confidence levels (HIGH/MEDIUM/LOW) and categories
+- Grouped by type (methods, classes, interfaces, etc.)
+- Grouped by category (library-export, ui-component, internal-unused)
+- Affected files list
+- Excluded entry points for audit (controllers, modules, etc.)
+
+Parameters:
+- projectId: Project name, path, or ID (required)
+- excludePatterns: Additional file patterns to exclude (e.g., ["*.config.ts", "*.seed.ts"])
+- excludeSemanticTypes: Additional semantic types to exclude (e.g., ["EntityClass", "DTOClass"])
+- excludeLibraryExports: Exclude all items from packages/* directories (default: false)
+- excludeCoreTypes: Exclude specific AST types (e.g., ["InterfaceDeclaration", "EnumDeclaration"])
+- includeEntryPoints: Include excluded entry points in audit section (default: true)
+- minConfidence: Minimum confidence to include (LOW/MEDIUM/HIGH, default: LOW)
+- filterCategory: Filter by category (library-export, ui-component, internal-unused, all) (default: all)
+- summaryOnly: Return only statistics without full dead code list (default: false)
+- limit: Maximum items per page (default: 100, max: 500)
+- offset: Number of items to skip for pagination (default: 0)
+
+**Categories:**
+- library-export: Exports from packages/* directories (may be used by external consumers)
+- ui-component: Exports from components/ui/* (component library, intentionally broad API)
+- internal-unused: Regular internal code that appears unused
+
+**Auto-excluded entry points:**
+- Semantic types: NestController, NestModule, NestGuard, NestPipe, NestInterceptor, NestFilter, NestProvider, NestService, HttpEndpoint
+- File patterns: main.ts, *.module.ts, *.controller.ts, index.ts
+
+**Confidence levels:**
+- HIGH: Exported but never imported or referenced
+- MEDIUM: Private with no internal calls
+- LOW: Could be used dynamically
+
+Use filterCategory=internal-unused for actionable dead code cleanup.`,
+  },
+  [TOOL_NAMES.detectDuplicateCode]: {
+    title: 'Detect Duplicate Code',
+    description: `Find duplicate code patterns using structural (AST hash) and semantic (embedding similarity) analysis.
+
+**Before analyzing:**
+Use list_projects to see available projects and get the project name.
+
+Returns:
+- Duplicate groups with similarity scores
+- Confidence levels (HIGH/MEDIUM/LOW)
+- Grouped by detection type (structural, semantic)
+- Recommendations for each duplicate group
+- Affected files list
+
+Parameters:
+- projectId: Project name, path, or ID (required)
+- type: Detection approach - "structural", "semantic", or "all" (default: all)
+- minSimilarity: Minimum similarity for semantic duplicates (0.5-1.0, default: 0.80)
+- includeCode: Include source code snippets (default: false)
+- maxResults: Maximum duplicate groups per page (default: 20, max: 100)
+- scope: Node types to analyze - "methods", "functions", "classes", or "all" (default: all)
+- summaryOnly: Return only statistics without full duplicates list (default: false)
+- offset: Number of groups to skip for pagination (default: 0)
+
+**Detection Types:**
+- structural: Finds exact duplicates by normalized code hash (ignores formatting, variable names, literals)
+- semantic: Finds similar code using embedding similarity (catches different implementations of same logic)
+- all: Runs both detection types
+
+**Similarity Thresholds:**
+- 0.90+: Very high similarity, almost certainly duplicates
+- 0.85-0.90: High similarity, likely duplicates with minor variations
+- 0.80-0.85: Moderate similarity, worth reviewing
+
+Use this to identify refactoring opportunities and reduce code duplication.`,
   },
 } as const;
 

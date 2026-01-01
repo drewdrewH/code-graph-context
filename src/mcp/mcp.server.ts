@@ -23,8 +23,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 import { MCP_SERVER_CONFIG, MESSAGES } from './constants.js';
 import { performIncrementalParse } from './handlers/incremental-parse.handler.js';
-import { watchManager } from './services/watch-manager.js';
 import { initializeServices } from './service-init.js';
+import { watchManager } from './services/watch-manager.js';
 import { registerAllTools } from './tools/index.js';
 import { debugLog } from './utils.js';
 

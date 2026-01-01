@@ -16,10 +16,10 @@ dotenv.config({ path: join(__dirname, '..', '..', '..', '.env') });
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
 import { ParserFactory, ProjectType } from '../../core/parsers/parser-factory.js';
 import { WorkspaceParser } from '../../core/parsers/workspace-parser.js';
+import { debugLog } from '../../core/utils/file-utils.js';
 import { getProjectName, UPSERT_PROJECT_QUERY, UPDATE_PROJECT_STATUS_QUERY } from '../../core/utils/project-id.js';
 import { WorkspaceDetector } from '../../core/workspace/index.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
-import { debugLog } from '../../core/utils/file-utils.js';
 import { GraphGeneratorHandler } from '../handlers/graph-generator.handler.js';
 import { StreamingImportHandler } from '../handlers/streaming-import.handler.js';
 

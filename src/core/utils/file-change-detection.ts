@@ -10,6 +10,7 @@ import { glob } from 'glob';
 
 import { EXCLUDE_PATTERNS_GLOB } from '../../constants.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
+
 import { hashFile } from './file-utils.js';
 
 /**

@@ -7,7 +7,178 @@ import { glob } from 'glob';
 import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
 
+import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
+import {
+  CoreNodeType,
+  Neo4jNodeProperties,
+  Neo4jEdgeProperties,
+  Neo4jNode,
+  Neo4jEdge,
+  CORE_TYPESCRIPT_SCHEMA,
+  CoreTypeScriptSchema,
+  DetectionPattern,
+  FrameworkSchema,
+  FrameworkEnhancement,
+  EdgeEnhancement,
+  ContextExtractor,
+  ParseOptions,
+  DEFAULT_PARSE_OPTIONS,
+  PropertyDefinition,
+  CoreEdgeType,
+  ParsingContext,
+  ParsedNode,
+  CoreNode,
+} from '../config/schema.js';
+import { normalizeCode } from '../utils/code-normalizer.js';
 import { createFrameworkEdgeData } from '../utils/edge-factory.js';
+import { debugLog, hashFile } from '../utils/file-utils.js';
+import { resolveProjectId } from '../utils/project-id.js';
+
+// Built-in function names to skip when extracting CALLS edges
+const BUILT_IN_FUNCTIONS = new Set([
+  'console',
+  'setTimeout',
+  'setInterval',
+  'clearTimeout',
+  'clearInterval',
+  'parseInt',
+  'parseFloat',
+  'isNaN',
+  'isFinite',
+  'encodeURI',
+  'decodeURI',
+  'encodeURIComponent',
+  'decodeURIComponent',
+  'JSON',
+  'Math',
+  'Date',
+  'Object',
+  'Array',
+  'String',
+  'Number',
+  'Boolean',
+  'Symbol',
+  'BigInt',
+  'Promise',
+  'require',
+  'eval',
+]);
+
+// Built-in method names to skip when extracting CALLS edges
+const BUILT_IN_METHODS = new Set([
+  // Array methods
+  'push',
+  'pop',
+  'shift',
+  'unshift',
+  'slice',
+  'splice',
+  'concat',
+  'join',
+  'reverse',
+  'sort',
+  'indexOf',
+  'lastIndexOf',
+  'includes',
+  'find',
+  'findIndex',
+  'filter',
+  'map',
+  'reduce',
+  'reduceRight',
+  'every',
+  'some',
+  'forEach',
+  'flat',
+  'flatMap',
+  'fill',
+  'entries',
+  'keys',
+  'values',
+  // String methods
+  'charAt',
+  'charCodeAt',
+  'substring',
+  'substr',
+  'split',
+  'trim',
+  'trimStart',
+  'trimEnd',
+  'toLowerCase',
+  'toUpperCase',
+  'replace',
+  'replaceAll',
+  'match',
+  'search',
+  'startsWith',
+  'endsWith',
+  'padStart',
+  'padEnd',
+  'repeat',
+  // Object methods
+  'hasOwnProperty',
+  'toString',
+  'valueOf',
+  'toJSON',
+  // Promise methods
+  'then',
+  'catch',
+  'finally',
+  // Console methods
+  'log',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+  'dir',
+  'table',
+  // Common utilities
+  'bind',
+  'call',
+  'apply',
+]);
+
+// Built-in class names to skip when extracting constructor calls
+const BUILT_IN_CLASSES = new Set([
+  'Array',
+  'Object',
+  'String',
+  'Number',
+  'Boolean',
+  'Date',
+  'RegExp',
+  'Error',
+  'TypeError',
+  'RangeError',
+  'SyntaxError',
+  'ReferenceError',
+  'Map',
+  'Set',
+  'WeakMap',
+  'WeakSet',
+  'Promise',
+  'Proxy',
+  'Reflect',
+  'Symbol',
+  'BigInt',
+  'ArrayBuffer',
+  'DataView',
+  'Int8Array',
+  'Uint8Array',
+  'Int16Array',
+  'Uint16Array',
+  'Int32Array',
+  'Uint32Array',
+  'Float32Array',
+  'Float64Array',
+  'URL',
+  'URLSearchParams',
+  'TextEncoder',
+  'TextDecoder',
+  'Buffer',
+  'EventEmitter',
+]);
 
 /**
  * Generate a deterministic node ID based on stable properties.
@@ -33,31 +204,6 @@ const generateDeterministicId = (
 
   return `${projectId}:${coreType}:${hash}`;
 };
-
-import { debugLog, hashFile } from '../utils/file-utils.js';
-import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
-import {
-  CoreNodeType,
-  Neo4jNodeProperties,
-  Neo4jEdgeProperties,
-  Neo4jNode,
-  Neo4jEdge,
-  CORE_TYPESCRIPT_SCHEMA,
-  CoreTypeScriptSchema,
-  DetectionPattern,
-  FrameworkSchema,
-  FrameworkEnhancement,
-  EdgeEnhancement,
-  ContextExtractor,
-  ParseOptions,
-  DEFAULT_PARSE_OPTIONS,
-  PropertyDefinition,
-  CoreEdgeType,
-  ParsingContext,
-  ParsedNode,
-  CoreNode,
-} from '../config/schema.js';
-import { resolveProjectId } from '../utils/project-id.js';
 
 // Re-export ParsedNode for convenience
 export type { ParsedNode };
@@ -117,12 +263,25 @@ export class TypeScriptParser {
     targetName: string;
     targetType: CoreNodeType;
     targetFilePath?: string; // File path of target for precise matching (used for EXTENDS/IMPLEMENTS)
+    // CALLS edge specific properties
+    callContext?: {
+      receiverExpression?: string; // 'this', 'this.userService', variable name
+      receiverType?: string; // Resolved type of receiver (e.g., 'UserService')
+      receiverPropertyName?: string; // Property name if this.xxx (e.g., 'userService')
+      lineNumber: number;
+      isAsync: boolean;
+      argumentCount: number;
+    };
   }> = [];
   private sharedContext: ParsingContext = new Map(); // Shared context for custom data
   private projectId: string; // Project identifier for multi-project isolation
   private lazyLoad: boolean; // Whether to use lazy file loading for large projects
   private discoveredFiles: string[] | null = null; // Cached file discovery results
   private deferEdgeEnhancements: boolean = false; // When true, skip edge enhancements (parent will handle)
+  // Lookup indexes for efficient CALLS edge resolution
+  private methodsByClass: Map<string, Map<string, ParsedNode>> = new Map(); // className -> methodName -> node
+  private functionsByName: Map<string, ParsedNode> = new Map(); // functionName -> node
+  private constructorsByClass: Map<string, ParsedNode> = new Map(); // className -> constructor node
 
   constructor(
     private workspacePath: string,
@@ -365,7 +524,18 @@ export class TypeScriptParser {
       for (const child of children) {
         if (this.shouldSkipChildNode(child)) continue;
 
-        const coreNode = this.createCoreNode(child, type, {}, parentNode.id);
+        // Track parent class name for methods, properties, and constructors
+        const extraProperties: Partial<Neo4jNodeProperties> = {};
+        if (
+          parentNode.coreType === CoreNodeType.CLASS_DECLARATION &&
+          (type === CoreNodeType.METHOD_DECLARATION ||
+            type === CoreNodeType.PROPERTY_DECLARATION ||
+            type === CoreNodeType.CONSTRUCTOR_DECLARATION)
+        ) {
+          extraProperties.parentClassName = parentNode.properties.name;
+        }
+
+        const coreNode = this.createCoreNode(child, type, extraProperties, parentNode.id);
         this.addNode(coreNode);
         const coreEdge = this.createCoreEdge(edgeType as CoreEdgeType, parentNode.id, coreNode.id);
         this.addEdge(coreEdge);
@@ -378,6 +548,17 @@ export class TypeScriptParser {
 
         if (SKELETONIZE_TYPES.has(type)) {
           this.skeletonizeChildInParent(parentNode, coreNode);
+        }
+
+        // Extract CALLS edges from method/function/constructor bodies
+        const CALL_EXTRACTION_TYPES = new Set([
+          CoreNodeType.METHOD_DECLARATION,
+          CoreNodeType.FUNCTION_DECLARATION,
+          CoreNodeType.CONSTRUCTOR_DECLARATION,
+        ]);
+
+        if (CALL_EXTRACTION_TYPES.has(type)) {
+          this.extractCallsFromBody(coreNode, child);
         }
 
         const childNodeConfig = this.coreSchema.nodeTypes[type];
@@ -483,6 +664,340 @@ export class TypeScriptParser {
       return genericIndex > 0 ? text.substring(0, genericIndex) : text;
     }
     return undefined;
+  }
+
+  /**
+   * Extract method/function calls from the body of a method or function.
+   * Creates deferred CALLS edges for resolution after all nodes are parsed.
+   */
+  private extractCallsFromBody(callerNode: ParsedNode, astNode: Node): void {
+    // Get the body of the method/function
+    let body: Node | undefined;
+
+    if (Node.isMethodDeclaration(astNode)) {
+      body = astNode.getBody();
+    } else if (Node.isFunctionDeclaration(astNode)) {
+      body = astNode.getBody();
+    } else if (Node.isConstructorDeclaration(astNode)) {
+      body = astNode.getBody();
+    }
+
+    if (!body) return;
+
+    // Skip very short method bodies (likely simple getters/setters)
+    const bodyText = body.getText();
+    if (bodyText.length < 15) return;
+
+    // Track unique calls to avoid duplicates (same method called multiple times)
+    const seenCalls = new Set<string>();
+
+    // Traverse all descendants looking for call expressions
+    body.forEachDescendant((descendant) => {
+      // Method/function calls: foo(), this.foo(), obj.foo()
+      if (Node.isCallExpression(descendant)) {
+        const callInfo = this.extractCallInfo(descendant, callerNode);
+        if (callInfo) {
+          const callKey = `${callInfo.targetName}:${callInfo.receiverType ?? 'unknown'}`;
+          if (!seenCalls.has(callKey)) {
+            seenCalls.add(callKey);
+            this.queueCallEdge(callerNode.id, callInfo);
+          }
+        }
+      }
+
+      // Constructor calls: new ClassName()
+      if (Node.isNewExpression(descendant)) {
+        const callInfo = this.extractConstructorCallInfo(descendant);
+        if (callInfo) {
+          const callKey = `constructor:${callInfo.targetClassName}`;
+          if (!seenCalls.has(callKey)) {
+            seenCalls.add(callKey);
+            this.queueCallEdge(callerNode.id, callInfo);
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Extract call information from a CallExpression.
+   */
+  private extractCallInfo(
+    callExpr: Node,
+    callerNode: ParsedNode,
+  ): {
+    targetName: string;
+    targetType: CoreNodeType;
+    receiverExpression?: string;
+    receiverType?: string;
+    receiverPropertyName?: string;
+    lineNumber: number;
+    isAsync: boolean;
+    argumentCount: number;
+    targetClassName?: string;
+  } | null {
+    if (!Node.isCallExpression(callExpr)) return null;
+
+    const expression = callExpr.getExpression();
+    const lineNumber = callExpr.getStartLineNumber();
+    const argumentCount = callExpr.getArguments().length;
+
+    // Check if this call is awaited
+    const parent = callExpr.getParent();
+    const isAsync = parent !== undefined && Node.isAwaitExpression(parent);
+
+    // Case 1: Direct function call - functionName()
+    if (Node.isIdentifier(expression)) {
+      const targetName = expression.getText();
+      // Skip built-in functions and common utilities
+      if (this.isBuiltInFunction(targetName)) return null;
+
+      return {
+        targetName,
+        targetType: CoreNodeType.FUNCTION_DECLARATION,
+        lineNumber,
+        isAsync,
+        argumentCount,
+      };
+    }
+
+    // Case 2: Method call - obj.method() or this.method() or this.service.method()
+    if (Node.isPropertyAccessExpression(expression)) {
+      const methodName = expression.getName();
+      const receiver = expression.getExpression();
+
+      // Skip common built-in method calls
+      if (this.isBuiltInMethod(methodName)) return null;
+
+      // this.method() - internal class method call
+      if (Node.isThisExpression(receiver)) {
+        return {
+          targetName: methodName,
+          targetType: CoreNodeType.METHOD_DECLARATION,
+          receiverExpression: 'this',
+          lineNumber,
+          isAsync,
+          argumentCount,
+        };
+      }
+
+      // this.service.method() - dependency injection call
+      if (Node.isPropertyAccessExpression(receiver)) {
+        const innerReceiver = receiver.getExpression();
+        if (Node.isThisExpression(innerReceiver)) {
+          const propertyName = receiver.getName();
+          // Try to resolve the type from constructor parameters
+          const receiverType = this.resolvePropertyType(callerNode, propertyName);
+
+          return {
+            targetName: methodName,
+            targetType: CoreNodeType.METHOD_DECLARATION,
+            receiverExpression: `this.${propertyName}`,
+            receiverPropertyName: propertyName,
+            receiverType,
+            lineNumber,
+            isAsync,
+            argumentCount,
+          };
+        }
+      }
+
+      // variable.method() - method call on local variable
+      if (Node.isIdentifier(receiver)) {
+        const varName = receiver.getText();
+        // Try to get the type of the variable
+        let receiverType: string | undefined;
+        try {
+          const typeText = receiver.getType().getText();
+          // Clean up type (remove generics, imports)
+          receiverType = this.cleanTypeName(typeText);
+        } catch {
+          // Type resolution failed
+        }
+
+        return {
+          targetName: methodName,
+          targetType: CoreNodeType.METHOD_DECLARATION,
+          receiverExpression: varName,
+          receiverType,
+          lineNumber,
+          isAsync,
+          argumentCount,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract constructor call information from a NewExpression.
+   */
+  private extractConstructorCallInfo(newExpr: Node): {
+    targetName: string;
+    targetType: CoreNodeType;
+    targetClassName: string;
+    lineNumber: number;
+    isAsync: boolean;
+    argumentCount: number;
+  } | null {
+    if (!Node.isNewExpression(newExpr)) return null;
+
+    const expression = newExpr.getExpression();
+    const lineNumber = newExpr.getStartLineNumber();
+    const argumentCount = newExpr.getArguments().length;
+
+    // new ClassName()
+    if (Node.isIdentifier(expression)) {
+      const className = expression.getText();
+
+      // Skip built-in constructors
+      if (this.isBuiltInClass(className)) return null;
+
+      return {
+        targetName: 'constructor',
+        targetType: CoreNodeType.CONSTRUCTOR_DECLARATION,
+        targetClassName: className,
+        lineNumber,
+        isAsync: false,
+        argumentCount,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Queue a CALLS edge for deferred resolution.
+   */
+  private queueCallEdge(
+    sourceNodeId: string,
+    callInfo: {
+      targetName: string;
+      targetType: CoreNodeType;
+      receiverExpression?: string;
+      receiverType?: string;
+      receiverPropertyName?: string;
+      targetClassName?: string;
+      lineNumber: number;
+      isAsync: boolean;
+      argumentCount: number;
+    },
+  ): void {
+    // For constructor calls, use class name as target
+    const targetName = callInfo.targetClassName ?? callInfo.targetName;
+
+    this.deferredEdges.push({
+      edgeType: CoreEdgeType.CALLS,
+      sourceNodeId,
+      targetName,
+      targetType: callInfo.targetType,
+      callContext: {
+        receiverExpression: callInfo.receiverExpression,
+        receiverType: callInfo.receiverType,
+        receiverPropertyName: callInfo.receiverPropertyName,
+        lineNumber: callInfo.lineNumber,
+        isAsync: callInfo.isAsync,
+        argumentCount: callInfo.argumentCount,
+      },
+    });
+  }
+
+  /**
+   * Resolve the type of a class property from constructor parameters.
+   * Used for NestJS dependency injection pattern.
+   */
+  private resolvePropertyType(node: ParsedNode, propertyName: string): string | undefined {
+    // Look for constructor parameter types in the node's context
+    const context = node.properties.context;
+    if (context?.constructorParamTypes) {
+      const paramTypes = context.constructorParamTypes as string[];
+      // Constructor params with 'private' or 'public' become properties
+      // Try to find a matching parameter by name
+      // The context extractor stores types in order, we need to match by name
+      // For now, use a heuristic: look for type that matches property name
+      for (const paramType of paramTypes) {
+        // Check if the type name matches (case-insensitive, removing 'Service', 'Repository' etc.)
+        const normalizedProp = propertyName.toLowerCase().replace(/service|repository|provider/gi, '');
+        const normalizedType = paramType.toLowerCase().replace(/service|repository|provider/gi, '');
+        if (normalizedType.includes(normalizedProp) || normalizedProp.includes(normalizedType)) {
+          return paramType;
+        }
+      }
+    }
+
+    // Also check the class node's parent for constructor info
+    const classNode = this.findParentClassNode(node);
+    if (classNode?.properties.context?.constructorParamTypes) {
+      const paramTypes = classNode.properties.context.constructorParamTypes as string[];
+      for (const paramType of paramTypes) {
+        const normalizedProp = propertyName.toLowerCase().replace(/service|repository|provider/gi, '');
+        const normalizedType = paramType.toLowerCase().replace(/service|repository|provider/gi, '');
+        if (normalizedType.includes(normalizedProp) || normalizedProp.includes(normalizedType)) {
+          return paramType;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Find the parent class node for a method/property node.
+   * Uses the parentClassName property tracked during parsing.
+   */
+  private findParentClassNode(node: ParsedNode): ParsedNode | undefined {
+    const parentClassName = node.properties.parentClassName as string | undefined;
+    if (!parentClassName) return undefined;
+
+    // Find the class node by name and file path
+    for (const [, classNode] of this.parsedNodes) {
+      if (
+        classNode.coreType === CoreNodeType.CLASS_DECLARATION &&
+        classNode.properties.name === parentClassName &&
+        classNode.properties.filePath === node.properties.filePath
+      ) {
+        return classNode;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Clean up a type name by removing generics, imports, etc.
+   */
+  private cleanTypeName(typeName: string): string {
+    // Remove import paths: import("...").ClassName -> ClassName
+    let cleaned = typeName.replace(/import\([^)]+\)\./g, '');
+    // Remove generics: ClassName<T> -> ClassName
+    const genericIndex = cleaned.indexOf('<');
+    if (genericIndex > 0) {
+      cleaned = cleaned.substring(0, genericIndex);
+    }
+    // Remove array notation: ClassName[] -> ClassName
+    cleaned = cleaned.replace(/\[\]$/, '');
+    return cleaned.trim();
+  }
+
+  /**
+   * Check if a function name is a built-in JavaScript/Node.js function.
+   */
+  private isBuiltInFunction(name: string): boolean {
+    return BUILT_IN_FUNCTIONS.has(name);
+  }
+
+  /**
+   * Check if a method name is a common built-in method.
+   */
+  private isBuiltInMethod(name: string): boolean {
+    return BUILT_IN_METHODS.has(name);
+  }
+
+  /**
+   * Check if a class name is a built-in JavaScript class.
+   */
+  private isBuiltInClass(name: string): boolean {
+    return BUILT_IN_CLASSES.has(name);
   }
 
   /**
@@ -602,15 +1117,35 @@ export class TypeScriptParser {
     const importsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.IMPORTS).length;
     const extendsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.EXTENDS).length;
     const implementsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.IMPLEMENTS).length;
+    const callsCount = this.deferredEdges.filter((e) => e.edgeType === CoreEdgeType.CALLS).length;
 
     let importsResolved = 0;
     let extendsResolved = 0;
     let implementsResolved = 0;
+    let callsResolved = 0;
     const unresolvedImports: string[] = [];
     const unresolvedExtends: string[] = [];
     const unresolvedImplements: string[] = [];
+    const unresolvedCalls: string[] = [];
 
     for (const deferred of this.deferredEdges) {
+      // Special handling for CALLS edges
+      if (deferred.edgeType === CoreEdgeType.CALLS) {
+        const targetNode = this.resolveCallTarget(deferred);
+
+        if (targetNode) {
+          const edge = this.createCallsEdge(deferred.sourceNodeId, targetNode.id, deferred.callContext);
+          this.addEdge(edge);
+          callsResolved++;
+        } else {
+          const callDesc = deferred.callContext?.receiverType
+            ? `${deferred.callContext.receiverType}.${deferred.targetName}`
+            : deferred.targetName;
+          unresolvedCalls.push(callDesc);
+        }
+        continue;
+      }
+
       // Pass filePath for precise matching (especially important for EXTENDS/IMPLEMENTS)
       const targetNode = this.findNodeByNameAndType(deferred.targetName, deferred.targetType, deferred.targetFilePath);
 
@@ -662,7 +1197,137 @@ export class TypeScriptParser {
       });
     }
 
+    // Log CALLS resolution stats
+    if (callsCount > 0) {
+      await debugLog('CALLS edge resolution', {
+        totalCalls: callsCount,
+        resolved: callsResolved,
+        unresolvedCount: unresolvedCalls.length,
+        unresolvedSample: unresolvedCalls.slice(0, 10),
+      });
+    }
+
     this.deferredEdges = [];
+  }
+
+  /**
+   * Resolve the target node for a CALLS edge.
+   * Uses special resolution logic based on call context.
+   */
+  private resolveCallTarget(deferred: {
+    targetName: string;
+    targetType: CoreNodeType;
+    sourceNodeId: string;
+    callContext?: {
+      receiverExpression?: string;
+      receiverType?: string;
+      receiverPropertyName?: string;
+      lineNumber: number;
+      isAsync: boolean;
+      argumentCount: number;
+    };
+  }): ParsedNode | undefined {
+    const { targetName, targetType, sourceNodeId, callContext } = deferred;
+
+    // Case 1: this.method() - internal class method call
+    if (callContext?.receiverExpression === 'this') {
+      // Find the caller's class, then look for method in same class
+      const sourceNode = this.parsedNodes.get(sourceNodeId) ?? this.existingNodes.get(sourceNodeId);
+      if (sourceNode) {
+        const className = this.getClassNameForNode(sourceNode);
+        if (className && this.methodsByClass.has(className)) {
+          const method = this.methodsByClass.get(className)!.get(targetName);
+          if (method) return method;
+        }
+      }
+    }
+
+    // Case 2: this.service.method() - dependency injection call
+    if (callContext?.receiverType) {
+      // Look for method in the receiver's class
+      const className = callContext.receiverType;
+      if (this.methodsByClass.has(className)) {
+        const method = this.methodsByClass.get(className)!.get(targetName);
+        if (method) return method;
+      }
+      // Fallback: search all nodes for a method with this name in a class matching the type
+      for (const [, node] of this.parsedNodes) {
+        if (node.coreType === CoreNodeType.METHOD_DECLARATION && node.properties.name === targetName) {
+          // Check if parent class matches the receiver type
+          const parentClass = this.findParentClassNode(node);
+          if (parentClass?.properties.name === className) {
+            return node;
+          }
+        }
+      }
+    }
+
+    // Case 3: Constructor call - find the constructor in the target class
+    if (targetType === CoreNodeType.CONSTRUCTOR_DECLARATION) {
+      const constructor = this.constructorsByClass.get(targetName);
+      if (constructor) return constructor;
+    }
+
+    // Case 4: Standalone function call
+    if (targetType === CoreNodeType.FUNCTION_DECLARATION) {
+      const func = this.functionsByName.get(targetName);
+      if (func) return func;
+    }
+
+    // Fallback: generic name matching
+    return this.findNodeByNameAndType(targetName, targetType);
+  }
+
+  /**
+   * Create a CALLS edge with call-specific context.
+   */
+  private createCallsEdge(
+    sourceNodeId: string,
+    targetNodeId: string,
+    callContext?: {
+      receiverExpression?: string;
+      receiverType?: string;
+      receiverPropertyName?: string;
+      lineNumber: number;
+      isAsync: boolean;
+      argumentCount: number;
+    },
+  ): ParsedEdge {
+    const coreEdgeSchema = CORE_TYPESCRIPT_SCHEMA.edgeTypes[CoreEdgeType.CALLS];
+    const relationshipWeight = coreEdgeSchema?.relationshipWeight ?? 0.85;
+
+    // Confidence: higher if we resolved the receiver type
+    const confidence = callContext?.receiverType ? 0.9 : 0.7;
+
+    // Generate deterministic edge ID based on type + source + target + line
+    const lineNum = callContext?.lineNumber ?? 0;
+    const edgeIdentity = `CALLS::${sourceNodeId}::${targetNodeId}::${lineNum}`;
+    const edgeHash = crypto.createHash('sha256').update(edgeIdentity).digest('hex').substring(0, 16);
+    const edgeId = `CALLS:${edgeHash}`;
+
+    return {
+      id: edgeId,
+      relationshipType: 'CALLS',
+      sourceNodeId,
+      targetNodeId,
+      properties: {
+        coreType: CoreEdgeType.CALLS,
+        projectId: this.projectId,
+        source: 'ast',
+        confidence,
+        relationshipWeight,
+        filePath: '',
+        createdAt: new Date().toISOString(),
+        lineNumber: callContext?.lineNumber,
+        context: callContext
+          ? {
+              isAsync: callContext.isAsync,
+              argumentCount: callContext.argumentCount,
+              receiverType: callContext.receiverType,
+            }
+          : undefined,
+      },
+    };
   }
 
   private async parseCoreTypeScript(sourceFile: SourceFile): Promise<void> {
@@ -870,6 +1535,22 @@ export class TypeScriptParser {
       }
     }
 
+    // Compute normalizedHash for duplicate detection (methods, functions, constructors)
+    if (
+      coreType === CoreNodeType.METHOD_DECLARATION ||
+      coreType === CoreNodeType.FUNCTION_DECLARATION ||
+      coreType === CoreNodeType.CONSTRUCTOR_DECLARATION
+    ) {
+      try {
+        const { normalizedHash } = normalizeCode(properties.sourceCode);
+        if (normalizedHash) {
+          properties.normalizedHash = normalizedHash;
+        }
+      } catch (error) {
+        console.warn(`Failed to compute normalizedHash for ${nodeId}:`, error);
+      }
+    }
+
     return {
       id: nodeId,
       coreType,
@@ -982,7 +1663,10 @@ export class TypeScriptParser {
             }
           case 'function':
             if (typeof pattern.pattern === 'function') {
-              return pattern.pattern(node);
+              // Pass the AST sourceNode to pattern functions, not the ParsedNode wrapper
+              const astNode = node.sourceNode;
+              if (!astNode) return false;
+              return pattern.pattern(astNode);
             }
             return false;
           case 'classname':
@@ -1287,6 +1971,33 @@ export class TypeScriptParser {
 
   private addNode(node: ParsedNode): void {
     this.parsedNodes.set(node.id, node);
+
+    // Build lookup indexes for CALLS edge resolution
+    if (node.coreType === CoreNodeType.METHOD_DECLARATION) {
+      const className = this.getClassNameForNode(node);
+      if (className) {
+        if (!this.methodsByClass.has(className)) {
+          this.methodsByClass.set(className, new Map());
+        }
+        this.methodsByClass.get(className)!.set(node.properties.name, node);
+      }
+    } else if (node.coreType === CoreNodeType.FUNCTION_DECLARATION) {
+      this.functionsByName.set(node.properties.name, node);
+    } else if (node.coreType === CoreNodeType.CONSTRUCTOR_DECLARATION) {
+      const className = this.getClassNameForNode(node);
+      if (className) {
+        this.constructorsByClass.set(className, node);
+      }
+    }
+  }
+
+  /**
+   * Get the class name for a node.
+   * Uses the parentClassName property tracked during parsing.
+   */
+  private getClassNameForNode(node: ParsedNode): string | undefined {
+    // Use the parentClassName that was tracked during parseChildNodes
+    return node.properties.parentClassName as string | undefined;
   }
 
   private addEdge(edge: ParsedEdge): void {
@@ -1375,6 +2086,10 @@ export class TypeScriptParser {
     this.parsedNodes.clear();
     this.parsedEdges.clear();
     this.deferredEdges = [];
+    // Clear CALLS edge lookup indexes
+    this.methodsByClass.clear();
+    this.functionsByName.clear();
+    this.constructorsByClass.clear();
   }
 
   /**
