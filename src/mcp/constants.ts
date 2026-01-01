@@ -3,6 +3,9 @@
  * All constants used throughout the MCP server implementation
  */
 
+// Re-export shared constants
+export { LOG_CONFIG } from '../constants.js';
+
 // Server Configuration
 export const MCP_SERVER_CONFIG = {
   name: 'codebase-graph',
@@ -368,6 +371,46 @@ export const DEFAULTS = {
   maxEmbeddingChars: 30000, // ~7500 tokens, under 8192 limit for text-embedding-3-large
 } as const;
 
+// Parsing Configuration
+export const PARSING = {
+  /** File count threshold to trigger parallel parsing with worker pool */
+  parallelThreshold: 500,
+  /** File count threshold to trigger streaming import */
+  streamingThreshold: 100,
+  /** Default number of files per chunk */
+  defaultChunkSize: 100,
+  /** Worker timeout in milliseconds (30 minutes) */
+  workerTimeoutMs: 30 * 60 * 1000,
+} as const;
+
+// Job Management
+export const JOBS = {
+  /** Interval for cleaning up completed/stale jobs (5 minutes) */
+  cleanupIntervalMs: 5 * 60 * 1000,
+  /** Maximum number of jobs to keep in memory */
+  maxJobs: 100,
+} as const;
+
+// Watch Mode Configuration
+export const WATCH = {
+  /** Default debounce delay before processing file changes */
+  defaultDebounceMs: 1000,
+  /** Maximum concurrent file watchers */
+  maxWatchers: 10,
+  /** Maximum pending file change events before dropping */
+  maxPendingEvents: 1000,
+  /** Default exclude patterns for file watching */
+  excludePatterns: [
+    '**/node_modules/**',
+    '**/dist/**',
+    '**/build/**',
+    '**/.git/**',
+    '**/*.d.ts',
+    '**/*.js',
+    '**/*.map',
+  ],
+} as const;
+
 // Messages
 export const MESSAGES = {
   errors: {
@@ -403,11 +446,4 @@ export const MESSAGES = {
     connectingTransport: 'Connecting server to transport...',
     startingServer: 'Starting MCP server...',
   },
-} as const;
-
-// Logging Configuration
-export const LOG_CONFIG = {
-  timestampFormat: 'iso',
-  logSeparator: '---',
-  jsonIndentation: 2,
 } as const;
