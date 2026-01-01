@@ -2,9 +2,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-const DEBUG_LOG_FILE = 'debug-search.log';
-const LOG_SEPARATOR = '---';
-const JSON_INDENT = 2;
+import { LOG_CONFIG } from '../../constants.js';
 
 export const hashFile = async (filePath: string): Promise<string> => {
   const content = await fs.readFile(filePath);
@@ -13,10 +11,10 @@ export const hashFile = async (filePath: string): Promise<string> => {
 
 export const debugLog = async (message: string, data?: any): Promise<void> => {
   const timestamp = new Date().toISOString();
-  const logEntry = `[${timestamp}] ${message}\n${data ? JSON.stringify(data, null, JSON_INDENT) : ''}\n${LOG_SEPARATOR}\n`;
+  const logEntry = `[${timestamp}] ${message}\n${data ? JSON.stringify(data, null, LOG_CONFIG.jsonIndent) : ''}\n${LOG_CONFIG.separator}\n`;
 
   try {
-    await fs.appendFile(path.join(process.cwd(), DEBUG_LOG_FILE), logEntry);
+    await fs.appendFile(path.join(process.cwd(), LOG_CONFIG.debugLogFile), logEntry);
   } catch (error) {
     console.error('Failed to write debug log:', error);
   }

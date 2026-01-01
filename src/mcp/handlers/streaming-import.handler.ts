@@ -57,46 +57,40 @@ export class StreamingImportHandler {
       this.progressReporter.setCallback(config.onProgress);
     }
 
-    // Set project ID on graph generator
-    this.graphGeneratorHandler.setProjectId(config.projectId);
-
-    // Phase 1: Get discovered files (already discovered by worker, this returns cached result)
     const allFilePaths = await parser.discoverSourceFiles();
 
-    console.log(`📁 Found ${allFilePaths.length} files to parse`);
     await debugLog('Streaming import started', {
       totalFiles: allFilePaths.length,
       chunkSize: config.chunkSize,
     });
 
-    // Create chunks
+    this.progressReporter.report({
+      phase: 'parsing',
+      current: 0,
+      total: allFilePaths.length,
+      message: `Starting streaming import of ${allFilePaths.length} files in chunks of ~${config.chunkSize}`,
+    });
+
     const chunks: string[][] = [];
     for (let i = 0; i < allFilePaths.length; i += config.chunkSize) {
       chunks.push(allFilePaths.slice(i, i + config.chunkSize));
     }
 
-    console.log(`📦 Split into ${chunks.length} chunks of ~${config.chunkSize} files each`);
-
     let totalNodesImported = 0;
     let totalEdgesImported = 0;
 
-    // Phase 2: Parse and import chunks
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
       const chunk = chunks[chunkIndex];
       const filesProcessed = chunkIndex * config.chunkSize + chunk.length;
 
-      console.log(`\n🔄 Processing chunk ${chunkIndex + 1}/${chunks.length} (${chunk.length} files)`);
-
       try {
-        // Parse the chunk (skip edge resolution for streaming)
+        // Skip edge resolution during chunk parsing - resolve after all chunks complete
         const { nodes, edges } = await parser.parseChunk(chunk, true);
-
-        // Add parsed nodes to existing nodes for cross-chunk edge resolution
+        // Accumulate nodes for cross-chunk edge resolution
         parser.addExistingNodesFromChunk(nodes);
 
-        // Import to Neo4j if we have data
         if (nodes.length > 0 || edges.length > 0) {
-          await debugLog('Importing chunk - generating embeddings', {
+          await debugLog('Importing chunk', {
             chunkIndex: chunkIndex + 1,
             totalChunks: chunks.length,
             nodeCount: nodes.length,
@@ -105,7 +99,6 @@ export class StreamingImportHandler {
           totalNodesImported += nodes.length;
           totalEdgesImported += edges.length;
         } else {
-          console.warn(`⚠️ Chunk ${chunkIndex + 1} produced 0 nodes/edges from ${chunk.length} files`);
           await debugLog('Empty chunk result', {
             chunkIndex: chunkIndex + 1,
             fileCount: chunk.length,
@@ -113,7 +106,6 @@ export class StreamingImportHandler {
           });
         }
 
-        // Report progress with all relevant data
         await this.progressReporter.report({
           phase: 'importing',
           current: filesProcessed,
@@ -128,10 +120,7 @@ export class StreamingImportHandler {
             totalChunks: chunks.length,
           },
         });
-
-        console.log(`✅ Chunk ${chunkIndex + 1}: ${nodes.length} nodes, ${edges.length} edges imported`);
       } catch (chunkError) {
-        console.error(`❌ Error processing chunk ${chunkIndex + 1}:`, chunkError);
         await debugLog('Chunk processing error', {
           chunkIndex: chunkIndex + 1,
           fileCount: chunk.length,
@@ -139,45 +128,30 @@ export class StreamingImportHandler {
           error: chunkError instanceof Error ? chunkError.message : String(chunkError),
           stack: chunkError instanceof Error ? chunkError.stack : undefined,
         });
-        // Re-throw to fail the entire import - don't silently continue
         throw chunkError;
       }
-
-      // Note: Don't clear parsed data during streaming - we need accumulated nodes for cross-chunk edge resolution
-      // Memory usage is bounded because we only keep Neo4jNode references (not full AST)
     }
 
-    // Phase 3: Resolve cross-chunk deferred edges
     await this.progressReporter.reportResolving(0, totalEdgesImported);
-    console.log('\n🔗 Resolving cross-chunk edges...');
 
     const resolvedEdges = await parser.resolveDeferredEdgesManually();
     if (resolvedEdges.length > 0) {
       await this.importEdgesToNeo4j(resolvedEdges);
       totalEdgesImported += resolvedEdges.length;
-      console.log(`✅ Resolved ${resolvedEdges.length} cross-chunk edges`);
-    } else {
-      console.log('ℹ️ No cross-chunk edges to resolve');
+      await debugLog(`Resolved ${resolvedEdges.length} cross-chunk edges`);
     }
 
-    // Phase 3b: Apply edge enhancements on all accumulated nodes
-    // This catches context-dependent edges (like INTERNAL_API_CALL) that span chunks
-    console.log('\n🔗 Applying edge enhancements on all nodes...');
     const enhancedEdges = await parser.applyEdgeEnhancementsManually();
     if (enhancedEdges.length > 0) {
       await this.importEdgesToNeo4j(enhancedEdges);
       totalEdgesImported += enhancedEdges.length;
-      console.log(`✅ Created ${enhancedEdges.length} edges from edge enhancements`);
-    } else {
-      console.log('ℹ️ No edges from edge enhancements');
+      await debugLog(`Created ${enhancedEdges.length} edges from edge enhancements`);
     }
 
-    // Clear accumulated data now that edge resolution is complete
     parser.clearParsedData();
 
     await this.progressReporter.reportResolving(resolvedEdges.length, resolvedEdges.length);
 
-    // Phase 4: Complete
     const elapsedMs = Date.now() - startTime;
     await this.progressReporter.reportComplete(totalNodesImported, totalEdgesImported);
 
@@ -189,39 +163,19 @@ export class StreamingImportHandler {
       elapsedMs,
     };
 
-    console.log(`\n🎉 Streaming import complete!`);
-    console.log(`   Files: ${allFilePaths.length}`);
-    console.log(`   Nodes: ${totalNodesImported}`);
-    console.log(`   Edges: ${totalEdgesImported}`);
-    console.log(`   Time: ${(elapsedMs / 1000).toFixed(2)}s`);
-
     await debugLog('Streaming import completed', result);
 
     return result;
   }
 
-  /**
-   * Import a chunk of nodes and edges to Neo4j using the graph generator handler
-   */
   private async importChunkToNeo4j(nodes: Neo4jNode[], edges: Neo4jEdge[]): Promise<void> {
-    // Write to temporary JSON and use existing import mechanism
-    // This reuses the batched embedding and import logic
     const tempPath = generateTempPath('chunk');
     const fs = await import('fs/promises');
 
     try {
-      await fs.writeFile(
-        tempPath,
-        JSON.stringify({
-          nodes,
-          edges,
-          metadata: { chunked: true },
-        }),
-      );
-
+      await fs.writeFile(tempPath, JSON.stringify({ nodes, edges, metadata: { chunked: true } }));
       await this.graphGeneratorHandler.generateGraph(tempPath, DEFAULTS.batchSize, false);
     } finally {
-      // Clean up temp file
       try {
         await fs.unlink(tempPath);
       } catch {
@@ -230,9 +184,6 @@ export class StreamingImportHandler {
     }
   }
 
-  /**
-   * Import resolved edges to Neo4j
-   */
   private async importEdgesToNeo4j(edges: Neo4jEdge[]): Promise<void> {
     if (edges.length === 0) return;
 
@@ -240,15 +191,7 @@ export class StreamingImportHandler {
     const fs = await import('fs/promises');
 
     try {
-      await fs.writeFile(
-        tempPath,
-        JSON.stringify({
-          nodes: [],
-          edges,
-          metadata: { edgesOnly: true },
-        }),
-      );
-
+      await fs.writeFile(tempPath, JSON.stringify({ nodes: [], edges, metadata: { edgesOnly: true } }));
       await this.graphGeneratorHandler.generateGraph(tempPath, DEFAULTS.batchSize, false);
     } finally {
       try {

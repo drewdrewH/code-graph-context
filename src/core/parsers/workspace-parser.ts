@@ -8,6 +8,9 @@ import path from 'path';
 
 import { glob } from 'glob';
 
+import { EXCLUDE_PATTERNS_GLOB } from '../../constants.js';
+import { FAIRSQUARE_FRAMEWORK_SCHEMA } from '../config/fairsquare-framework-schema.js';
+import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
 import {
   Neo4jNode,
   Neo4jEdge,
@@ -69,6 +72,9 @@ export class WorkspaceParser {
   private accumulatedParsedNodes: Map<string, LightweightParsedNode> = new Map();
   // Framework schemas detected from packages (for edge enhancements)
   private frameworkSchemas: FrameworkSchema[] = [];
+  // Track already exported items to avoid returning duplicates in streaming mode
+  private exportedNodeIds: Set<string> = new Set();
+  private exportedEdgeIds: Set<string> = new Set();
 
   constructor(
     config: WorkspaceConfig,
@@ -130,9 +136,10 @@ export class WorkspaceParser {
    */
   private async discoverPackageFiles(pkg: WorkspacePackage): Promise<string[]> {
     // Include both .ts and .tsx files
+    // Use EXCLUDE_PATTERNS_GLOB for consistency with detectChangedFiles and TypeScriptParser
     const pattern = path.join(pkg.path, '**/*.{ts,tsx}');
     const files = await glob(pattern, {
-      ignore: ['**/node_modules/**', '**/*.d.ts', '**/dist/**', '**/build/**'],
+      ignore: EXCLUDE_PATTERNS_GLOB,
       absolute: true,
     });
     return files;
@@ -280,7 +287,24 @@ export class WorkspaceParser {
       }
     }
 
-    return { nodes: allNodes, edges: allEdges };
+    // Only return nodes/edges that haven't been exported yet (prevents duplicate imports in streaming mode)
+    const newNodes = allNodes.filter((node) => {
+      if (!this.exportedNodeIds.has(node.id)) {
+        this.exportedNodeIds.add(node.id);
+        return true;
+      }
+      return false;
+    });
+
+    const newEdges = allEdges.filter((edge) => {
+      if (!this.exportedEdgeIds.has(edge.id)) {
+        this.exportedEdgeIds.add(edge.id);
+        return true;
+      }
+      return false;
+    });
+
+    return { nodes: newNodes, edges: newEdges };
   }
 
   /**
@@ -332,6 +356,8 @@ export class WorkspaceParser {
   clearParsedData(): void {
     this.parsedNodes.clear();
     this.parsedEdges.clear();
+    this.exportedNodeIds.clear();
+    this.exportedEdgeIds.clear();
   }
 
   /**
@@ -344,6 +370,26 @@ export class WorkspaceParser {
   }
 
   /**
+   * Add nodes to accumulatedParsedNodes for edge enhancement.
+   * Converts Neo4jNode to LightweightParsedNode format.
+   */
+  addParsedNodesFromChunk(nodes: Neo4jNode[]): void {
+    for (const node of nodes) {
+      this.parsedNodes.set(node.id, node);
+      // Also add to accumulatedParsedNodes for edge enhancement detection
+      this.accumulatedParsedNodes.set(node.id, {
+        id: node.id,
+        coreType: node.properties.coreType as string,
+        semanticType: node.properties.semanticType as string | undefined,
+        properties: {
+          name: node.properties.name as string | undefined,
+          context: node.properties.context as Record<string, any> | undefined,
+        },
+      });
+    }
+  }
+
+  /**
    * Get current counts for progress reporting
    */
   getCurrentCounts(): { nodes: number; edges: number; deferredEdges: number } {
@@ -352,6 +398,126 @@ export class WorkspaceParser {
       edges: this.parsedEdges.size,
       deferredEdges: this.accumulatedDeferredEdges.length,
     };
+  }
+
+  /**
+   * Set whether to defer edge enhancements.
+   * WorkspaceParser always defers edge enhancements to applyEdgeEnhancementsManually(),
+   * so this is a no-op for interface compliance.
+   */
+  setDeferEdgeEnhancements(_defer: boolean): void {
+    // No-op: WorkspaceParser always handles edge enhancements at the end
+  }
+
+  /**
+   * Load framework schemas for a specific project type.
+   * Used by parallel parsing coordinator to load schemas before edge enhancement.
+   * In sequential parsing, schemas are accumulated from inner parsers instead.
+   */
+  loadFrameworkSchemasForType(projectType: string): void {
+    // Load schemas based on project type (same logic as ParserFactory.selectFrameworkSchemas)
+    switch (projectType) {
+      case 'nestjs':
+        if (!this.frameworkSchemas.some((s) => s.name === NESTJS_FRAMEWORK_SCHEMA.name)) {
+          this.frameworkSchemas.push(NESTJS_FRAMEWORK_SCHEMA);
+        }
+        break;
+      case 'fairsquare':
+        if (!this.frameworkSchemas.some((s) => s.name === FAIRSQUARE_FRAMEWORK_SCHEMA.name)) {
+          this.frameworkSchemas.push(FAIRSQUARE_FRAMEWORK_SCHEMA);
+        }
+        break;
+      case 'both':
+        if (!this.frameworkSchemas.some((s) => s.name === FAIRSQUARE_FRAMEWORK_SCHEMA.name)) {
+          this.frameworkSchemas.push(FAIRSQUARE_FRAMEWORK_SCHEMA);
+        }
+        if (!this.frameworkSchemas.some((s) => s.name === NESTJS_FRAMEWORK_SCHEMA.name)) {
+          this.frameworkSchemas.push(NESTJS_FRAMEWORK_SCHEMA);
+        }
+        break;
+      // 'vanilla' and 'auto' - no framework schemas
+    }
+    debugLog('WorkspaceParser loaded framework schemas', { count: this.frameworkSchemas.length, projectType });
+  }
+
+  /**
+   * Get serialized shared context for parallel parsing.
+   * Converts Maps to arrays for structured clone compatibility.
+   */
+  getSerializedSharedContext(): Array<[string, unknown]> {
+    const serialized: Array<[string, unknown]> = [];
+    for (const [key, value] of this.sharedContext) {
+      if (value instanceof Map) {
+        serialized.push([key, Array.from((value as Map<string, unknown>).entries())]);
+      } else {
+        serialized.push([key, value]);
+      }
+    }
+    return serialized;
+  }
+
+  /**
+   * Merge serialized shared context from workers.
+   * Handles Map merging by combining entries.
+   */
+  mergeSerializedSharedContext(serialized: Array<[string, unknown]>): void {
+    for (const [key, value] of serialized) {
+      if (Array.isArray(value) && value.length > 0 && Array.isArray(value[0])) {
+        // It's a serialized Map - merge with existing
+        const existingMap = this.sharedContext.get(key) as Map<string, unknown> | undefined;
+        const newMap = existingMap ?? new Map<string, unknown>();
+        for (const [k, v] of value as Array<[string, unknown]>) {
+          newMap.set(k, v);
+        }
+        this.sharedContext.set(key, newMap as any);
+      } else {
+        // Simple value - just set it
+        this.sharedContext.set(key, value as any);
+      }
+    }
+  }
+
+  /**
+   * Get deferred edges for cross-chunk resolution.
+   * Returns serializable format for worker thread transfer.
+   */
+  getDeferredEdges(): Array<{
+    edgeType: string;
+    sourceNodeId: string;
+    targetName: string;
+    targetType: string;
+    targetFilePath?: string;
+  }> {
+    return this.accumulatedDeferredEdges.map((e) => ({
+      edgeType: e.edgeType,
+      sourceNodeId: e.sourceNodeId,
+      targetName: e.targetName,
+      targetType: e.targetType,
+      targetFilePath: e.targetFilePath,
+    }));
+  }
+
+  /**
+   * Merge deferred edges from workers for resolution.
+   */
+  mergeDeferredEdges(
+    edges: Array<{
+      edgeType: string;
+      sourceNodeId: string;
+      targetName: string;
+      targetType: string;
+      targetFilePath?: string;
+    }>,
+  ): void {
+    for (const e of edges) {
+      this.accumulatedDeferredEdges.push({
+        edgeType: e.edgeType,
+        sourceNodeId: e.sourceNodeId,
+        targetName: e.targetName,
+        targetType: e.targetType,
+        targetFilePath: e.targetFilePath,
+      });
+    }
   }
 
   /**

@@ -383,12 +383,13 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
 
               if (vendorName) {
                 // Initialize map if not exists
+                // Store nodeId (string) for serialization support in parallel parsing
                 if (!sharedContext?.has('vendorControllers')) {
-                  sharedContext?.set('vendorControllers', new Map<string, ParsedNode>());
+                  sharedContext?.set('vendorControllers', new Map<string, string>());
                 }
 
-                const vendorControllerMap = sharedContext?.get('vendorControllers') as Map<string, ParsedNode>;
-                vendorControllerMap.set(vendorName, parsedNode);
+                const vendorControllerMap = sharedContext?.get('vendorControllers') as Map<string, string>;
+                vendorControllerMap.set(vendorName, parsedNode.id);
               }
             }
 
@@ -905,14 +906,14 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
 
         if (!isSourceService || !isTargetController) return false;
 
-        // Get vendor controller map
-        const vendorControllerMap = sharedContext?.get('vendorControllers') as Map<string, ParsedNode>;
+        // Get vendor controller map (stores vendorName → nodeId for serialization)
+        const vendorControllerMap = sharedContext?.get('vendorControllers') as Map<string, string>;
         if (!vendorControllerMap) return false;
 
-        // Check if target is a vendor controller
+        // Check if target is a vendor controller by matching nodeId
         let vendorName = '';
-        for (const [name, controllerNode] of vendorControllerMap) {
-          if (controllerNode.id === parsedTargetNode.id) {
+        for (const [name, nodeId] of vendorControllerMap) {
+          if (nodeId === parsedTargetNode.id) {
             vendorName = name;
             break;
           }
@@ -928,11 +929,12 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
         return propertyTypes.includes(expectedClientName);
       },
       contextExtractor: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode, allParsedNodes, sharedContext) => {
-        const vendorControllerMap = sharedContext?.get('vendorControllers') as Map<string, ParsedNode>;
+        // Map stores vendorName → nodeId
+        const vendorControllerMap = sharedContext?.get('vendorControllers') as Map<string, string>;
         let vendorName = '';
 
-        for (const [name, controllerNode] of vendorControllerMap!) {
-          if (controllerNode.id === parsedTargetNode.id) {
+        for (const [name, nodeId] of vendorControllerMap!) {
+          if (nodeId === parsedTargetNode.id) {
             vendorName = name;
             break;
           }

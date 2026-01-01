@@ -7,6 +7,7 @@ import { glob } from 'glob';
 import { minimatch } from 'minimatch';
 import { Project, SourceFile, Node } from 'ts-morph';
 
+import { EXCLUDE_PATTERNS_GLOB } from '../../constants.js';
 import { NESTJS_FRAMEWORK_SCHEMA } from '../config/nestjs-framework-schema.js';
 import {
   CoreNodeType,
@@ -217,10 +218,35 @@ export interface StreamingParser {
   discoverSourceFiles(): Promise<string[]>;
   parseChunk(filePaths: string[], skipEdgeResolution?: boolean): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }>;
   addExistingNodesFromChunk(nodes: Neo4jNode[]): void;
+  addParsedNodesFromChunk(nodes: Neo4jNode[]): void;
   clearParsedData(): void;
   resolveDeferredEdgesManually(): Promise<Neo4jEdge[]>;
   applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]>;
   getCurrentCounts(): { nodes: number; edges: number; deferredEdges: number };
+  setDeferEdgeEnhancements(defer: boolean): void;
+  loadFrameworkSchemasForType(projectType: string): void;
+  /** Get serialized shared context for parallel parsing */
+  getSerializedSharedContext(): Array<[string, unknown]>;
+  /** Merge serialized shared context from workers */
+  mergeSerializedSharedContext(serialized: Array<[string, unknown]>): void;
+  /** Get deferred edges for cross-chunk resolution */
+  getDeferredEdges(): Array<{
+    edgeType: string;
+    sourceNodeId: string;
+    targetName: string;
+    targetType: string;
+    targetFilePath?: string;
+  }>;
+  /** Merge deferred edges from workers for resolution */
+  mergeDeferredEdges(
+    edges: Array<{
+      edgeType: string;
+      sourceNodeId: string;
+      targetName: string;
+      targetType: string;
+      targetFilePath?: string;
+    }>,
+  ): void;
 }
 
 export interface ParsedEdge {
@@ -282,6 +308,9 @@ export class TypeScriptParser {
   private methodsByClass: Map<string, Map<string, ParsedNode>> = new Map(); // className -> methodName -> node
   private functionsByName: Map<string, ParsedNode> = new Map(); // functionName -> node
   private constructorsByClass: Map<string, ParsedNode> = new Map(); // className -> constructor node
+  // Track already exported items to avoid returning duplicates in streaming mode
+  private exportedNodeIds: Set<string> = new Set();
+  private exportedEdgeIds: Set<string> = new Set();
 
   constructor(
     private workspacePath: string,
@@ -298,8 +327,7 @@ export class TypeScriptParser {
     this.projectId = resolveProjectId(workspacePath, projectId);
     this.lazyLoad = lazyLoad;
 
-    console.log(`🆔 Project ID: ${this.projectId}`);
-    console.log(`📂 Lazy loading: ${lazyLoad ? 'enabled' : 'disabled'}`);
+    debugLog('Parser initialized', { projectId: this.projectId, lazyLoad });
 
     if (lazyLoad) {
       // Lazy mode: create Project without loading any files
@@ -370,35 +398,55 @@ export class TypeScriptParser {
       };
       this.existingNodes.set(node.id, parsedNode);
     }
-    console.log(`📦 Loaded ${nodes.length} existing nodes for edge detection`);
+    debugLog('Loaded existing nodes for edge detection', { count: nodes.length });
   }
 
   async parseWorkspace(filesToParse?: string[]): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
     let sourceFiles: SourceFile[];
 
+    // Determine which files to parse
+    let filePaths: string[];
     if (filesToParse && filesToParse.length > 0) {
-      // In lazy mode, files may not be loaded yet - add them if needed
-      sourceFiles = filesToParse
-        .map((filePath) => {
-          const existing = this.project.getSourceFile(filePath);
-          if (existing) return existing;
-          // Add file to project if not already loaded (lazy mode)
-          try {
-            return this.project.addSourceFileAtPath(filePath);
-          } catch {
-            return undefined;
-          }
-        })
-        .filter((sf): sf is SourceFile => sf !== undefined);
+      filePaths = filesToParse;
+    } else if (this.lazyLoad) {
+      // In lazy mode, use glob-based discovery (consistent with detectChangedFiles)
+      filePaths = await this.discoverSourceFiles();
     } else {
+      // Eager mode - files already loaded from tsconfig
       sourceFiles = this.project.getSourceFiles();
+      for (const sourceFile of sourceFiles) {
+        if (this.shouldSkipFile(sourceFile)) continue;
+        await this.parseCoreTypeScriptV2(sourceFile);
+      }
+      return this.finishParsing();
     }
+
+    // Load files into project (for lazy mode or explicit file list)
+    sourceFiles = filePaths
+      .map((filePath) => {
+        const existing = this.project.getSourceFile(filePath);
+        if (existing) return existing;
+        try {
+          return this.project.addSourceFileAtPath(filePath);
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((sf): sf is SourceFile => sf !== undefined);
 
     for (const sourceFile of sourceFiles) {
       if (this.shouldSkipFile(sourceFile)) continue;
       await this.parseCoreTypeScriptV2(sourceFile);
     }
 
+    return this.finishParsing();
+  }
+
+  /**
+   * Complete parsing by resolving edges and applying enhancements.
+   * Called after all source files have been parsed.
+   */
+  private async finishParsing(): Promise<{ nodes: Neo4jNode[]; edges: Neo4jEdge[] }> {
     await this.resolveDeferredEdges();
 
     await this.applyContextExtractors();
@@ -481,17 +529,21 @@ export class TypeScriptParser {
       }
     }
 
-    if (this.shouldParseVariables(sourceFile.getFilePath())) {
-      for (const varStatement of sourceFile.getVariableStatements()) {
-        for (const varDecl of varStatement.getDeclarations()) {
-          if (this.shouldSkipChildNode(varDecl)) continue;
+    for (const varStatement of sourceFile.getVariableStatements()) {
+      const isExported = varStatement.isExported();
+      if (!isExported && !this.shouldParseVariables(sourceFile.getFilePath())) continue;
+      for (const varDecl of varStatement.getDeclarations()) {
+        if (this.shouldSkipChildNode(varDecl)) continue;
 
-          const variableNode = this.createCoreNode(varDecl, CoreNodeType.VARIABLE_DECLARATION, {}, sourceFileNode.id);
-          this.addNode(variableNode);
-
-          const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, variableNode.id);
-          this.addEdge(containsEdge);
-        }
+        const variableNode = this.createCoreNode(
+          varDecl,
+          CoreNodeType.VARIABLE_DECLARATION,
+          { isExported },
+          sourceFileNode.id,
+        );
+        this.addNode(variableNode);
+        const containsEdge = this.createCoreEdge(CoreEdgeType.CONTAINS, sourceFileNode.id, variableNode.id);
+        this.addEdge(containsEdge);
       }
     }
   }
@@ -1562,7 +1614,7 @@ export class TypeScriptParser {
   }
 
   private async applyContextExtractors(): Promise<void> {
-    console.log('🔧 Applying context extractors...');
+    debugLog('Applying context extractors');
 
     // Apply global context extractors from framework schemas
     for (const frameworkSchema of this.frameworkSchemas) {
@@ -1619,14 +1671,11 @@ export class TypeScriptParser {
   }
 
   private async applyFrameworkEnhancements(): Promise<void> {
-    console.log('🎯 Starting framework enhancements...');
+    await debugLog('Applying framework enhancements', { schemas: this.frameworkSchemas.map((s) => s.name) });
 
     for (const frameworkSchema of this.frameworkSchemas) {
-      console.log(`📦 Applying framework schema: ${frameworkSchema.name}`);
       await this.applyFrameworkSchema(frameworkSchema);
     }
-
-    console.log('✅ Framework enhancements complete');
   }
 
   private async applyFrameworkSchema(schema: FrameworkSchema): Promise<void> {
@@ -1736,7 +1785,7 @@ export class TypeScriptParser {
   }
 
   private async applyEdgeEnhancements(): Promise<void> {
-    console.log('🔗 Applying edge enhancements...');
+    await debugLog('Applying edge enhancements');
 
     for (const frameworkSchema of this.frameworkSchemas) {
       for (const edgeEnhancement of Object.values(frameworkSchema.edgeEnhancements)) {
@@ -2090,6 +2139,8 @@ export class TypeScriptParser {
     this.methodsByClass.clear();
     this.functionsByName.clear();
     this.constructorsByClass.clear();
+    this.exportedNodeIds.clear();
+    this.exportedEdgeIds.clear();
   }
 
   /**
@@ -2147,6 +2198,96 @@ export class TypeScriptParser {
   }
 
   /**
+   * Load framework schemas for a specific project type.
+   * No-op for TypeScriptParser since schemas are loaded in constructor.
+   */
+  public loadFrameworkSchemasForType(_projectType: string): void {
+    // TypeScriptParser already has schemas loaded via constructor/ParserFactory
+  }
+
+  /**
+   * Get serialized shared context for parallel parsing.
+   * Converts Maps to arrays for structured clone compatibility.
+   */
+  public getSerializedSharedContext(): Array<[string, unknown]> {
+    const serialized: Array<[string, unknown]> = [];
+    for (const [key, value] of this.sharedContext) {
+      // Convert nested Maps to arrays
+      if (value instanceof Map) {
+        serialized.push([key, Array.from((value as Map<string, unknown>).entries())]);
+      } else {
+        serialized.push([key, value]);
+      }
+    }
+    return serialized;
+  }
+
+  /**
+   * Merge serialized shared context from workers.
+   * Handles Map merging by combining entries.
+   */
+  public mergeSerializedSharedContext(serialized: Array<[string, unknown]>): void {
+    for (const [key, value] of serialized) {
+      if (Array.isArray(value) && value.length > 0 && Array.isArray(value[0])) {
+        // It's a serialized Map - merge with existing
+        const existingMap = this.sharedContext.get(key) as Map<string, unknown> | undefined;
+        const newMap = existingMap ?? new Map<string, unknown>();
+        for (const [k, v] of value as Array<[string, unknown]>) {
+          newMap.set(k, v);
+        }
+        this.sharedContext.set(key, newMap as any);
+      } else {
+        // Simple value - just set it
+        this.sharedContext.set(key, value as any);
+      }
+    }
+  }
+
+  /**
+   * Get deferred edges for cross-chunk resolution.
+   * Returns serializable format for worker thread transfer.
+   */
+  public getDeferredEdges(): Array<{
+    edgeType: string;
+    sourceNodeId: string;
+    targetName: string;
+    targetType: string;
+    targetFilePath?: string;
+  }> {
+    return this.deferredEdges.map((e) => ({
+      edgeType: e.edgeType,
+      sourceNodeId: e.sourceNodeId,
+      targetName: e.targetName,
+      targetType: e.targetType,
+      targetFilePath: e.targetFilePath,
+    }));
+  }
+
+  /**
+   * Merge deferred edges from workers for resolution.
+   * Converts back to internal format with CoreEdgeType/CoreNodeType.
+   */
+  public mergeDeferredEdges(
+    edges: Array<{
+      edgeType: string;
+      sourceNodeId: string;
+      targetName: string;
+      targetType: string;
+      targetFilePath?: string;
+    }>,
+  ): void {
+    for (const e of edges) {
+      this.deferredEdges.push({
+        edgeType: e.edgeType as CoreEdgeType,
+        sourceNodeId: e.sourceNodeId,
+        targetName: e.targetName,
+        targetType: e.targetType as CoreNodeType,
+        targetFilePath: e.targetFilePath,
+      });
+    }
+  }
+
+  /**
    * Get list of source files in the project.
    * In lazy mode, uses glob to discover files without loading them into memory.
    * Useful for determining total work and creating chunks.
@@ -2158,25 +2299,14 @@ export class TypeScriptParser {
 
     if (this.lazyLoad) {
       // Use glob to find files without loading them into ts-morph
-      // Include both .ts and .tsx files
+      // Use EXCLUDE_PATTERNS_GLOB for consistency with detectChangedFiles
       const pattern = path.join(this.workspacePath, '**/*.{ts,tsx}');
-      const allFiles = await glob(pattern, {
-        ignore: ['**/node_modules/**', '**/*.d.ts'],
+      this.discoveredFiles = await glob(pattern, {
+        ignore: EXCLUDE_PATTERNS_GLOB,
         absolute: true,
       });
 
-      // Apply exclude patterns from parseConfig
-      const excludedPatterns = this.parseConfig.excludePatterns ?? [];
-      this.discoveredFiles = allFiles.filter((filePath) => {
-        for (const excludePattern of excludedPatterns) {
-          if (this.matchesPattern(filePath, excludePattern)) {
-            return false;
-          }
-        }
-        return true;
-      });
-
-      console.log(`🔍 Discovered ${this.discoveredFiles.length} TypeScript files (lazy mode)`);
+      debugLog('Discovered TypeScript files (lazy mode)', { count: this.discoveredFiles.length });
       return this.discoveredFiles;
     } else {
       // Eager mode - files are already loaded
@@ -2259,10 +2389,25 @@ export class TypeScriptParser {
         await this.applyEdgeEnhancements();
       }
 
-      const neo4jNodes = Array.from(this.parsedNodes.values()).map(this.toNeo4jNode);
-      const neo4jEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
+      // Only return nodes/edges that haven't been exported yet (prevents duplicate imports in streaming mode)
+      const newNodes: Neo4jNode[] = [];
+      const newEdges: Neo4jEdge[] = [];
 
-      return { nodes: neo4jNodes, edges: neo4jEdges };
+      for (const node of this.parsedNodes.values()) {
+        if (!this.exportedNodeIds.has(node.id)) {
+          newNodes.push(this.toNeo4jNode(node));
+          this.exportedNodeIds.add(node.id);
+        }
+      }
+
+      for (const edge of this.parsedEdges.values()) {
+        if (!this.exportedEdgeIds.has(edge.id)) {
+          newEdges.push(this.toNeo4jEdge(edge));
+          this.exportedEdgeIds.add(edge.id);
+        }
+      }
+
+      return { nodes: newNodes, edges: newEdges };
     } finally {
       // Always clean up in lazy mode to prevent memory leaks
       if (this.lazyLoad) {
@@ -2344,12 +2489,10 @@ export class TypeScriptParser {
   public async applyEdgeEnhancementsManually(): Promise<Neo4jEdge[]> {
     const edgeCountBefore = this.parsedEdges.size;
 
-    console.log(`🔗 Applying edge enhancements on ${this.parsedNodes.size} accumulated nodes...`);
-
     await this.applyEdgeEnhancements();
 
     const newEdgeCount = this.parsedEdges.size - edgeCountBefore;
-    console.log(`   ✅ Created ${newEdgeCount} edges from edge enhancements`);
+    await debugLog('Edge enhancements applied', { nodeCount: this.parsedNodes.size, newEdges: newEdgeCount });
 
     // Return only the new edges (those created by edge enhancements)
     const allEdges = Array.from(this.parsedEdges.values()).map(this.toNeo4jEdge);
@@ -2370,6 +2513,24 @@ export class TypeScriptParser {
         properties: node.properties,
       };
       this.existingNodes.set(node.id, parsedNode);
+    }
+  }
+
+  /**
+   * Add nodes to parsedNodes for edge enhancement.
+   * Use this when coordinator needs to run edge enhancements on accumulated chunk results.
+   * Unlike addExistingNodesFromChunk, these nodes ARE used as edge sources.
+   */
+  public addParsedNodesFromChunk(nodes: Neo4jNode[]): void {
+    for (const node of nodes) {
+      const parsedNode: ParsedNode = {
+        id: node.id,
+        coreType: node.properties.coreType as CoreNodeType,
+        semanticType: node.properties.semanticType,
+        labels: node.labels,
+        properties: node.properties,
+      };
+      this.parsedNodes.set(node.id, parsedNode);
     }
   }
 }
