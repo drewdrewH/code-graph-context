@@ -1953,6 +1953,12 @@ export class TypeScriptParser {
           }
           break;
 
+        case CoreNodeType.TYPE_ALIAS:
+          if (Node.isTypeAliasDeclaration(astNode)) {
+            return astNode.getName();
+          }
+          break;
+
         default:
           return astNode.getKindName();
       }

@@ -75,8 +75,13 @@ export class ChunkWorkerPool {
   private reject: ((error: Error) => void) | null = null;
   private onChunkComplete: OnChunkComplete | null = null;
   private pendingCallbacks: Promise<void>[] = [];
+  private isShuttingDown = false;
 
-  constructor(private config: PoolConfig) {}
+  constructor(private config: PoolConfig) {
+    process.on('exit', () => {
+      this.forceTerminateAll();
+    });
+  }
 
   /**
    * Process chunks in parallel using worker pool.
@@ -143,13 +148,13 @@ export class ChunkWorkerPool {
     worker.on('error', (error) => {
       debugLog('Worker error', { error: error.message });
       this.reject?.(error);
-      this.terminateAll();
+      void this.shutdown();
     });
 
     worker.on('exit', (code) => {
       if (code !== 0 && this.completedChunks < this.totalChunks) {
         this.reject?.(new Error(`Worker exited with code ${code}`));
-        this.terminateAll();
+        void this.shutdown();
       }
     });
   }
@@ -168,7 +173,7 @@ export class ChunkWorkerPool {
       case 'error':
         debugLog(`Chunk ${msg.chunkIndex} failed`, { error: msg.error });
         this.reject?.(new Error(`Chunk ${msg.chunkIndex} failed: ${msg.error}`));
-        this.terminateAll();
+        void this.shutdown();
         break;
     }
   }
@@ -208,16 +213,15 @@ export class ChunkWorkerPool {
   }
 
   private async completeWhenCallbacksDone(): Promise<void> {
-    // Wait for all pending import callbacks to finish
     try {
       await Promise.all(this.pendingCallbacks);
     } catch (error) {
       this.reject?.(error instanceof Error ? error : new Error(String(error)));
-      this.terminateAll();
+      await this.shutdown();
       return;
     }
 
-    this.terminateAll();
+    await this.shutdown();
     this.resolve?.(this.getStats());
   }
 
@@ -242,9 +246,29 @@ export class ChunkWorkerPool {
     state.worker.postMessage(chunk);
   }
 
-  private terminateAll(): void {
+  /**
+   * Graceful shutdown - lets workers finish cleanup
+   * Call this on normal completion
+   */
+  async shutdown(): Promise<void> {
+    if (this.isShuttingDown) return;
+    this.isShuttingDown = true;
+
+    const exitPromises = this.workers.map(({ worker }) => {
+      return new Promise<void>((resolve) => {
+        worker.on('exit', () => resolve());
+        worker.postMessage({ type: 'terminate' });
+      });
+    });
+
+    await Promise.race([Promise.all(exitPromises), new Promise((resolve) => setTimeout(resolve, 15000))]);
+
+    this.forceTerminateAll();
+  }
+
+  private forceTerminateAll(): void {
     for (const { worker } of this.workers) {
-      worker.postMessage({ type: 'terminate' });
+      worker.terminate();
     }
     this.workers = [];
   }

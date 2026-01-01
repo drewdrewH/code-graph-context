@@ -23,7 +23,6 @@ import {
   ChunkWorkerReady,
   ChunkWorkerResult,
   ChunkWorkerError,
-  SerializedSharedContext,
   SerializedDeferredEdge,
 } from './chunk-worker.types.js';
 
@@ -78,7 +77,6 @@ const processChunk = async (files: string[], chunkIndex: number): Promise<void> 
     const p = initParser();
 
     // Clear any accumulated data from previous chunks
-    // (parseChunk returns ALL accumulated nodes, not just new ones)
     p.clearParsedData();
 
     // Parse chunk - skip deferred edge resolution (coordinator handles that)
@@ -103,12 +101,11 @@ const processChunk = async (files: string[], chunkIndex: number): Promise<void> 
   }
 };
 
-// Message handler
 parentPort?.on('message', async (msg: CoordinatorToWorkerMessage) => {
   switch (msg.type) {
     case 'chunk':
       await processChunk(msg.files, msg.chunkIndex);
-      sendReady(); // Ready for next chunk
+      sendReady();
       break;
 
     case 'terminate':
@@ -118,5 +115,4 @@ parentPort?.on('message', async (msg: CoordinatorToWorkerMessage) => {
   }
 });
 
-// Signal ready on startup
 sendReady();
