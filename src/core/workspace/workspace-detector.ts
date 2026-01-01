@@ -18,7 +18,7 @@ export interface WorkspacePackage {
   relativePath: string; // Relative path from workspace root (e.g., "packages/auth")
 }
 
-export type WorkspaceType = 'turborepo' | 'pnpm' | 'yarn' | 'npm' | 'single';
+export type WorkspaceType = 'turborepo' | 'pnpm' | 'yarn' | 'npm' | 'nx' | 'single';
 
 export interface WorkspaceConfig {
   type: WorkspaceType;
@@ -68,6 +68,14 @@ export class WorkspaceDetector {
     await debugLog('Checking for turbo.json', { path: turboJsonPath, exists: hasTurboJson });
     if (hasTurboJson) {
       return 'turborepo';
+    }
+
+    // Check for Nx (has nx.json) - check before pnpm/npm since Nx can coexist with them
+    const nxJsonPath = path.join(rootPath, 'nx.json');
+    const hasNxJson = await this.fileExists(nxJsonPath);
+    await debugLog('Checking for nx.json', { path: nxJsonPath, exists: hasNxJson });
+    if (hasNxJson) {
+      return 'nx';
     }
 
     // Check for pnpm workspaces (has pnpm-workspace.yaml)
@@ -125,6 +133,46 @@ export class WorkspaceDetector {
         }
         // Turborepo default patterns
         return ['apps/*', 'packages/*'];
+      }
+
+      case 'nx': {
+        // For Nx, scan for all project.json files to find all projects
+        // This is more reliable than workspaces since Nx projects may not be in package.json workspaces
+        const projectJsonFiles = await glob('**/project.json', {
+          cwd: rootPath,
+          ignore: ['**/node_modules/**', '**/dist/**', '**/build/**'],
+          absolute: false,
+        });
+
+        // Extract unique parent directories (the project roots)
+        const projectDirs = new Set<string>();
+        for (const projectJsonPath of projectJsonFiles) {
+          const projectDir = path.dirname(projectJsonPath);
+          if (projectDir !== '.') {
+            projectDirs.add(projectDir);
+          }
+        }
+
+        if (projectDirs.size > 0) {
+          await debugLog('Found Nx projects via project.json scan', { count: projectDirs.size });
+          return Array.from(projectDirs);
+        }
+
+        // Fallback to package.json workspaces if no project.json files found
+        const packageJsonPath = path.join(rootPath, 'package.json');
+        try {
+          const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
+          if (Array.isArray(packageJson.workspaces)) {
+            return packageJson.workspaces;
+          }
+          if (packageJson.workspaces?.packages) {
+            return packageJson.workspaces.packages;
+          }
+        } catch {
+          // Fall through to defaults
+        }
+        // Nx default patterns
+        return ['apps/*', 'libs/*', 'packages/*', 'src/*/*'];
       }
 
       case 'yarn':
@@ -187,17 +235,27 @@ export class WorkspaceDetector {
         if (seenPaths.has(packagePath)) continue;
         seenPaths.add(packagePath);
 
-        // Check if this is a valid package (has package.json)
+        // Check if this is a valid package (has package.json) or Nx project (has project.json)
         const packageJsonPath = path.join(packagePath, 'package.json');
-        if (!(await this.fileExists(packageJsonPath))) {
+        const projectJsonPath = path.join(packagePath, 'project.json');
+        const hasPackageJson = await this.fileExists(packageJsonPath);
+        const hasProjectJson = await this.fileExists(projectJsonPath);
+
+        if (!hasPackageJson && !hasProjectJson) {
           continue;
         }
 
-        // Read package name
+        // Read package/project name
         let packageName: string;
         try {
-          const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
-          packageName = packageJson.name ?? path.basename(packagePath);
+          if (hasPackageJson) {
+            const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
+            packageName = packageJson.name ?? path.basename(packagePath);
+          } else {
+            // Nx project.json - try to read name from it
+            const projectJson = JSON.parse(await fs.readFile(projectJsonPath, 'utf-8'));
+            packageName = projectJson.name ?? path.basename(packagePath);
+          }
         } catch {
           packageName = path.basename(packagePath);
         }
