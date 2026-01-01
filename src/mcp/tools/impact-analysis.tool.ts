@@ -11,13 +11,29 @@ import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA } from '../constants.js';
 import { createErrorResponse, createSuccessResponse, debugLog, resolveProjectIdOrError } from '../utils.js';
 
-// Default relationship weights for core AST relationships
+/**
+ * Default relationship weights for impact/risk analysis.
+ *
+ * NOTE: These weights are intentionally different from CoreEdge.relationshipWeight
+ * in the core schema. They serve different purposes:
+ *
+ * - Core schema weights (traversalWeight): "What relationships help me understand the code?"
+ *   → CALLS is high (0.85) because following execution flow aids comprehension
+ *
+ * - Impact analysis weights: "What breaks if I modify this node?"
+ *   → EXTENDS/IMPLEMENTS are highest (0.95) because changing a base class/interface
+ *     breaks ALL subclasses/implementers - inheritance is a hard contract
+ *
+ * Example: A class with 50 callers and 10 subclasses
+ * - For traversal: follow the 50 CALLS to understand usage patterns
+ * - For impact: the 10 subclasses are CRITICAL - they inherit the contract
+ */
 const DEFAULT_RELATIONSHIP_WEIGHTS: Record<string, number> = {
-  // Critical - inheritance/interface contracts
+  // Critical - inheritance/interface contracts (changing base breaks ALL children)
   EXTENDS: 0.95,
   IMPLEMENTS: 0.95,
 
-  // High - direct code dependencies
+  // High - direct code dependencies (callers may break but often handle changes)
   CALLS: 0.75,
   HAS_MEMBER: 0.65,
   TYPED_AS: 0.6,
@@ -26,7 +42,7 @@ const DEFAULT_RELATIONSHIP_WEIGHTS: Record<string, number> = {
   IMPORTS: 0.5,
   EXPORTS: 0.5,
 
-  // Lower - structural
+  // Lower - structural (container doesn't break if child changes)
   CONTAINS: 0.3,
   HAS_PARAMETER: 0.3,
   DECORATED_WITH: 0.4,

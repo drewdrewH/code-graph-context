@@ -34,8 +34,11 @@ CORRECT: (n:Class {name: 'DbService'}) - Match on the "name" property instead
 
 Class/service names are NOT Neo4j labels. They are values of the "name" property on Class nodes.
 
-The ONLY valid node labels are: SourceFile, Class, Method, Function, Property, Interface,
-Constructor, Parameter, Enum, Variable, Import, Export, Decorator
+IMPORTANT: Get valid labels from the schema file (discoveredSchema.nodeTypes).
+Do NOT guess or assume labels - always check the schema first.
+
+If the user mentions AST-style names like "ClassDeclaration" or "MethodDeclaration",
+look in discoveredSchema.nodeTypes for the corresponding label (usually the shorter form like "Class" or "Method").
 
 Examples:
 - "Find DbService" -> MATCH (n:Class {name: 'DbService'}) WHERE n.projectId = $projectId RETURN n
@@ -44,13 +47,19 @@ Examples:
 - "Classes with @Controller decorator" -> MATCH (c:Class) WHERE c.projectId = $projectId AND c.semanticType = 'NestController' RETURN c
 ===============================================
 
-The schema file (neo4j-apoc-schema.json) contains two sections:
+The schema file (neo4j-apoc-schema.json) is THE SOURCE OF TRUTH for all labels. It contains:
 1. rawSchema: Complete Neo4j APOC schema with all node labels, properties, and relationships in the graph
 2. discoveredSchema: Dynamically discovered graph structure including:
-   - nodeTypes: Array of {label, count, properties} for each node type in the graph
-   - relationshipTypes: Array of {type, count, connections} showing relationship types and what they connect
-   - semanticTypes: Array of {type, count} showing semantic node classifications (e.g., Service, Controller)
-   - commonPatterns: Array of {from, relationship, to, count} showing frequent relationship patterns
+   - nodeTypes: Array of {label, count, properties} - THESE ARE THE ONLY VALID LABELS. Use the "label" field from each entry.
+   - relationshipTypes: Array of {type, count, connections} - showing relationship types and what they connect
+   - semanticTypes: Array of {type, count} - showing framework-specific node classifications (e.g., NestService, NestController)
+   - commonPatterns: Array of {from, relationship, to, count} - showing frequent relationship patterns in the graph
+
+CRITICAL: Before generating any Cypher query:
+1. ALWAYS read discoveredSchema.nodeTypes from the schema file
+2. ONLY use labels that appear in the "label" field of nodeTypes entries
+3. If the user mentions AST type names (ClassDeclaration, MethodDeclaration, etc.), find the corresponding label in nodeTypes
+4. If a label doesn't exist in nodeTypes, DO NOT USE IT - suggest an alternative or explain what labels are available
 
 IMPORTANT - Multi-Project Isolation:
 All nodes have a "projectId" property that isolates data between different projects.
@@ -66,14 +75,16 @@ Your response must be a valid JSON object with this exact structure:
 
 Note: Do NOT include projectId in the parameters object - it will be injected automatically by the system.
 
-Query Generation Process:
-1. CHECK NODE TYPES: Look at discoveredSchema.nodeTypes to see available node labels and their properties
-2. CHECK RELATIONSHIPS: Look at discoveredSchema.relationshipTypes to understand how nodes connect
-3. CHECK SEMANTIC TYPES: Look at discoveredSchema.semanticTypes for higher-level node classifications
-4. REVIEW PATTERNS: Check discoveredSchema.commonPatterns for frequent relationship patterns in the graph
-5. EXAMINE PROPERTIES: Use rawSchema for exact property names and types
-6. GENERATE QUERY: Write the Cypher query using only node labels, relationships, and properties that exist in the schema
-7. ADD PROJECT FILTER: Always include WHERE n.projectId = $projectId for every node pattern in the query
+Query Generation Process - FOLLOW THIS EXACTLY:
+1. SEARCH THE SCHEMA FILE FIRST: Use file_search to read neo4j-apoc-schema.json BEFORE generating any query
+2. EXTRACT VALID LABELS: From discoveredSchema.nodeTypes, get the "label" field from each entry - these are the ONLY valid labels
+3. CHECK RELATIONSHIPS: Look at discoveredSchema.relationshipTypes to understand how nodes connect
+4. CHECK SEMANTIC TYPES: Look at discoveredSchema.semanticTypes for framework-specific classifications (these are PROPERTY values, not labels)
+5. REVIEW PATTERNS: Check discoveredSchema.commonPatterns for frequent relationship patterns in the graph
+6. EXAMINE PROPERTIES: Use rawSchema for exact property names and types
+7. GENERATE QUERY: Write the Cypher query using ONLY labels, relationships, and properties from the schema
+8. VALIDATE LABELS: Double-check that every label in your query exists in discoveredSchema.nodeTypes
+9. ADD PROJECT FILTER: Always include WHERE n.projectId = $projectId for every node pattern in the query
 
 Critical Rules:
 - ALWAYS filter by projectId on every node in the query (e.g., WHERE n.projectId = $projectId)
@@ -589,6 +600,7 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
    */
   private validateLabelUsage(cypher: string): void {
     // Valid labels from the schema (actual Neo4j labels, not AST type names)
+    // These match the "label" field in discoveredSchema.nodeTypes
     const validLabels = new Set([
       'SourceFile',
       'Class',
@@ -603,6 +615,8 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
       'Import',
       'Export',
       'Decorator',
+      'TypeAlias',
+      'TypeScript', // Secondary label on most nodes
     ]);
 
     // Extract all labels from query (matches :LabelName patterns in node definitions)

@@ -203,13 +203,13 @@ export const QUERIES = {
 
   // Get cross-file edges before deletion (edges where one endpoint is outside the subgraph)
   // These will be recreated after import using deterministic IDs
+  // Uses filePath matching instead of relationship traversal to avoid following INJECTS/IMPORTS
   GET_CROSS_FILE_EDGES: `
-    MATCH (sf:SourceFile)
-    WHERE sf.filePath IN $filePaths AND sf.projectId = $projectId
-    OPTIONAL MATCH (sf)-[*]->(child)
-    WITH collect(DISTINCT sf) + collect(DISTINCT child) AS nodesToDelete
-    UNWIND nodesToDelete AS n
-    MATCH (n)-[r]-(other)
+    MATCH (n)
+    WHERE n.filePath IN $filePaths AND n.projectId = $projectId
+    WITH collect(DISTINCT n) AS nodesToDelete
+    UNWIND nodesToDelete AS node
+    MATCH (node)-[r]-(other)
     WHERE NOT other IN nodesToDelete AND other.projectId = $projectId
     RETURN DISTINCT
       startNode(r).id AS startNodeId,
@@ -219,11 +219,12 @@ export const QUERIES = {
   `,
 
   // Delete source file subgraphs (nodes and all their edges)
+  // Uses filePath matching to delete only nodes belonging to the specified files
+  // Avoids following INJECTS/IMPORTS edges which would delete nodes from other files
   DELETE_SOURCE_FILE_SUBGRAPHS: `
-    MATCH (sf:SourceFile)
-    WHERE sf.filePath IN $filePaths AND sf.projectId = $projectId
-    OPTIONAL MATCH (sf)-[*]->(child)
-    DETACH DELETE sf, child
+    MATCH (n)
+    WHERE n.filePath IN $filePaths AND n.projectId = $projectId
+    DETACH DELETE n
   `,
 
   // Recreate cross-file edges after import (uses deterministic IDs)
