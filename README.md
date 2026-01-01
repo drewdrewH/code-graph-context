@@ -20,9 +20,11 @@ A Model Context Protocol (MCP) server that builds rich code graphs to provide de
 - **Natural Language Querying**: Convert natural language questions into Cypher queries using OpenAI assistants API
 - **Framework-Aware & Customizable**: Built-in NestJS schema with ability to define custom framework patterns via configuration
 - **Weighted Graph Traversal**: Intelligent traversal that scores paths based on relationship importance, query relevance, and depth
-- **Workspace & Monorepo Support**: Auto-detects Turborepo, pnpm, Yarn, and npm workspaces
+- **Workspace & Monorepo Support**: Auto-detects Nx, Turborepo, pnpm, Yarn, and npm workspaces
+- **Parallel Parsing**: Multi-threaded parsing with configurable worker pool for maximum CPU utilization
 - **Async Parsing**: Background parsing with Worker threads for large codebases without blocking the MCP server
 - **Streaming Import**: Chunked processing for projects with 100+ files to prevent memory issues
+- **TypeAlias Support**: Full parsing of TypeScript type aliases into graph nodes
 - **Incremental Parsing**: Only reparse changed files for faster updates
 - **File Watching**: Real-time monitoring with automatic incremental graph updates on file changes
 - **Impact Analysis**: Assess refactoring risk with dependency analysis (LOW/MEDIUM/HIGH/CRITICAL scoring)
