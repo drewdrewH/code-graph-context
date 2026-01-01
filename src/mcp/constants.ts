@@ -102,7 +102,8 @@ Use list_projects to see available projects and get the project name.
 
 **Tips:**
 - Import nodes store file paths, not module names (use 'path containing X')
-- Node types: SourceFile, ClassDeclaration, FunctionDeclaration, MethodDeclaration, InterfaceDeclaration
+- Node types: SourceFile, Class, Function, Method, Interface, Property, Parameter, Constructor, Import, Export, Decorator, Enum, Variable, TypeAlias
+- Relationships: CONTAINS, IMPORTS, EXTENDS, IMPLEMENTS, HAS_MEMBER, HAS_PARAMETER, TYPED_AS, CALLS, DECORATED_WITH
 - For NestJS, use semanticType property instead of decorators (e.g., semanticType = 'NestController')
 
 **Relationships (Core):**
