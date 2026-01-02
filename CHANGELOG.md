@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - Swarm Coordination - 2025-01-XX
+
+### Added
+
+#### Swarm Coordination Tools
+
+Multi-agent coordination through stigmergic pheromone markers in the code graph. Enables parallel agents to coordinate work without direct messaging.
+
+- **`swarm_pheromone`**: Leave pheromone markers on code nodes
+  - Pheromone types with exponential decay: `exploring` (2min), `modifying` (10min), `claiming` (1hr), `completed` (24hr), `warning` (never), `blocked` (5min), `proposal` (1hr), `needs_review` (30min)
+  - Workflow states are mutually exclusive per agent+node (setting one removes others)
+  - Flags (`warning`, `proposal`, `needs_review`) can coexist with workflow states
+  - `swarmId` parameter for grouping related agents and enabling bulk cleanup
+  - Creates `MARKS` relationship to target code nodes
+
+- **`swarm_sense`**: Query pheromones in the code graph
+  - Real-time intensity calculation with exponential decay
+  - Filter by types, nodeIds, agentIds, swarmId
+  - `excludeAgentId` to see what other agents are doing
+  - Optional statistics by pheromone type
+  - Cleanup of fully decayed pheromones (intensity < 0.01)
+  - Self-healing nodeId matching (survives graph rebuilds)
+
+- **`swarm_cleanup`**: Bulk delete pheromones after swarm completion
+  - Delete by swarmId (clean up entire swarm)
+  - Delete by agentId (clean up single agent)
+  - Delete all in project (with caution)
+  - `keepTypes` to preserve warnings by default
+  - `dryRun` mode to preview deletions
+
+#### Shared Constants
+
+- **`swarm-constants.ts`**: Consolidated pheromone configuration
+  - `PHEROMONE_CONFIG` with half-lives and descriptions
+  - `PheromoneType` union type
+  - `getHalfLife()` helper function
+  - `WORKFLOW_STATES` and `FLAG_TYPES` arrays
+
+### Changed
+
+- **Debug Logging**: Added `debugLog` calls to MCP server components for better observability
+  - Server initialization and stats
+  - Watch manager notifications
+  - Incremental parser operations
+  - Tool call logging infrastructure
+
+### Fixed
+
+- **Neo4j OOM**: Optimized edge detection query to prevent out-of-memory errors on large codebases
+
+---
+
 ## [2.2.0] - Parallel Parsing & TypeAlias Support - 2025-01-XX
 
 ### Added
@@ -342,6 +394,7 @@ Existing graphs created with previous versions are **not compatible** with this 
 
 ---
 
+[2.3.0]: https://github.com/drewdrewH/code-graph-context/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/drewdrewH/code-graph-context/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/drewdrewH/code-graph-context/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/drewdrewH/code-graph-context/compare/v1.1.0...v2.0.0

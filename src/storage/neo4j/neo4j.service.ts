@@ -245,15 +245,19 @@ export const QUERIES = {
 
   // Get existing nodes (excluding files being reparsed) for edge target matching
   // Returns minimal info needed for edge detection: id, name, coreType, semanticType
+  // NOTE: Using property-based query instead of path traversal to avoid Cartesian explosion
+  // The old query `MATCH (sf:SourceFile)-[*]->(n)` caused OOM with large graphs
   GET_EXISTING_NODES_FOR_EDGE_DETECTION: `
-    MATCH (sf:SourceFile)-[*]->(n)
-    WHERE NOT sf.filePath IN $excludeFilePaths AND sf.projectId = $projectId
-    RETURN n.id AS id,
+    MATCH (n)
+    WHERE n.projectId = $projectId
+      AND n.filePath IS NOT NULL
+      AND NOT n.filePath IN $excludeFilePaths
+    RETURN DISTINCT n.id AS id,
            n.name AS name,
            n.coreType AS coreType,
            n.semanticType AS semanticType,
            labels(n) AS labels,
-           sf.filePath AS filePath
+           n.filePath AS filePath
   `,
 
   EXPLORE_ALL_CONNECTIONS: (

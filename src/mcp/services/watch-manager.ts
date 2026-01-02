@@ -103,9 +103,14 @@ class WatchManager {
    * Send a notification via MCP logging (if supported)
    */
   private sendNotification(notification: WatchNotification): void {
+    debugLog('sendNotification called', { type: notification.type, projectId: notification.projectId });
+
     if (!this.mcpServer) {
+      debugLog('sendNotification: no MCP server, skipping', {});
       return;
     }
+
+    debugLog('sendNotification: sending to MCP', { type: notification.type });
 
     // sendLoggingMessage returns a Promise - use .catch() to handle rejection
     this.mcpServer
@@ -114,9 +119,16 @@ class WatchManager {
         logger: 'file-watcher',
         data: notification,
       })
-      .catch(() => {
-        // MCP logging not supported - silently ignore
+      .then(() => {
+        debugLog('sendNotification: MCP message sent successfully', { type: notification.type });
+      })
+      .catch((error) => {
+        // MCP logging not supported - log but don't crash
         // This is expected if the client doesn't support logging capability
+        debugLog('sendNotification: MCP message failed (expected if client lacks logging)', {
+          type: notification.type,
+          error: String(error)
+        });
       });
   }
 
@@ -224,7 +236,7 @@ class WatchManager {
    * Handle a file system event
    */
   private handleFileEvent(state: WatcherState, type: WatchEventType, filePath: string): void {
-    debugLog('File event received', { type, filePath, projectId: state.projectId, status: state.status });
+    debugLog('handleFileEvent START', { type, filePath, projectId: state.projectId, status: state.status, isStopping: state.isStopping });
 
     // Ignore events if watcher is stopping or not active
     if (state.isStopping || state.status !== 'active') {
@@ -269,21 +281,38 @@ class WatchManager {
     });
 
     // Set new debounce timer
+    debugLog('handleFileEvent: setting debounce timer', { debounceMs: state.config.debounceMs });
     state.debounceTimer = setTimeout(() => {
+      debugLog('handleFileEvent: debounce timer fired, calling processEvents', { projectId: state.projectId });
       this.processEvents(state).catch((error) => {
+        debugLog('handleFileEvent: processEvents error', { error: String(error) });
         console.error('[WatchManager] Error in processEvents:', error);
       });
     }, state.config.debounceMs);
+    debugLog('handleFileEvent END', { pendingCount: state.pendingEvents.length });
   }
 
   /**
    * Process accumulated file events after debounce period
    */
   private async processEvents(state: WatcherState): Promise<void> {
+    await debugLog('processEvents START', {
+      projectId: state.projectId,
+      isProcessing: state.isProcessing,
+      pendingCount: state.pendingEvents.length,
+      isStopping: state.isStopping
+    });
+
     // Don't process if already processing, no events, or watcher is stopping
-    if (state.isProcessing || state.pendingEvents.length === 0 || state.isStopping) return;
+    if (state.isProcessing || state.pendingEvents.length === 0 || state.isStopping) {
+      await debugLog('processEvents: early return', {
+        reason: state.isProcessing ? 'already processing' : state.pendingEvents.length === 0 ? 'no events' : 'stopping'
+      });
+      return;
+    }
 
     state.isProcessing = true;
+    await debugLog('processEvents: set isProcessing=true', {});
     const events = [...state.pendingEvents];
     state.pendingEvents = [];
     state.debounceTimer = null;
@@ -307,7 +336,15 @@ class WatchManager {
         throw new Error('Incremental parse handler not configured');
       }
 
+      await debugLog('processEvents: calling incrementalParseHandler', {
+        projectPath: state.projectPath,
+        projectId: state.projectId
+      });
       const result = await this.incrementalParseHandler(state.projectPath, state.projectId, state.tsconfigPath);
+      await debugLog('processEvents: incrementalParseHandler returned', {
+        nodesUpdated: result.nodesUpdated,
+        edgesUpdated: result.edgesUpdated
+      });
 
       state.lastUpdateTime = new Date();
       const elapsedMs = Date.now() - startTime;
@@ -333,6 +370,7 @@ class WatchManager {
       );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      await debugLog('processEvents: error caught', { error: errorMessage });
 
       this.sendNotification({
         type: 'incremental_parse_failed',
@@ -348,6 +386,7 @@ class WatchManager {
       console.error(`[WatchManager] Incremental parse failed for ${state.projectId}:`, error);
     } finally {
       state.isProcessing = false;
+      await debugLog('processEvents END', { projectId: state.projectId, isProcessing: state.isProcessing });
     }
   }
 
@@ -357,12 +396,17 @@ class WatchManager {
   private handleWatcherError(state: WatcherState, error: unknown): void {
     state.status = 'error';
     state.errorMessage = error instanceof Error ? error.message : String(error);
-    debugLog('Watcher error', { projectId: state.projectId, error: state.errorMessage });
+    debugLog('handleWatcherError START', { projectId: state.projectId, error: state.errorMessage });
 
     // Clean up the failed watcher to prevent it from staying in error state indefinitely
-    this.stopWatching(state.projectId).catch((cleanupError) => {
-      console.error(`[WatchManager] Failed to cleanup errored watcher ${state.projectId}:`, cleanupError);
-    });
+    this.stopWatching(state.projectId)
+      .then(() => {
+        debugLog('handleWatcherError: cleanup succeeded', { projectId: state.projectId });
+      })
+      .catch((cleanupError) => {
+        debugLog('handleWatcherError: cleanup failed', { projectId: state.projectId, cleanupError: String(cleanupError) });
+        console.error(`[WatchManager] Failed to cleanup errored watcher ${state.projectId}:`, cleanupError);
+      });
   }
 
   /**
@@ -371,11 +415,20 @@ class WatchManager {
    * Promise is tracked on state to allow cleanup during stop
    */
   private syncMissedChanges(state: WatcherState): void {
-    if (!this.incrementalParseHandler) return;
+    debugLog('syncMissedChanges START', { projectId: state.projectId });
+    if (!this.incrementalParseHandler) {
+      debugLog('syncMissedChanges: no handler, skipping', {});
+      return;
+    }
 
     // Track the promise on state so stopWatching can wait for it
     state.syncPromise = this.incrementalParseHandler(state.projectPath, state.projectId, state.tsconfigPath)
       .then((result) => {
+        debugLog('syncMissedChanges: completed', {
+          projectId: state.projectId,
+          nodesUpdated: result.nodesUpdated,
+          edgesUpdated: result.edgesUpdated
+        });
         if (result.nodesUpdated > 0 || result.edgesUpdated > 0) {
           console.log(
             `[WatchManager] Synced missed changes for ${state.projectId}: ` +
@@ -384,12 +437,14 @@ class WatchManager {
         }
       })
       .catch((error) => {
+        debugLog('syncMissedChanges: error', { projectId: state.projectId, error: String(error), isStopping: state.isStopping });
         // Only log if watcher hasn't been stopped
         if (!state.isStopping) {
           console.error(`[WatchManager] Failed to sync missed changes for ${state.projectId}:`, error);
         }
       })
       .finally(() => {
+        debugLog('syncMissedChanges END', { projectId: state.projectId });
         state.syncPromise = undefined;
       });
   }
