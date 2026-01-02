@@ -30,6 +30,7 @@ A Model Context Protocol (MCP) server that builds rich code graphs to provide de
 - **Impact Analysis**: Assess refactoring risk with dependency analysis (LOW/MEDIUM/HIGH/CRITICAL scoring)
 - **Dead Code Detection**: Find unreferenced exports, uncalled private methods, unused interfaces with confidence scoring
 - **Duplicate Code Detection**: Identify structural duplicates (identical AST) and semantic duplicates (similar logic via embeddings)
+- **Swarm Coordination**: Multi-agent stigmergic coordination through pheromone markers with exponential decay
 - **High Performance**: Optimized Neo4j storage with vector indexing for fast retrieval
 - **MCP Integration**: Seamless integration with Claude Code and other MCP-compatible tools
 
@@ -255,6 +256,9 @@ npm run build
 | `natural_language_to_cypher` | Convert natural language to Cypher | **Advanced queries** - complex graph queries |
 | `detect_dead_code` | Find unreferenced exports, uncalled methods, unused interfaces | **Code cleanup** - identify potentially removable code |
 | `detect_duplicate_code` | Find structural and semantic code duplicates | **Refactoring** - identify DRY violations |
+| `swarm_pheromone` | Leave pheromone markers on code nodes | **Multi-agent** - stigmergic coordination |
+| `swarm_sense` | Query pheromones in the code graph | **Multi-agent** - sense what other agents are doing |
+| `swarm_cleanup` | Bulk delete pheromones | **Multi-agent** - cleanup after swarm completion |
 | `test_neo4j_connection` | Verify database connectivity | **Health check** - troubleshooting |
 
 > **Note**: All query tools (`search_codebase`, `traverse_from_node`, `impact_analysis`, `natural_language_to_cypher`) require a `projectId` parameter. Use `list_projects` to discover available projects.
@@ -754,6 +758,67 @@ await mcp.call('stop_watch_project', {
 - Maximum 10 concurrent watchers
 - 1000 pending events per watcher
 - Graceful cleanup on server shutdown
+
+#### 8. Swarm Coordination Tools
+**Purpose**: Enable multiple parallel agents to coordinate work through stigmergic pheromone markers in the code graph—no direct messaging needed.
+
+**Core Concepts:**
+- **Pheromones**: Markers attached to graph nodes that decay over time
+- **swarmId**: Groups related agents for bulk cleanup when done
+- **Workflow States**: `exploring`, `claiming`, `modifying`, `completed`, `blocked` (mutually exclusive per agent+node)
+- **Flags**: `warning`, `proposal`, `needs_review` (can coexist with workflow states)
+
+**Pheromone Types & Decay:**
+| Type | Half-Life | Use |
+|------|-----------|-----|
+| `exploring` | 2 min | Browsing/reading |
+| `modifying` | 10 min | Active work |
+| `claiming` | 1 hour | Ownership |
+| `completed` | 24 hours | Done |
+| `warning` | Never | Danger |
+| `blocked` | 5 min | Stuck |
+| `proposal` | 1 hour | Awaiting approval |
+| `needs_review` | 30 min | Review requested |
+
+```typescript
+// Orchestrator: Generate swarm ID and spawn agents
+const swarmId = `swarm_${Date.now()}`;
+
+// Agent: Check what's claimed before working
+await mcp.call('swarm_sense', {
+  projectId: 'my-backend',
+  swarmId,
+  types: ['claiming', 'modifying']
+});
+
+// Agent: Claim a node before working
+await mcp.call('swarm_pheromone', {
+  projectId: 'my-backend',
+  nodeId: 'proj_xxx:ClassDeclaration:abc123',  // From search_codebase or traverse_from_node
+  type: 'claiming',
+  agentId: 'agent_1',
+  swarmId
+});
+
+// Agent: Mark complete when done
+await mcp.call('swarm_pheromone', {
+  projectId: 'my-backend',
+  nodeId: 'proj_xxx:ClassDeclaration:abc123',
+  type: 'completed',
+  agentId: 'agent_1',
+  swarmId,
+  data: { summary: 'Added soft delete support' }
+});
+
+// Orchestrator: Clean up when swarm is done
+await mcp.call('swarm_cleanup', {
+  projectId: 'my-backend',
+  swarmId,
+  keepTypes: ['warning']  // Preserve warnings
+});
+```
+
+**Important**: Node IDs must come from graph tool responses (`search_codebase`, `traverse_from_node`). Never fabricate node IDs—they are hash-based strings like `proj_xxx:ClassDeclaration:abc123`.
 
 ### Workflow Examples
 
