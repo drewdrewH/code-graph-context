@@ -35,6 +35,9 @@ export const TOOL_NAMES = {
   listWatchers: 'list_watchers',
   detectDeadCode: 'detect_dead_code',
   detectDuplicateCode: 'detect_duplicate_code',
+  swarmPheromone: 'swarm_pheromone',
+  swarmSense: 'swarm_sense',
+  swarmCleanup: 'swarm_cleanup',
 } as const;
 
 // Tool Metadata
@@ -358,6 +361,123 @@ Parameters:
 - 0.80-0.85: Moderate similarity, worth reviewing
 
 Use this to identify refactoring opportunities and reduce code duplication.`,
+  },
+  [TOOL_NAMES.swarmPheromone]: {
+    title: 'Swarm Pheromone',
+    description: `Leave a pheromone marker on a code node for stigmergic coordination between agents.
+
+**What is Stigmergy?**
+Agents coordinate indirectly by leaving markers (pheromones) on code nodes. Other agents sense these markers and adapt their behavior. No direct messaging needed.
+
+**Pheromone Types:**
+- exploring: "I'm looking at this" (2 min half-life)
+- modifying: "I'm actively working on this" (10 min half-life)
+- claiming: "This is my territory" (1 hour half-life)
+- completed: "I finished work here" (24 hour half-life)
+- warning: "Danger - don't touch" (never decays)
+- blocked: "I'm stuck on this" (5 min half-life)
+- proposal: "Proposed artifact awaiting approval" (1 hour half-life)
+- needs_review: "Someone should check this" (30 min half-life)
+
+**Parameters:**
+- nodeId: The code node ID to mark
+- type: Type of pheromone (see above)
+- agentId: Your unique agent identifier
+- swarmId: Swarm ID from orchestrator (for bulk cleanup)
+- intensity: 0.0-1.0, how strong the signal (default: 1.0)
+- data: Optional metadata (summary, reason, etc.)
+- remove: Set true to remove the pheromone
+
+**Workflow states** (exploring, claiming, modifying, completed, blocked) are mutually exclusive per agent+node. Setting one automatically removes others.
+
+**Usage Pattern:**
+1. Before starting work: swarm_sense to check what's claimed
+2. Claim your target: swarm_pheromone({ nodeId, type: "claiming", agentId, swarmId })
+3. Refresh periodically if working long
+4. Mark complete: swarm_pheromone({ nodeId, type: "completed", agentId, swarmId, data: { summary: "..." } })
+
+**Decay:**
+Pheromones automatically fade over time. If an agent dies, its markers decay and work becomes available again.`,
+  },
+  [TOOL_NAMES.swarmSense]: {
+    title: 'Swarm Sense',
+    description: `Query pheromones in the code graph to sense what other agents are doing.
+
+**What This Does:**
+Returns active pheromones with their current intensity (after decay). Use this to:
+- See what nodes are being worked on
+- Avoid conflicts with other agents
+- Find unclaimed work
+- Check if your dependencies are being modified
+
+**Parameters:**
+- swarmId: Filter by swarm ID (see only this swarm's pheromones)
+- types: Filter by pheromone types (e.g., ["modifying", "claiming"])
+- nodeIds: Check specific nodes
+- agentIds: Filter by specific agents
+- excludeAgentId: Exclude your own pheromones (see what OTHERS are doing)
+- minIntensity: Minimum intensity after decay (default: 0.3)
+- limit: Max results (default: 50)
+- includeStats: Get summary statistics by type
+- cleanup: Remove fully decayed pheromones (intensity < 0.01)
+
+**Usage Pattern:**
+\`\`\`
+// Before starting work, check what's taken
+swarm_sense({
+  types: ["modifying", "claiming"],
+  minIntensity: 0.3
+})
+
+// Check a specific node before modifying
+swarm_sense({
+  nodeIds: ["proj_xxx:Service:UserService"],
+  types: ["modifying", "warning"]
+})
+
+// See what other agents are doing (exclude self)
+swarm_sense({
+  excludeAgentId: "my-agent-id",
+  types: ["exploring", "modifying"]
+})
+\`\`\`
+
+**Decay:**
+Intensity decreases over time (exponential decay). A pheromone with intensity 0.25 is almost gone. Below minIntensity threshold, it's not returned.`,
+  },
+  [TOOL_NAMES.swarmCleanup]: {
+    title: 'Swarm Cleanup',
+    description: `Bulk delete pheromones after a swarm completes.
+
+**When to use:**
+Call this when a swarm finishes to clean up all its pheromones. Prevents pollution for future swarms.
+
+**Parameters:**
+- projectId: Required - the project
+- swarmId: Delete all pheromones from this swarm
+- agentId: Delete all pheromones from this specific agent
+- all: Set true to delete ALL pheromones in project (use with caution)
+- keepTypes: Pheromone types to preserve (default: ["warning"])
+- dryRun: Preview what would be deleted without deleting
+
+**Must specify one of:** swarmId, agentId, or all=true
+
+**Examples:**
+\`\`\`
+// Clean up after a swarm completes
+swarm_cleanup({ projectId: "backend", swarmId: "swarm_abc123" })
+
+// Preview what would be deleted
+swarm_cleanup({ projectId: "backend", swarmId: "swarm_abc123", dryRun: true })
+
+// Clean up a specific agent's pheromones
+swarm_cleanup({ projectId: "backend", agentId: "swarm_abc123_auth" })
+
+// Nuclear option: delete all (except warnings)
+swarm_cleanup({ projectId: "backend", all: true })
+\`\`\`
+
+**Note:** \`warning\` pheromones are preserved by default. Pass \`keepTypes: []\` to delete everything.`,
   },
 } as const;
 
