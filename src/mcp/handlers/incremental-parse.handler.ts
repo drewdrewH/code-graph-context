@@ -63,6 +63,7 @@ export const performIncrementalParse = async (
 
     // If no changes, return early
     if (filesToReparse.length === 0 && filesToDelete.length === 0) {
+      await debugLog('Incremental parse: no changes, returning early', {});
       return {
         nodesUpdated: 0,
         edgesUpdated: 0,
@@ -71,30 +72,42 @@ export const performIncrementalParse = async (
       };
     }
 
+    await debugLog('Incremental parse: changes detected, continuing', { filesToReparse: filesToReparse.length });
+
     let savedCrossFileEdges: CrossFileEdge[] = [];
     const filesToRemoveFromGraph = [...filesToDelete, ...filesToReparse];
 
     if (filesToRemoveFromGraph.length > 0) {
+      await debugLog('Incremental parse: getting cross-file edges', { count: filesToRemoveFromGraph.length });
       // Save cross-file edges before deletion
       savedCrossFileEdges = await getCrossFileEdges(neo4jService, filesToRemoveFromGraph, resolvedId);
+      await debugLog('Incremental parse: got cross-file edges', { savedCount: savedCrossFileEdges.length });
 
+      await debugLog('Incremental parse: deleting old subgraphs', {});
       // Delete old subgraphs
       await deleteSourceFileSubgraphs(neo4jService, filesToRemoveFromGraph, resolvedId);
+      await debugLog('Incremental parse: deleted old subgraphs', {});
     }
 
     let nodesImported = 0;
     let edgesImported = 0;
 
     if (filesToReparse.length > 0) {
+      await debugLog('Incremental parse: loading existing nodes', {});
       // Load existing nodes for edge detection
       const existingNodes = await loadExistingNodesForEdgeDetection(neo4jService, filesToRemoveFromGraph, resolvedId);
+      await debugLog('Incremental parse: loaded existing nodes', { count: existingNodes.length });
       parser.setExistingNodes(existingNodes);
 
+      await debugLog('Incremental parse: parsing workspace', { fileCount: filesToReparse.length });
       // Parse only changed files
       await parser.parseWorkspace(filesToReparse);
+      await debugLog('Incremental parse: parsed workspace', {});
 
       // Export graph data
+      await debugLog('Incremental parse: exporting to JSON', {});
       const { nodes, edges } = parser.exportToJson();
+      await debugLog('Incremental parse: exported to JSON', { nodeCount: nodes.length, edgeCount: edges.length });
 
       // Get framework schemas if available (use unknown as intermediate to access private property)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -116,27 +129,34 @@ export const performIncrementalParse = async (
       };
 
       // Write to JSON file (required by GraphGeneratorHandler)
+      await debugLog('Incremental parse: writing JSON file', {});
       const outputPath = join(projectPath, FILE_PATHS.graphOutput);
       writeFileSync(outputPath, JSON.stringify(graphData, null, LOG_CONFIG.jsonIndentation));
+      await debugLog('Incremental parse: wrote JSON file', { outputPath });
 
       // Update Project node
+      await debugLog('Incremental parse: updating project node', {});
       await neo4jService.run(UPSERT_PROJECT_QUERY, {
         projectId: resolvedId,
         path: projectPath,
         name: projectName,
         status: 'complete',
       });
+      await debugLog('Incremental parse: updated project node', {});
 
       // Import nodes and edges (clearExisting = false for incremental)
+      await debugLog('Incremental parse: starting graph import', {});
       graphHandler.setProjectId(resolvedId);
       try {
         const result = await graphHandler.generateGraph(outputPath, DEFAULTS.batchSize, false);
         nodesImported = result.nodesImported;
         edgesImported = result.edgesImported;
+        await debugLog('Incremental parse: graph import completed', { nodesImported, edgesImported });
       } finally {
         // Clean up temporary graph.json file
         try {
           unlinkSync(outputPath);
+          await debugLog('Incremental parse: cleaned up temp file', {});
         } catch {
           // Ignore cleanup errors - file may not exist or be inaccessible
         }
