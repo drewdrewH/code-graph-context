@@ -40,12 +40,12 @@ Check rawSchema keys for ALL valid labels. Labels fall into two categories:
    SourceFile, Class, Function, Method, Interface, Property, Parameter, Constructor, Import, Export, Decorator, Enum, Variable, TypeAlias
 
 2. FRAMEWORK LABELS (from framework enhancements - check rawSchema keys):
-   These REPLACE the core label for enhanced nodes. Examples: Service, Controller, Module, Entity, DTO, Repository, HttpEndpoint, MessageHandler
-   A node with label "Service" was originally a Class but got enhanced - use the framework label.
+   These REPLACE the core label for enhanced nodes. Check rawSchema keys for available framework labels in this project.
+   A node with a framework label was originally a Class but got enhanced - always use the actual label from rawSchema.
 
 === AST TYPE NAME MAPPING ===
 AST type names are NOT valid labels. Always map them:
-- ClassDeclaration → Class (or framework label: Service, Controller, etc.)
+- ClassDeclaration → Class (or a framework label from rawSchema if enhanced)
 - FunctionDeclaration → Function
 - MethodDeclaration → Method
 - InterfaceDeclaration → Interface
@@ -53,15 +53,15 @@ AST type names are NOT valid labels. Always map them:
 - ParameterDeclaration → Parameter
 
 === FINDING SPECIFIC NODES ===
-Class/service names are property values, NOT labels:
-WRONG: (n:DbService), (n:UserController) - class names as labels
-CORRECT: (n:Service {name: 'DbService'}), (n:Controller {name: 'UserController'})
-CORRECT: (n:Class {name: 'SomeClass'}) - if no framework enhancement
+Class/entity names are property values, NOT labels:
+WRONG: (n:MyClassName) - using class names as labels
+CORRECT: (n:Class {name: 'MyClassName'}) - use label from rawSchema, name as property
+CORRECT: (n:LabelFromSchema {name: 'EntityName'}) - always check rawSchema for valid labels
 
 Examples:
 - "Count all classes" -> MATCH (n:Class) WHERE n.projectId = $projectId RETURN count(n)
-- "Find DbService" -> MATCH (n:Service {name: 'DbService'}) WHERE n.projectId = $projectId RETURN n
-- "Methods in UserController" -> MATCH (c:Controller {name: 'UserController'})-[:HAS_MEMBER]->(m:Method) WHERE c.projectId = $projectId RETURN m
+- "Find class by name" -> MATCH (n:Class {name: 'ClassName'}) WHERE n.projectId = $projectId RETURN n
+- "Methods in a class" -> MATCH (c:Class {name: 'ClassName'})-[:HAS_MEMBER]->(m:Method) WHERE c.projectId = $projectId RETURN m
 
 === PROJECT ISOLATION (REQUIRED) ===
 ALL queries MUST filter by projectId on every node pattern:
@@ -78,12 +78,12 @@ Do NOT include projectId in parameters - it's injected automatically.
 
 Query Generation Process - FOLLOW THIS EXACTLY:
 1. SEARCH THE SCHEMA FILE FIRST: Use file_search to read neo4j-apoc-schema.json BEFORE generating any query
-2. EXTRACT VALID LABELS: The keys in rawSchema ARE the valid labels (e.g., "Service", "Controller", "Class", "Method")
+2. EXTRACT VALID LABELS: The keys in rawSchema ARE the valid labels (e.g., "Class", "Method", "Function", etc.)
    - rawSchema is ALWAYS available and contains all labels currently in the graph
    - discoveredSchema.nodeTypes (if available) provides counts and sample properties
 3. CHECK RELATIONSHIPS: Look at rawSchema[label].relationships for each label to see available relationship types
 4. CHECK SEMANTIC TYPES: Look at discoveredSchema.semanticTypes (if available) for framework-specific classifications
-   - semanticTypes are PROPERTY values (e.g., semanticType = 'NestController'), not labels
+   - semanticTypes are PROPERTY values stored in n.semanticType, NOT labels - check discoveredSchema for valid values
 5. REVIEW PATTERNS: Check discoveredSchema.commonPatterns (if available) for frequent relationship patterns
 6. EXAMINE PROPERTIES: Use rawSchema[label].properties for exact property names and types
 7. GENERATE QUERY: Write the Cypher query using ONLY labels, relationships, and properties from the schema
@@ -119,14 +119,14 @@ CRITICAL: Do NOT confuse EXTENDS (inheritance) with HAS_MEMBER (composition). "e
 
 EXTENDS DIRECTION - CRITICAL:
 The arrow points FROM child TO parent. The child "extends" toward the parent.
-- CORRECT: (child:Class)-[:EXTENDS]->(parent:Class {name: 'BaseService'})
-- WRONG: (parent:Class {name: 'BaseService'})-[:EXTENDS]->(child:Class)
+- CORRECT: (child:Class)-[:EXTENDS]->(parent:Class {name: 'ParentClassName'})
+- WRONG: (parent:Class {name: 'ParentClassName'})-[:EXTENDS]->(child:Class)
 
 Examples:
-- "Classes extending DbService" -> MATCH (c:Class)-[:EXTENDS]->(p:Class {name: 'DbService'}) WHERE c.projectId = $projectId RETURN c
-- "What extends BaseController" -> MATCH (c:Class)-[:EXTENDS]->(p:Class {name: 'BaseController'}) WHERE c.projectId = $projectId RETURN c
-- "Services that extend DbService with >5 methods" ->
-  MATCH (c:Class)-[:EXTENDS]->(p:Class {name: 'DbService'})
+- "Classes extending X" -> MATCH (c:Class)-[:EXTENDS]->(p:Class {name: 'X'}) WHERE c.projectId = $projectId RETURN c
+- "What extends Y" -> MATCH (c:Class)-[:EXTENDS]->(p:Class {name: 'Y'}) WHERE c.projectId = $projectId RETURN c
+- "Classes that extend X with >5 methods" ->
+  MATCH (c:Class)-[:EXTENDS]->(p:Class {name: 'X'})
   WHERE c.projectId = $projectId
   WITH c
   MATCH (c)-[:HAS_MEMBER]->(m:Method)
@@ -134,27 +134,30 @@ Examples:
   WHERE methodCount > 5
   RETURN c, methodCount
 
-=== SEMANTIC TYPES (Framework Classifications) ===
-Nodes have a semanticType property set by framework detection. Check discoveredSchema.semanticTypes for actual values in this project.
+=== SEMANTIC TYPES (Framework Classifications) - PRIMARY QUERY METHOD ===
+*** MOST QUERIES SHOULD USE SEMANTIC TYPES - CHECK discoveredSchema.semanticTypes FIRST ***
 
-The semanticType is a PROPERTY, not a label. Query it like:
-- MATCH (c) WHERE c.projectId = $projectId AND c.semanticType = 'NestController' RETURN c
-- MATCH (c) WHERE c.projectId = $projectId AND c.semanticType CONTAINS 'Service' RETURN c
+Semantic types are the PRIMARY way to find framework-specific nodes. They are stored in:
+  discoveredSchema.semanticTypes -> Array of all semantic type values in this project
 
-Common semantic type patterns (but ALWAYS verify against discoveredSchema.semanticTypes):
+The semanticType is a PROPERTY on nodes, not a label. Query patterns:
+- EXACT MATCH: MATCH (c) WHERE c.projectId = $projectId AND c.semanticType = 'ExactTypeFromSchema' RETURN c
+- PARTIAL MATCH: MATCH (c) WHERE c.projectId = $projectId AND c.semanticType CONTAINS 'Pattern' RETURN c
+
+Common semantic type patterns (verify against discoveredSchema.semanticTypes):
 - Controllers: types containing 'Controller'
 - Services: types containing 'Service', 'Provider', or 'Injectable'
 - Repositories: types containing 'Repository', 'DAL', or 'DAO'
 - Modules: types containing 'Module'
 
-FALLBACK - If no semantic types are discovered, use name patterns:
+FALLBACK - If semantic type doesn't exist, use name patterns:
 - "Find all controllers" -> MATCH (c:Class) WHERE c.projectId = $projectId AND c.name CONTAINS 'Controller' RETURN c
 - "Find all services" -> MATCH (c:Class) WHERE c.projectId = $projectId AND c.name CONTAINS 'Service' RETURN c
 
 === DECORATOR QUERIES ===
 Use DECORATED_WITH relationship to find nodes with specific decorators:
-- "Classes with @Controller" -> MATCH (c:Class)-[:DECORATED_WITH]->(d:Decorator {name: 'Controller'}) WHERE c.projectId = $projectId RETURN c
-- "Methods with @Get" -> MATCH (m:Method)-[:DECORATED_WITH]->(d:Decorator {name: 'Get'}) WHERE m.projectId = $projectId RETURN m
+- "Classes with @X" -> MATCH (c:Class)-[:DECORATED_WITH]->(d:Decorator {name: 'X'}) WHERE c.projectId = $projectId RETURN c
+- "Methods with @Y" -> MATCH (m:Method)-[:DECORATED_WITH]->(d:Decorator {name: 'Y'}) WHERE m.projectId = $projectId RETURN m
 
 === MODULE/DIRECTORY QUERIES ===
 Use filePath property for location-based queries:
@@ -162,15 +165,15 @@ Use filePath property for location-based queries:
 - "in auth folder" -> WHERE n.filePath CONTAINS '/auth/'
 
 Examples:
-- "Services in account folder" ->
-  MATCH (s:Service) WHERE s.projectId = $projectId AND s.filePath CONTAINS '/account/' RETURN s
+- "Items in account folder" ->
+  MATCH (c:Class) WHERE c.projectId = $projectId AND c.filePath CONTAINS '/account/' RETURN c
 - FALLBACK (if no framework labels):
   MATCH (c:Class) WHERE c.projectId = $projectId AND c.name CONTAINS 'Service' AND c.filePath CONTAINS '/account/' RETURN c
 
 === FRAMEWORK-SPECIFIC PATTERNS ===
 
-Backend Projects (decorator-based like NestJS):
-- Check rawSchema for framework labels (Service, Controller, Module, etc.) that REPLACE Class label
+Backend Projects (decorator-based frameworks):
+- Check rawSchema for framework labels that REPLACE the Class label
 - Use framework relationships (INJECTS, EXPOSES, etc.) from rawSchema[label].relationships
 - Check discoveredSchema.semanticTypes for framework classifications
 
@@ -323,18 +326,21 @@ ${nodeTypes}
 === VALID RELATIONSHIP TYPES ===
 ${relTypes}
 
-=== SEMANTIC TYPES (these are PROPERTY values, NOT labels) ===
-${semTypes}
-Query semantic types via property: WHERE n.semanticType = 'TypeName'
+=== SEMANTIC TYPES - USE THESE FOR FRAMEWORK QUERIES ===
+Available semantic types in this project: ${semTypes}
+
+*** SEMANTIC TYPES ARE THE PRIMARY WAY TO QUERY FRAMEWORK-SPECIFIC NODES ***
+Query pattern: WHERE n.semanticType = 'TypeFromListAbove'
+Example: MATCH (n:Class) WHERE n.projectId = $projectId AND n.semanticType = '${semanticTypeList[0] ?? 'SemanticType'}' RETURN n
 ${frameworkHint}
 
 === CRITICAL RULES ===
 1. Use ONLY the labels listed above after the colon (:Label)
-2. Semantic types are PROPERTY values, NOT labels
-3. Class/service names are PROPERTY values, NOT labels
-4. WRONG: (n:MyService), (n:MyController) - names as labels
-5. CORRECT: (n:Service {name: 'MyService'}), (n:Controller {name: 'MyController'})
-6. CORRECT: (n:Class) WHERE n.semanticType = 'Service'
+2. Semantic types are PROPERTY values, NOT labels - use WHERE n.semanticType = 'Type'
+3. Class/entity names are PROPERTY values, NOT labels - use WHERE n.name = 'Name'
+4. WRONG: (n:ClassName) - using names as labels
+5. CORRECT: (n:Class {name: 'ClassName'}) or (n:LabelFromSchema {name: 'Name'})
+6. CORRECT: (n:Class) WHERE n.semanticType = 'TypeFromSemanticTypesList'
 `.trim();
     } catch (error) {
       console.warn('Failed to load schema for prompt injection:', error);
