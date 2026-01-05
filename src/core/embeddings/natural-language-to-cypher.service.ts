@@ -317,16 +317,24 @@ Provide ONLY the JSON response with no additional text, markdown formatting, or 
       }
 
       return `
-ACTUAL GRAPH SCHEMA (use these exact labels):
+=== VALID NODE LABELS (use ONLY these after the colon) ===
+${nodeTypes}
 
-Node Types: ${nodeTypes}
-Relationship Types: ${relTypes}
-Semantic Types: ${semTypes}
+=== VALID RELATIONSHIP TYPES ===
+${relTypes}
+
+=== SEMANTIC TYPES (these are PROPERTY values, NOT labels) ===
+${semTypes}
+Query semantic types via property: WHERE n.semanticType = 'TypeName'
 ${frameworkHint}
-CRITICAL: Use ONLY these node labels. Do NOT invent labels like :DbService, :UserService, etc.
-For queries about specific classes/services, use: (n:Class {name: 'ClassName'})
-For inheritance: (child:Class)-[:EXTENDS]->(parent:Class {name: 'ParentName'})
-For decorator-based queries: Use semanticType property with values from the discovered semantic types above.
+
+=== CRITICAL RULES ===
+1. Use ONLY the labels listed above after the colon (:Label)
+2. Semantic types are PROPERTY values, NOT labels
+3. Class/service names are PROPERTY values, NOT labels
+4. WRONG: (n:MyService), (n:MyController) - names as labels
+5. CORRECT: (n:Service {name: 'MyService'}), (n:Controller {name: 'MyController'})
+6. CORRECT: (n:Class) WHERE n.semanticType = 'Service'
 `.trim();
     } catch (error) {
       console.warn('Failed to load schema for prompt injection:', error);
@@ -587,7 +595,7 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
 
   /**
    * Load valid labels dynamically from the schema file.
-   * Returns all keys from rawSchema which represent actual Neo4j labels.
+   * Returns all keys from rawSchema AND discoveredSchema.nodeTypes which represent actual Neo4j labels.
    */
   private loadValidLabelsFromSchema(): Set<string> {
     // Fallback to core TypeScript labels if schema not available
@@ -618,13 +626,24 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
       const content = fs.readFileSync(this.schemaPath, 'utf-8');
       const schema = JSON.parse(content);
 
-      if (!schema.rawSchema?.records?.[0]?._fields?.[0]) {
-        return coreLabels;
+      const allLabels = new Set(coreLabels);
+
+      // Extract labels from rawSchema keys
+      if (schema.rawSchema?.records?.[0]?._fields?.[0]) {
+        const schemaLabels = Object.keys(schema.rawSchema.records[0]._fields[0]);
+        schemaLabels.forEach((label) => allLabels.add(label));
       }
 
-      // Extract all keys from rawSchema - these are the valid labels
-      const schemaLabels = Object.keys(schema.rawSchema.records[0]._fields[0]);
-      return new Set([...coreLabels, ...schemaLabels]);
+      // Also extract labels from discoveredSchema.nodeTypes (includes framework labels)
+      if (schema.discoveredSchema?.nodeTypes) {
+        for (const nodeType of schema.discoveredSchema.nodeTypes) {
+          if (nodeType.label) {
+            allLabels.add(nodeType.label);
+          }
+        }
+      }
+
+      return allLabels;
     } catch {
       return coreLabels;
     }
