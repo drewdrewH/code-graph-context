@@ -481,7 +481,8 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         },
         {
           type: 'function',
-          pattern: (parsedNode: any) => parsedNode.sourceNode?.getName()?.endsWith('Service'),
+          // Use pre-extracted name property (works after AST cleanup in streaming/chunking)
+          pattern: (parsedNode: any) => parsedNode.properties?.name?.endsWith('Service'),
           confidence: 0.7,
           priority: 7,
         },
@@ -563,12 +564,11 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
       detectionPatterns: [
         {
           type: 'function',
+          // Use pre-extracted decoratorNames from context (works after AST cleanup in streaming/chunking)
           pattern: (parsedNode: any) => {
-            const node = parsedNode.sourceNode;
-            if (!node) return false;
-            const decorators = node.getDecorators?.() ?? [];
+            const decoratorNames = parsedNode.properties?.context?.decoratorNames ?? [];
             const messageDecorators = ['MessagePattern', 'EventPattern'];
-            return decorators.some((d: any) => messageDecorators.includes(d.getName()));
+            return messageDecorators.some((d) => decoratorNames.includes(d));
           },
           confidence: 0.98,
           priority: 15,
@@ -616,12 +616,11 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
       detectionPatterns: [
         {
           type: 'function',
+          // Use pre-extracted decoratorNames from context (works after AST cleanup in streaming/chunking)
           pattern: (parsedNode: any) => {
-            const node = parsedNode.sourceNode;
-            if (!node) return false;
-            const decorators = node.getDecorators?.() ?? [];
+            const decoratorNames = parsedNode.properties?.context?.decoratorNames ?? [];
             const httpDecorators = ['Get', 'Post', 'Put', 'Delete', 'Patch', 'Head', 'Options'];
-            return decorators.some((d: any) => httpDecorators.includes(d.getName()));
+            return httpDecorators.some((d) => decoratorNames.includes(d));
           },
           confidence: 0.98,
           priority: 15,
@@ -779,18 +778,12 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
           return false;
         }
 
-        // Access AST nodes to check parent relationship
-        const sourceNode = parsedSourceNode.sourceNode;
-        const targetNode = parsedTargetNode.sourceNode;
+        // CRITICAL FIX: Use pre-extracted parentClassName property (works after AST cleanup in streaming/chunking)
+        // The method's parentClassName should match the controller's name
+        const targetParentClassName = parsedTargetNode.properties?.parentClassName;
+        const sourceName = parsedSourceNode.properties?.name;
 
-        if (sourceNode && targetNode) {
-          const methodParent = targetNode.getParent();
-          if (methodParent === sourceNode) {
-            return true;
-          }
-        }
-
-        return false;
+        return !!targetParentClassName && targetParentClassName === sourceName;
       },
       contextExtractor: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => ({
         endpointType: 'RPC',
@@ -818,18 +811,12 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
           return false;
         }
 
-        // Access AST nodes to check parent relationship
-        const sourceNode = parsedSourceNode.sourceNode;
-        const targetNode = parsedTargetNode.sourceNode;
+        // CRITICAL FIX: Use pre-extracted parentClassName property (works after AST cleanup in streaming/chunking)
+        // The method's parentClassName should match the controller's name
+        const targetParentClassName = parsedTargetNode.properties?.parentClassName;
+        const sourceName = parsedSourceNode.properties?.name;
 
-        if (sourceNode && targetNode) {
-          const methodParent = targetNode.getParent();
-          if (methodParent === sourceNode) {
-            return true;
-          }
-        }
-
-        return false;
+        return !!targetParentClassName && targetParentClassName === sourceName;
       },
       contextExtractor: (parsedSourceNode: ParsedNode, parsedTargetNode: ParsedNode) => ({
         httpMethod: parsedTargetNode.properties?.context?.httpMethod ?? '',

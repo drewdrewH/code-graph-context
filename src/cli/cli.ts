@@ -316,7 +316,7 @@ program
   .option('-p, --port <port>', 'Neo4j Bolt port', '7687')
   .option('--http-port <port>', 'Neo4j Browser port', '7474')
   .option('--password <password>', 'Neo4j password', 'PASSWORD')
-  .option('-m, --memory <size>', 'Max heap memory (e.g., 2G, 4G)', '2G')
+  .option('-m, --memory <size>', 'Max heap memory (e.g., 2G, 4G)', '4G')
   .option('-f, --force', 'Recreate container even if exists')
   .action(runInit);
 
