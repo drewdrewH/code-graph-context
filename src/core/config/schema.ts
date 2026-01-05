@@ -150,6 +150,7 @@ export interface Neo4jNodeProperties {
   mtime?: number;
   size?: number;
   parentClassName?: string; // Parent class name for methods/properties/constructors
+  typeAnnotation?: string; // Type annotation text for variable declarations
 
   // === DUPLICATE DETECTION ===
   normalizedHash?: string; // SHA256 hash of normalized code for structural duplicate detection
@@ -242,6 +243,7 @@ export interface PropertyDefinition {
     source?: string | ((node: any) => any);
     defaultValue?: any;
     contextKey?: string; // For context-based extraction
+    transform?: string; // Method to call on result (e.g., 'getText' for AST nodes)
   };
   neo4j: {
     indexed: boolean;
@@ -872,6 +874,12 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
           type: 'boolean',
           extraction: { method: 'static', defaultValue: false }, // We'll set this manually
           neo4j: { indexed: true, unique: false, required: true },
+        },
+        {
+          name: 'typeAnnotation',
+          type: 'string',
+          extraction: { method: 'ast', source: 'getTypeNode', transform: 'getText' },
+          neo4j: { indexed: false, unique: false, required: false },
         },
       ],
       relationships: [],

@@ -481,7 +481,7 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
         },
         {
           type: 'function',
-          pattern: (node: any) => node.getName()?.endsWith('Service'),
+          pattern: (parsedNode: any) => parsedNode.sourceNode?.getName()?.endsWith('Service'),
           confidence: 0.7,
           priority: 7,
         },
@@ -563,7 +563,9 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
       detectionPatterns: [
         {
           type: 'function',
-          pattern: (node: any) => {
+          pattern: (parsedNode: any) => {
+            const node = parsedNode.sourceNode;
+            if (!node) return false;
             const decorators = node.getDecorators?.() ?? [];
             const messageDecorators = ['MessagePattern', 'EventPattern'];
             return decorators.some((d: any) => messageDecorators.includes(d.getName()));
@@ -614,7 +616,9 @@ export const NESTJS_FRAMEWORK_SCHEMA: FrameworkSchema = {
       detectionPatterns: [
         {
           type: 'function',
-          pattern: (node: any) => {
+          pattern: (parsedNode: any) => {
+            const node = parsedNode.sourceNode;
+            if (!node) return false;
             const decorators = node.getDecorators?.() ?? [];
             const httpDecorators = ['Get', 'Post', 'Put', 'Delete', 'Patch', 'Head', 'Options'];
             return decorators.some((d: any) => httpDecorators.includes(d.getName()));

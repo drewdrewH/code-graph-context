@@ -622,14 +622,12 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
         {
           type: 'function',
           pattern: (parsedNode: ParsedNode) => {
-            const node = parsedNode.sourceNode;
-            if (!node || !Node.isVariableDeclaration(node)) return false;
-
-            const name = node.getName();
-            const typeNode = node.getTypeNode();
+            // Use pre-extracted properties (works after AST cleanup in streaming/chunking)
+            const name = parsedNode.properties.name as string;
+            const typeAnnotation = parsedNode.properties.typeAnnotation as string | undefined;
 
             // Check if variable name ends with "Routes" AND has type ModuleRoute[]
-            return !!name.endsWith('Routes') && !!typeNode?.getText().includes('ModuleRoute');
+            return !!name?.endsWith('Routes') && !!typeAnnotation?.includes('ModuleRoute');
           },
           confidence: 1.0,
           priority: 10,
@@ -844,14 +842,8 @@ export const FAIRSQUARE_FRAMEWORK_SCHEMA: FrameworkSchema = {
         if (matchingRoutes.length === 0) return false;
 
         // CRITICAL FIX: Verify the method belongs to the correct controller
-        // Find the parent class of this method by checking the AST node
-        const targetNode = parsedTargetNode.sourceNode;
-        if (!targetNode || !Node.isMethodDeclaration(targetNode)) return false;
-
-        const parentClass = targetNode.getParent();
-        if (!parentClass || !Node.isClassDeclaration(parentClass)) return false;
-
-        const parentClassName = parentClass.getName();
+        // Use pre-extracted parentClassName property (works after AST cleanup in streaming/chunking)
+        const parentClassName = parsedTargetNode.properties.parentClassName as string | undefined;
         if (!parentClassName) return false;
 
         // Check if any matching route's controller name matches the parent class

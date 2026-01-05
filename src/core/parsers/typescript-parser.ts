@@ -730,6 +730,12 @@ export class TypeScriptParser {
           }
           break;
 
+        case CoreNodeType.VARIABLE_DECLARATION:
+          if (Node.isVariableDeclaration(astNode)) {
+            return astNode.getName();
+          }
+          break;
+
         default:
           return astNode.getKindName();
       }
@@ -741,14 +747,19 @@ export class TypeScriptParser {
   }
 
   private extractProperty(astNode: Node, propDef: PropertyDefinition): any {
-    const { method, source, defaultValue } = propDef.extraction;
+    const { method, source, defaultValue, transform } = propDef.extraction;
 
     try {
       switch (method) {
         case 'ast':
           if (typeof source === 'string') {
             const fn = (astNode as any)[source];
-            return typeof fn === 'function' ? fn.call(astNode) : defaultValue;
+            let result = typeof fn === 'function' ? fn.call(astNode) : defaultValue;
+            // Apply transform if specified (e.g., 'getText' on a returned node)
+            if (result && transform && typeof (result as any)[transform] === 'function') {
+              result = (result as any)[transform]();
+            }
+            return result ?? defaultValue;
           }
           return defaultValue;
 
@@ -1592,10 +1603,9 @@ export class TypeScriptParser {
             }
           case 'function':
             if (typeof pattern.pattern === 'function') {
-              // Pass the AST sourceNode to pattern functions, not the ParsedNode wrapper
-              const astNode = node.sourceNode;
-              if (!astNode) return false;
-              return pattern.pattern(astNode);
+              // Pass the ParsedNode to pattern functions
+              // Patterns should use pre-extracted properties for cross-chunk compatibility
+              return pattern.pattern(node);
             }
             return false;
           case 'classname':
