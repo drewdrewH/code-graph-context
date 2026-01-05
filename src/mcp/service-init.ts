@@ -6,6 +6,11 @@
 import fs from 'fs/promises';
 import { join } from 'path';
 
+import {
+  ensureNeo4jRunning,
+  isDockerInstalled,
+  isDockerRunning,
+} from '../cli/neo4j-docker.js';
 import { Neo4jService, QUERIES } from '../storage/neo4j/neo4j.service.js';
 
 import { FILE_PATHS, LOG_CONFIG } from './constants.js';
@@ -13,9 +18,76 @@ import { initializeNaturalLanguageService } from './tools/natural-language-to-cy
 import { debugLog } from './utils.js';
 
 /**
+ * Log startup warnings for missing configuration
+ */
+const checkConfiguration = async (): Promise<void> => {
+  if (!process.env.OPENAI_API_KEY) {
+    console.error(
+      JSON.stringify({
+        level: 'warn',
+        message:
+          '[code-graph-context] OPENAI_API_KEY not set. Semantic search and NL queries unavailable.',
+      }),
+    );
+    await debugLog('Configuration warning', { warning: 'OPENAI_API_KEY not set' });
+  }
+};
+
+/**
+ * Ensure Neo4j is running - auto-start if Docker available, fail if not
+ */
+const ensureNeo4j = async (): Promise<void> => {
+  // Check if Docker is available
+  if (!isDockerInstalled()) {
+    const msg = 'Docker not installed. Install Docker or run: code-graph-context init';
+    console.error(JSON.stringify({ level: 'error', message: `[code-graph-context] ${msg}` }));
+    throw new Error(msg);
+  }
+
+  if (!isDockerRunning()) {
+    const msg = 'Docker not running. Start Docker or run: code-graph-context init';
+    console.error(JSON.stringify({ level: 'error', message: `[code-graph-context] ${msg}` }));
+    throw new Error(msg);
+  }
+
+  const result = await ensureNeo4jRunning();
+
+  if (!result.success) {
+    const msg = `Neo4j failed to start: ${result.error}. Run: code-graph-context init`;
+    console.error(JSON.stringify({ level: 'error', message: `[code-graph-context] ${msg}` }));
+    throw new Error(msg);
+  }
+
+  if (result.action === 'created') {
+    console.error(
+      JSON.stringify({
+        level: 'info',
+        message: '[code-graph-context] Neo4j container created and started',
+      }),
+    );
+  } else if (result.action === 'started') {
+    console.error(
+      JSON.stringify({
+        level: 'info',
+        message: '[code-graph-context] Neo4j container started',
+      }),
+    );
+  }
+
+  await debugLog('Neo4j ready', result);
+};
+
+/**
  * Initialize all external services required by the MCP server
  */
 export const initializeServices = async (): Promise<void> => {
+  // Check for missing configuration (non-fatal warnings)
+  await checkConfiguration();
+
+  // Ensure Neo4j is running (fatal if not)
+  await ensureNeo4j();
+
+  // Initialize services
   await Promise.all([initializeNeo4jSchema(), initializeNaturalLanguageService()]);
 };
 

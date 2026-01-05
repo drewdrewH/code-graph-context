@@ -30,7 +30,7 @@
   "license": "MIT",
   "main": "dist/mcp/mcp.server.js",
   "bin": {
-    "code-graph-context": "dist/mcp/mcp.server.js"
+    "code-graph-context": "dist/cli/cli.js"
   },
   "files": [
     "dist/**/*",

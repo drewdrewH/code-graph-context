@@ -65,100 +65,90 @@ The system uses a dual-schema approach:
 
 Choose the installation method that works best for you:
 
-#### Option 1: Development Install (From Source)
+#### Option 1: NPM Install (Recommended)
 
-Best for: Contributing to the project or customizing the code
-
-1. **Clone the repository:**
 ```bash
-git clone https://github.com/drewdrewH/code-graph-context.git
-cd code-graph-context
-```
-
-2. **Install dependencies:**
-```bash
-npm install
-```
-
-3. **Set up Neo4j using Docker:**
-```bash
-docker-compose up -d
-```
-
-This will start Neo4j with:
-- Web interface: http://localhost:7474
-- Bolt connection: bolt://localhost:7687
-- Username: `neo4j`, Password: `PASSWORD`
-
-4. **Configure environment variables:**
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
-
-5. **Build the project:**
-```bash
-npm run build
-```
-
-6. **Add to Claude Code:**
-```bash
-claude mcp add code-graph-context node /absolute/path/to/code-graph-context/dist/mcp/mcp.server.js
-```
-
-#### Option 2: NPM Install (Global Package)
-
-Best for: Easy setup and automatic updates
-
-1. **Install the package globally:**
-```bash
+# Install globally
 npm install -g code-graph-context
-```
 
-2. **Set up Neo4j** (choose one):
+# Set up Neo4j (requires Docker)
+code-graph-context init
 
-**Option A: Docker (Recommended)**
-```bash
-docker run -d \
-  --name code-graph-neo4j \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/PASSWORD \
-  -e NEO4J_PLUGINS='["apoc"]' \
-  neo4j:5.23
-```
-
-**Option B: Neo4j Desktop**
-- Download from [neo4j.com/download](https://neo4j.com/download/)
-- Install APOC plugin
-- Start database
-
-**Option C: Neo4j Aura (Cloud)**
-- Create free account at [neo4j.com/cloud/aura](https://neo4j.com/cloud/platform/aura-graph-database/)
-- Note your connection URI and credentials
-
-3. **Add to Claude Code:**
-```bash
+# Add to Claude Code
 claude mcp add code-graph-context code-graph-context
 ```
 
-Then configure in your MCP config file (`~/.config/claude/config.json`):
+Then configure your OpenAI API key in `~/.config/claude/config.json`:
 ```json
 {
   "mcpServers": {
     "code-graph-context": {
       "command": "code-graph-context",
       "env": {
-        "OPENAI_API_KEY": "sk-your-key-here",
-        "NEO4J_URI": "bolt://localhost:7687",
-        "NEO4J_USER": "neo4j",
-        "NEO4J_PASSWORD": "PASSWORD"
+        "OPENAI_API_KEY": "sk-your-key-here"
       }
     }
   }
 }
 ```
 
-**Note:** The env vars can be configured for any Neo4j instance - local, Docker, cloud (Aura), or enterprise.
+#### Option 2: From Source
+
+```bash
+# Clone and build
+git clone https://github.com/drewdrewH/code-graph-context.git
+cd code-graph-context
+npm install
+npm run build
+
+# Set up Neo4j
+code-graph-context init
+
+# Add to Claude Code (use absolute path)
+claude mcp add code-graph-context node /absolute/path/to/code-graph-context/dist/cli/cli.js
+```
+
+### CLI Commands
+
+The package includes a CLI for managing Neo4j:
+
+```bash
+code-graph-context init [options]   # Set up Neo4j container
+code-graph-context status           # Check Docker/Neo4j status
+code-graph-context stop             # Stop Neo4j container
+```
+
+**Init options:**
+```
+-p, --port <port>       Bolt port (default: 7687)
+--http-port <port>      Browser port (default: 7474)
+--password <password>   Neo4j password (default: PASSWORD)
+-m, --memory <size>     Heap memory (default: 2G)
+-f, --force             Recreate container
+```
+
+### Alternative Neo4j Setup
+
+If you prefer not to use the CLI, you can set up Neo4j manually:
+
+**Docker Compose:**
+```bash
+docker-compose up -d
+```
+
+**Docker Run:**
+```bash
+docker run -d \
+  --name code-graph-neo4j \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/PASSWORD \
+  -e 'NEO4J_PLUGINS=["apoc"]' \
+  neo4j:5.23
+```
+
+**Neo4j Desktop:** Download from [neo4j.com/download](https://neo4j.com/download/) and install APOC plugin.
+
+**Neo4j Aura (Cloud):** Create account at [neo4j.com/cloud/aura](https://neo4j.com/cloud/platform/aura-graph-database/) and configure connection URI in env vars.
 
 ### Verify Installation
 
