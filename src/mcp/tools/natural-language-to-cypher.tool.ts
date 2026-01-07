@@ -3,12 +3,14 @@
  * Converts natural language queries to Cypher using OpenAI GPT-4
  */
 
+import { join } from 'path';
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { NaturalLanguageToCypherService } from '../../core/embeddings/natural-language-to-cypher.service.js';
 import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
-import { TOOL_NAMES, TOOL_METADATA, MESSAGES } from '../constants.js';
+import { TOOL_NAMES, TOOL_METADATA, MESSAGES, FILE_PATHS } from '../constants.js';
 import {
   createErrorResponse,
   createSuccessResponse,
@@ -26,7 +28,8 @@ let naturalLanguageToCypherService: NaturalLanguageToCypherService | null = null
 export const initializeNaturalLanguageService = async (): Promise<void> => {
   try {
     const service = new NaturalLanguageToCypherService();
-    const schemaPath = 'neo4j-apoc-schema.json';
+    // Use same path as service-init.ts writes to (process.cwd())
+    const schemaPath = join(process.cwd(), FILE_PATHS.schemaOutput);
 
     await service.getOrCreateAssistant(schemaPath);
     naturalLanguageToCypherService = service;
