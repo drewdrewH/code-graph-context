@@ -87,8 +87,9 @@ export const initializeServices = async (): Promise<void> => {
   // Ensure Neo4j is running (fatal if not)
   await ensureNeo4j();
 
-  // Initialize services
-  await Promise.all([initializeNeo4jSchema(), initializeNaturalLanguageService()]);
+  // Initialize services sequentially - schema must be written before NL service reads it
+  await initializeNeo4jSchema();
+  await initializeNaturalLanguageService();
 };
 
 /**
