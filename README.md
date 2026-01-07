@@ -40,7 +40,7 @@ The MCP server consists of several key components:
 
 ### Core Components
 
-1. **TypeScript Parser** (`src/core/parsers/typescript-parser-v2.ts`): Uses `ts-morph` to parse TypeScript AST and extract code entities
+1. **TypeScript Parser** (`src/core/parsers/typescript-parser.ts`): Uses `ts-morph` to parse TypeScript AST and extract code entities
 2. **Graph Storage** (`src/storage/neo4j/neo4j.service.ts`): Neo4j integration for storing and querying the code graph
 3. **Embeddings Service** (`src/core/embeddings/embeddings.service.ts`): OpenAI integration for semantic search capabilities
 4. **MCP Server** (`src/mcp/mcp.server.ts`): Main MCP server providing tools for code analysis
@@ -74,11 +74,11 @@ npm install -g code-graph-context
 # Set up Neo4j (requires Docker)
 code-graph-context init
 
-# Add to Claude Code
-claude mcp add code-graph-context code-graph-context
+# Add to Claude Code (--scope user makes it available globally)
+claude mcp add --scope user code-graph-context code-graph-context
 ```
 
-Then configure your OpenAI API key in `~/.config/claude/config.json`:
+Then configure your OpenAI API key in `~/.claude.json`:
 ```json
 {
   "mcpServers": {
@@ -173,61 +173,6 @@ claude mcp list
 ```
 Should show: `code-graph-context: ✓ Connected`
 
-### Troubleshooting
-
-**"APOC plugin not found"**
-```bash
-# Check Neo4j logs
-docker logs code-graph-neo4j
-
-# Verify APOC loaded
-docker exec code-graph-neo4j cypher-shell -u neo4j -p PASSWORD "CALL apoc.help('apoc')"
-
-# Restart if needed
-docker restart code-graph-neo4j
-```
-
-**"OPENAI_API_KEY environment variable is required"**
-- Get your API key from: https://platform.openai.com/api-keys
-- Add to Claude Code MCP config `env` section
-- Verify with: `echo $OPENAI_API_KEY` (if using shell env)
-
-**"Connection refused bolt://localhost:7687"**
-```bash
-# Check Neo4j is running
-docker ps | grep neo4j
-
-# Check ports are not in use
-lsof -i :7687
-
-# Start Neo4j if stopped
-docker start code-graph-neo4j
-
-# Check Neo4j logs
-docker logs code-graph-neo4j
-```
-
-**"Neo4j memory errors"**
-```bash
-# Increase memory in docker-compose.yml or docker run:
--e NEO4J_server_memory_heap_max__size=8G
--e NEO4J_dbms_memory_transaction_total_max=8G
-
-docker restart code-graph-neo4j
-```
-
-**"MCP server not responding"**
-```bash
-# Check Claude Code logs
-cat ~/Library/Logs/Claude/mcp*.log
-
-# Test server directly
-node /path/to/code-graph-context/dist/mcp/mcp.server.js
-
-# Rebuild if needed
-npm run build
-```
-
 ## Tool Usage Guide
 
 ### Available Tools
@@ -312,176 +257,61 @@ graph LR
 ### Tool Deep Dive
 
 #### 1. `search_codebase` - Your Starting Point
-**Purpose**: Semantic search using vector embeddings to find the most relevant code nodes.
+Semantic search using vector embeddings. Returns JSON:API normalized response.
 
-**Response Structure**: Returns normalized JSON using JSON:API pattern to eliminate duplication:
-- **nodes**: Map of unique nodes (stored once, referenced by ID)
-- **depths**: Array of depth levels with relationship chains
-- **Source Code**: Included by default (truncated to 1000 chars: first 500 + last 500)
-- **Statistics**: Total connections, unique files, max depth
+```typescript
+search_codebase({ projectId: "my-backend", query: "JWT token validation" })
+```
 
-**Real Response Example**:
+**Response Structure**:
 ```json
-// Query: "JWT token validation"
-// Returns:
 {
+  "projectRoot": "/path/to/project",
   "totalConnections": 22,
-  "uniqueFiles": 2,
+  "uniqueFiles": 5,
   "maxDepth": 3,
-  "startNodeId": "MethodDeclaration:697d2c96-1f91-4894-985d-1eece117b72b",
+  "startNodeId": "proj_xxx:MethodDeclaration:abc123",
   "nodes": {
-    "MethodDeclaration:697d2c96-1f91-4894-985d-1eece117b72b": {
-      "id": "MethodDeclaration:697d2c96-1f91-4894-985d-1eece117b72b",
-      "type": "MethodDeclaration",
-      "filePath": "/packages/jwt-validation/src/lib/jwt.strategy.ts",
+    "proj_xxx:MethodDeclaration:abc123": {
+      "id": "proj_xxx:MethodDeclaration:abc123",
+      "type": "HttpEndpoint",
+      "filePath": "src/auth/auth.controller.ts",
       "name": "validate",
-      "sourceCode": "validate(payload: EmJwtPayload): EmJwtPayload {\n  ...\n\n... [truncated] ...\n\n  return payload;\n}",
+      "sourceCode": "async validate(payload) {...}",
       "hasMore": true,
       "truncated": 1250
-    },
-    "ClassDeclaration:abc-123": {
-      "id": "ClassDeclaration:abc-123",
-      "type": "Service",
-      "filePath": "/packages/jwt-validation/src/lib/jwt.strategy.ts",
-      "name": "JwtStrategy"
     }
   },
   "depths": [
     {
       "depth": 1,
       "count": 8,
-      "chains": [
-        {
-          "via": "HAS_MEMBER",
-          "direction": "INCOMING",
-          "count": 1,
-          "nodeIds": ["ClassDeclaration:abc-123"]
-        },
-        {
-          "via": "HAS_PARAMETER",
-          "direction": "OUTGOING",
-          "count": 2,
-          "nodeIds": ["Parameter:xyz-456", "Parameter:def-789"]
-        }
-      ]
-    },
-    {
-      "depth": 2,
-      "count": 14,
-      "chains": [
-        {
-          "via": "HAS_MEMBER → INJECTS",
-          "direction": "INCOMING",
-          "count": 3,
-          "nodeIds": ["Service:auth-service", "Service:user-service", "Repository:user-repo"],
-          "hasMore": 2
-        }
-      ]
+      "chains": [[{ "type": "HAS_MEMBER", "from": "nodeA", "to": "nodeB" }]],
+      "hasMore": 3
     }
-  ]
+  ],
+  "pagination": { "skip": 0, "limit": 50, "returned": 15, "hasNextPage": false }
 }
 ```
 
-**Key Features**:
-- **JSON:API Normalization**: Nodes stored once in `nodes` map, referenced by ID to eliminate duplication
-- **Source Code Truncation**: Max 1000 chars per snippet (first 500 + last 500 chars)
-- **Relationship Chains**: Shows full path like "HAS_MEMBER → INJECTS → USES_REPOSITORY"
-- **Direction Indicators**: OUTGOING (what this calls), INCOMING (who calls this)
-
-**Pro Tips**:
-- Use specific domain terms: "JWT token validation" vs "authentication"
-- Start with limit=1-3 for initial exploration to avoid token limits
-- Look for node IDs in `nodes` map to use with `traverse_from_node`
-- Check `truncated` field to see how many bytes were hidden from source code
+**Tips**: Use specific domain terms. Node IDs from `nodes` map can be used with `traverse_from_node`.
 
 #### 2. `traverse_from_node` - Deep Relationship Exploration
-**Purpose**: Explore all connections from a specific node with precise control over depth and pagination.
+Explore connections from a specific node with depth, direction, and relationship filtering.
 
-**Response Structure**: Identical JSON:API format to search_codebase:
-- **Focused Traversal**: Starts from your specified node
-- **Depth Control**: Configurable max depth (1-10, default 3)
-- **Pagination**: Skip parameter for exploring large graphs in chunks
-- **Source Code Included by Default**: Set `includeCode: false` for structure-only view
-
-**Real Response Example**:
-```json
-// Starting from a Service class
-// maxDepth: 2, skip: 0, includeCode: true
-{
-  "totalConnections": 15,
-  "uniqueFiles": 4,
-  "maxDepth": 2,
-  "startNodeId": "ClassDeclaration:credit-check-service",
-  "nodes": {
-    "ClassDeclaration:credit-check-service": {
-      "id": "ClassDeclaration:credit-check-service",
-      "type": "Service",
-      "filePath": "/src/modules/credit/credit-check.service.ts",
-      "name": "CreditCheckService",
-      "sourceCode": "@Injectable([CreditCheckRepository, OscilarClient])\nexport class CreditCheckService {\n  ...\n\n... [truncated] ...\n\n}",
-      "truncated": 3200
-    },
-    "Repository:credit-check-repo": {
-      "id": "Repository:credit-check-repo",
-      "type": "Repository",
-      "filePath": "/src/modules/credit/credit-check.repository.ts",
-      "name": "CreditCheckRepository"
-    }
-  },
-  "depths": [
-    {
-      "depth": 1,
-      "count": 5,
-      "chains": [
-        {
-          "via": "INJECTS",
-          "direction": "OUTGOING",
-          "count": 2,
-          "nodeIds": ["Repository:credit-check-repo", "VendorClient:oscilar"]
-        },
-        {
-          "via": "HAS_MEMBER",
-          "direction": "OUTGOING",
-          "count": 3,
-          "nodeIds": ["Method:processCheck", "Method:getResult", "Method:rerun"]
-        }
-      ]
-    },
-    {
-      "depth": 2,
-      "count": 10,
-      "chains": [
-        {
-          "via": "INJECTS → USES_DAL",
-          "direction": "OUTGOING",
-          "count": 1,
-          "nodeIds": ["DAL:application-dal"]
-        }
-      ]
-    }
-  ]
-}
-```
-
-**Parameters**:
-- `nodeId` (required): Node ID from search_codebase results
-- `maxDepth` (default: 3): Traversal depth (1-10)
-- `skip` (default: 0): Pagination offset
-- `includeCode` (default: **true**): Include source code snippets
-- `summaryOnly` (default: false): Just file paths and statistics
-- `direction` (default: BOTH): Filter by OUTGOING/INCOMING/BOTH
-- `relationshipTypes` (optional): Filter by specific relationships like ["INJECTS", "USES_REPOSITORY"]
-
-**Pagination Strategy**:
 ```typescript
-// Note: Pagination removed in recent commits - all results returned
-// Use depth and relationship filtering instead
 traverse_from_node({
-  nodeId,
-  maxDepth: 2,
-  relationshipTypes: ["INJECTS"]  // Focus on dependency injection only
+  projectId: "my-backend",
+  nodeId: "proj_xxx:ClassDeclaration:abc123",  // From search results
+  maxDepth: 3,              // 1-10, default 3
+  direction: "OUTGOING",    // "INCOMING", "BOTH" (default)
+  includeCode: true,        // false for structure-only
+  summaryOnly: false,       // true for just file paths and stats
+  relationshipTypes: ["INJECTS", "USES_REPOSITORY"]  // Optional filter
 })
 ```
+
+Returns the same JSON:API format as `search_codebase`.
 
 #### 3. `parse_typescript_project` - Graph Generation
 **Purpose**: Parse a TypeScript/NestJS project and build the graph database.
@@ -563,152 +393,32 @@ APOC plugin available with 438 functions"
 ```
 
 #### 5. `detect_dead_code` - Code Cleanup Analysis
-**Purpose**: Identify potentially dead code including unreferenced exports, uncalled private methods, and unused interfaces.
-
-**Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `projectId` | string | required | Project ID, name, or path |
-| `excludePatterns` | string[] | [] | Additional file patterns to exclude (e.g., `["*.config.ts"]`) |
-| `excludeSemanticTypes` | string[] | [] | Additional semantic types to exclude (e.g., `["EntityClass"]`) |
-| `minConfidence` | enum | "LOW" | Minimum confidence: "LOW", "MEDIUM", "HIGH" |
-| `summaryOnly` | boolean | false | Return only statistics, not full list |
-| `limit` | number | 100 | Maximum items to return |
-| `offset` | number | 0 | Pagination offset |
-
-**Response Structure:**
-```json
-{
-  "summary": "Found 15 potentially dead code items",
-  "riskLevel": "MEDIUM",
-  "statistics": {
-    "total": 15,
-    "byConfidence": { "HIGH": 5, "MEDIUM": 7, "LOW": 3 },
-    "byCategory": { "internal-unused": 10, "library-export": 3, "ui-component": 2 },
-    "byType": { "FunctionDeclaration": 8, "InterfaceDeclaration": 4, "MethodDeclaration": 3 }
-  },
-  "deadCode": [
-    {
-      "nodeId": "proj_xxx:FunctionDeclaration:abc123",
-      "name": "unusedHelper",
-      "type": "FunctionDeclaration",
-      "filePath": "/src/utils/helpers.ts",
-      "lineNumber": 42,
-      "confidence": "HIGH",
-      "confidenceReason": "Exported but never imported anywhere",
-      "category": "internal-unused",
-      "reason": "Exported but never imported or referenced"
-    }
-  ]
-}
-```
-
-**Framework-Aware Exclusions:**
-- Automatically excludes NestJS entry points (controllers, modules, guards, etc.)
-- Excludes common entry point files (`main.ts`, `*.module.ts`, `*.controller.ts`)
-- Excludes Next.js/React patterns (`page.tsx`, `layout.tsx`, `route.tsx`)
+Find unreferenced exports, uncalled private methods, and unused interfaces.
 
 ```typescript
-// Basic usage
-await mcp.call('detect_dead_code', {
-  projectId: 'my-backend'
-});
-
-// High confidence only with custom exclusions
-await mcp.call('detect_dead_code', {
+detect_dead_code({
   projectId: 'my-backend',
-  minConfidence: 'HIGH',
-  excludePatterns: ['*.seed.ts', '*.fixture.ts'],
-  excludeSemanticTypes: ['EntityClass', 'DTOClass']
-});
+  minConfidence: 'HIGH',           // "LOW", "MEDIUM", "HIGH"
+  excludePatterns: ['*.seed.ts'],  // Additional exclusions
+  summaryOnly: false               // true for stats only
+})
 ```
+
+Returns items with `confidence` (HIGH/MEDIUM/LOW), `category` (internal-unused, library-export, ui-component), and `reason`. Automatically excludes NestJS entry points and common patterns.
 
 #### 6. `detect_duplicate_code` - DRY Violation Detection
-**Purpose**: Identify duplicate code using structural (identical AST) and semantic (similar embeddings) analysis.
-
-**Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `projectId` | string | required | Project ID, name, or path |
-| `type` | enum | "all" | Detection type: "structural", "semantic", "all" |
-| `scope` | enum | "all" | Scope: "methods", "functions", "classes", "all" |
-| `minSimilarity` | number | 0.8 | Minimum similarity threshold (0.5-1.0) |
-| `maxResults` | number | 50 | Maximum duplicate groups to return |
-| `includeCode` | boolean | true | Include source code snippets |
-| `summaryOnly` | boolean | false | Return only statistics |
-
-**Response Structure:**
-```json
-{
-  "summary": "Found 8 duplicate code groups across 12 files",
-  "statistics": {
-    "totalGroups": 8,
-    "totalDuplicates": 24,
-    "byType": {
-      "structural": { "groups": 3, "items": 9 },
-      "semantic": { "groups": 5, "items": 15 }
-    },
-    "byConfidence": { "HIGH": 4, "MEDIUM": 3, "LOW": 1 }
-  },
-  "duplicates": [
-    {
-      "groupId": "dup_1",
-      "type": "structural",
-      "similarity": 1.0,
-      "confidence": "HIGH",
-      "category": "cross-file",
-      "recommendation": "Extract to shared utility",
-      "items": [
-        {
-          "nodeId": "proj_xxx:MethodDeclaration:abc",
-          "name": "formatDate",
-          "filePath": "/src/utils/date.ts",
-          "lineNumber": 15,
-          "sourceCode": "formatDate(date: Date): string { ... }"
-        },
-        {
-          "nodeId": "proj_xxx:MethodDeclaration:def",
-          "name": "formatDate",
-          "filePath": "/src/helpers/formatting.ts",
-          "lineNumber": 42,
-          "sourceCode": "formatDate(date: Date): string { ... }"
-        }
-      ]
-    }
-  ]
-}
-```
-
-**Detection Types:**
-- **Structural**: Identical normalized code (same AST after removing comments, normalizing names)
-- **Semantic**: Similar logic via vector embeddings (requires embeddings enabled during parse)
-
-**Categories:**
-- `ui-component`: Duplicates in UI component directories
-- `cross-app`: Duplicates across monorepo apps
-- `same-file`: Duplicates within the same file
-- `cross-file`: Duplicates across different files
+Find structural (identical AST) and semantic (similar embeddings) duplicates.
 
 ```typescript
-// Find all duplicates
-await mcp.call('detect_duplicate_code', {
-  projectId: 'my-backend'
-});
-
-// Only structural duplicates in methods
-await mcp.call('detect_duplicate_code', {
+detect_duplicate_code({
   projectId: 'my-backend',
-  type: 'structural',
-  scope: 'methods'
-});
-
-// High similarity semantic duplicates
-await mcp.call('detect_duplicate_code', {
-  projectId: 'my-backend',
-  type: 'semantic',
-  minSimilarity: 0.9
-});
+  type: 'all',           // "structural", "semantic", "all"
+  scope: 'methods',      // "methods", "functions", "classes", "all"
+  minSimilarity: 0.85    // 0.5-1.0 threshold
+})
 ```
+
+Returns duplicate groups with `similarity` score, `confidence`, `category` (cross-file, same-file, cross-app), and `recommendation`.
 
 #### 7. File Watching Tools
 **Purpose**: Monitor file changes and automatically update the graph.
@@ -810,242 +520,37 @@ await mcp.call('swarm_cleanup', {
 
 **Important**: Node IDs must come from graph tool responses (`search_codebase`, `traverse_from_node`). Never fabricate node IDs—they are hash-based strings like `proj_xxx:ClassDeclaration:abc123`.
 
-### Workflow Examples
+### Workflow Example
 
-#### Example 1: Understanding Authentication Flow
 ```typescript
-// Step 1: Find authentication-related code
-const searchResult = await mcp.call('search_codebase', {
-  projectId: 'my-backend',  // Required: project name, ID, or path
-  query: 'JWT token validation authentication'
+// 1. Search for relevant code
+const result = await search_codebase({
+  projectId: 'my-backend',
+  query: 'JWT token validation'
 });
 
-// Step 2: Extract node ID from most relevant result
-const nodeId = "proj_abc123:MethodDeclaration:697d2c96";
-
-// Step 3: Explore immediate relationships
-const immediateConnections = await mcp.call('traverse_from_node', {
+// 2. Get node ID from results and explore relationships
+const nodeId = result.startNodeId;
+const connections = await traverse_from_node({
   projectId: 'my-backend',
   nodeId,
-  maxDepth: 2
+  maxDepth: 3,
+  direction: "OUTGOING"  // What this depends on
 });
 
-// Step 4: Go deeper to understand full authentication chain
-const deepConnections = await mcp.call('traverse_from_node', {
-  projectId: 'my-backend',
-  nodeId,
-  maxDepth: 4
-});
-
-// Step 5: Assess refactoring impact
-const impact = await mcp.call('impact_analysis', {
+// 3. Assess refactoring impact
+const impact = await impact_analysis({
   projectId: 'my-backend',
   nodeId
 });
 // Returns: risk level (LOW/MEDIUM/HIGH/CRITICAL), dependents, affected files
 ```
 
-#### Example 2: API Endpoint Analysis
-```typescript
-// Step 1: Search for controller endpoints
-const controllerSearch = await mcp.call('search_codebase', {
-  projectId: 'my-backend',
-  query: 'HTTP controller endpoints routes POST GET'
-});
-
-// Step 2: Find a controller node ID from results
-const controllerNodeId = "proj_abc123:ClassDeclaration:controller-uuid";
-
-// Step 3: Explore what endpoints this controller exposes
-const endpoints = await mcp.call('traverse_from_node', {
-  projectId: 'my-backend',
-  nodeId: controllerNodeId,
-  maxDepth: 2
-});
-
-// Step 4: For each endpoint found, explore its dependencies
-const endpointNodeId = "proj_abc123:MethodDeclaration:endpoint-uuid";
-const endpointDeps = await mcp.call('traverse_from_node', {
-  projectId: 'my-backend',
-  nodeId: endpointNodeId,
-  maxDepth: 3
-});
-```
-
-#### Example 3: Service Dependency Mapping
-```typescript
-// Step 1: Find a specific service
-const serviceSearch = await mcp.call('search_codebase', {
-  projectId: 'my-backend',
-  query: 'UserService injectable dependency injection'
-});
-
-// Step 2: Map all its dependencies (what it injects)
-const serviceDeps = await mcp.call('traverse_from_node', {
-  projectId: 'my-backend',
-  nodeId: "proj_abc123:ClassDeclaration:user-service-uuid",
-  maxDepth: 2,
-  direction: "OUTGOING"  // What this service depends on
-});
-
-// Step 3: Impact analysis - what depends on this service
-const impact = await mcp.call('impact_analysis', {
-  projectId: 'my-backend',
-  nodeId: "proj_abc123:ClassDeclaration:user-service-uuid"
-});
-// Returns: risk level, all dependents, affected files
-```
-
-### Advanced Usage Tips
-
-#### Understanding Response Format (JSON:API Normalization)
-
-**Key Insight**: All responses use JSON:API pattern to eliminate duplication by storing each node once and referencing by ID.
-
-**How to Read Responses**:
-1. **Start with `nodes` map**: All unique nodes are stored here once
-2. **Look at `depths` array**: Shows how nodes are connected at each depth level
-3. **Follow `nodeIds` references**: Use IDs to look up full node data in `nodes` map
-4. **Check `truncated` field**: Indicates how many bytes of source code were hidden
-
-**Example Reading Pattern**:
-```typescript
-const response = await search_codebase({
-  projectId: "my-backend",
-  query: "authentication"
-});
-
-// 1. Get overview statistics
-console.log(`Found ${response.totalConnections} connections across ${response.uniqueFiles} files`);
-
-// 2. Examine the starting node
-const startNode = response.nodes[response.startNodeId];
-console.log(`Starting from: ${startNode.name} in ${startNode.filePath}`);
-
-// 3. Explore first depth level
-const firstDepth = response.depths[0];
-firstDepth.chains.forEach(chain => {
-  console.log(`Via ${chain.via}: ${chain.count} connections (${chain.direction})`);
-
-  // 4. Look up actual node details
-  chain.nodeIds.forEach(nodeId => {
-    const node = response.nodes[nodeId];
-    console.log(`  - ${node.name} (${node.type})`);
-  });
-});
-```
-
-#### Managing Large Responses
-- **Relationship Filtering**: Use `relationshipTypes` to focus on specific connections
-- **Structure-Only View**: Set `includeCode: false` to exclude source code snippets
-- **Summary Mode**: Use `summaryOnly: true` for just file paths and statistics
-
-#### Efficient Graph Exploration
-- **Breadth First**: Start with low `maxDepth` (1-2) to get overview
-- **Depth Second**: Increase `maxDepth` (3-5) for detailed analysis
-- **Direction Filtering**: Use `direction: "OUTGOING"` or `"INCOMING"` to focus exploration
-- **Source Code on Demand**: Source code included by default but truncated to 1000 chars
-
-#### Weighted Traversal
-
-The `search_codebase` tool uses **weighted traversal** by default (`useWeightedTraversal: true`) to intelligently prioritize which relationships to explore. This produces more relevant results by scoring each node at every depth level.
-
-**How Scoring Works**:
-
-Each potential path is scored using three factors multiplied together:
-
-1. **Edge Weight** (0.0-1.0): How important is this relationship type?
-   - Critical (0.9-0.95): `INJECTS`, `EXPOSES`, `ROUTES_TO` - core architectural relationships
-   - High (0.8-0.88): `EXTENDS`, `IMPLEMENTS`, `USES_REPOSITORY` - important semantic links
-   - Medium (0.5-0.6): `IMPORTS`, `EXPORTS`, `HAS_MEMBER` - structural relationships
-   - Low (0.3-0.4): `DECORATED_WITH`, `HAS_PARAMETER` - metadata relationships
-
-2. **Node Similarity**: Cosine similarity between the node's embedding and your query embedding. Nodes semantically related to your search rank higher.
-
-3. **Depth Penalty**: Exponential decay (default 0.85 per level). Closer nodes are preferred:
-   - Depth 1: 1.0 (no penalty)
-   - Depth 2: 0.85
-   - Depth 3: 0.72
-
-**When to Disable**:
-```typescript
-// Use standard traversal for exhaustive exploration
-search_codebase({
-  projectId: "my-backend",
-  query: "...",
-  useWeightedTraversal: false
-})
-```
-
-#### Performance Optimization
-- **Token Efficiency**: JSON:API normalization eliminates duplicate nodes in responses
-- **Code Truncation**: Source code limited to 1000 chars (first 500 + last 500) to prevent token overflow
-- **Memory**: Large traversals may hit Neo4j memory limits (increase heap size if needed)
-- **Caching**: Node IDs are persistent; save interesting ones for later exploration
-
-## Claude Code Integration Tips
-
-### Guiding Tool Usage with claude.md
-
-You can add a `claude.md` file to your repository root to help Claude Code understand when to use these MCP tools effectively. Here are some useful patterns:
-
-#### Trigger Word Hints
-
-```markdown
-## Code Search Tools
-
-**Use `search_codebase` for:**
-- "Where is...", "Find...", "Show me [specific thing]"
-- Example: "Where is the authentication middleware?"
-
-**Use `natural_language_to_cypher` for:**
-- "List all...", "How many...", "Count..."
-- Example: "List all API controllers"
-
-**Use `traverse_from_node` for:**
-- Deep dependency analysis after initial search
-- "What depends on X?", "Trace the flow..."
-```
-
-#### Weighted Traversal Hints
-
-```markdown
-**Use `useWeightedTraversal: true` for:**
-- Service/Controller classes with many dependencies
-- Queries with depth > 3
-- Cleaner, more relevant results
-
-**Recommended settings:**
-- Default: `maxDepth: 5, snippetLength: 900`
-- Simple lookups: `maxDepth: 2`
-```
-
-#### Framework-Specific Patterns
-
-Document your custom node types and relationships so Claude knows what to search for:
-
-```markdown
-**Custom Node Types:**
-- `PaymentProcessor` - Payment integrations
-- `EmailTemplate` - Email templates
-
-**Custom Relationships:**
-- `PROCESSES_PAYMENT` - Service → PaymentProcessor
-- `SENDS_EMAIL` - Service → EmailTemplate
-```
-
-#### Common Query Examples
-
-```markdown
-**Finding authentication:**
-search_codebase({ projectId: "my-project", query: "JWT authentication middleware" })
-
-**Tracing dependencies:**
-traverse_from_node({ projectId: "my-project", nodeId: "...", direction: "OUTGOING", maxDepth: 5 })
-
-**Impact analysis:**
-impact_analysis({ projectId: "my-project", nodeId: "..." })
-```
+### Tips for Managing Large Responses
+- Set `includeCode: false` for structure-only view
+- Set `summaryOnly: true` for just file paths and statistics
+- Use `relationshipTypes: ["INJECTS"]` to filter specific relationships
+- Use `direction: "OUTGOING"` or `"INCOMING"` to focus exploration
 
 ## Framework Support
 
