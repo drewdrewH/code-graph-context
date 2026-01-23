@@ -28,6 +28,12 @@ const CLAIM_TASK_BY_ID_QUERY = `
   // Only claim if all dependencies are complete
   WHERE incompleteDeps = 0
 
+  // Acquire exclusive lock to prevent race conditions
+  CALL apoc.lock.nodes([t])
+
+  // Double-check status after acquiring lock
+  WITH t WHERE t.status IN ['available', 'blocked']
+
   // Atomic claim
   SET t.status = 'claimed',
       t.claimedBy = $agentId,
@@ -63,6 +69,7 @@ const CLAIM_TASK_BY_ID_QUERY = `
 
 /**
  * Query to claim the highest priority available task matching criteria
+ * Uses APOC locking to prevent race conditions between parallel workers
  */
 const CLAIM_NEXT_TASK_QUERY = `
   // Find available tasks not blocked by dependencies
@@ -80,6 +87,12 @@ const CLAIM_NEXT_TASK_QUERY = `
   // Order by priority (highest first), then by creation time (oldest first)
   ORDER BY t.priorityScore DESC, t.createdAt ASC
   LIMIT 1
+
+  // Acquire exclusive lock to prevent race conditions
+  CALL apoc.lock.nodes([t])
+
+  // Double-check status after acquiring lock (another worker may have claimed it)
+  WITH t WHERE t.status = 'available'
 
   // Atomic claim
   SET t.status = 'claimed',

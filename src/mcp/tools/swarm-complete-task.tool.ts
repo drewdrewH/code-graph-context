@@ -15,7 +15,7 @@ import { createErrorResponse, createSuccessResponse, resolveProjectIdOrError, de
  */
 const COMPLETE_TASK_QUERY = `
   MATCH (t:SwarmTask {id: $taskId, projectId: $projectId})
-  WHERE t.status = 'in_progress' AND t.claimedBy = $agentId
+  WHERE t.status IN ['in_progress', 'claimed'] AND t.claimedBy = $agentId
 
   SET t.status = 'completed',
       t.completedAt = timestamp(),
