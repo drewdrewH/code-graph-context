@@ -72,9 +72,9 @@ const CLAIM_TASK_BY_ID_QUERY = `
  * Uses APOC locking to prevent race conditions between parallel workers
  */
 const CLAIM_NEXT_TASK_QUERY = `
-  // Find available tasks not blocked by dependencies
+  // Find available or blocked tasks (blocked tasks may have deps completed now)
   MATCH (t:SwarmTask {projectId: $projectId, swarmId: $swarmId})
-  WHERE t.status = 'available'
+  WHERE t.status IN ['available', 'blocked']
     AND ($types IS NULL OR size($types) = 0 OR t.type IN $types)
     AND ($minPriority IS NULL OR t.priorityScore >= $minPriority)
 
@@ -92,7 +92,7 @@ const CLAIM_NEXT_TASK_QUERY = `
   CALL apoc.lock.nodes([t])
 
   // Double-check status after acquiring lock (another worker may have claimed it)
-  WITH t WHERE t.status = 'available'
+  WITH t WHERE t.status IN ['available', 'blocked']
 
   // Atomic claim
   SET t.status = 'claimed',

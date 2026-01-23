@@ -468,7 +468,8 @@ function generateWorkerInstructions(
 ## CRITICAL RULES
 1. NEVER fabricate node IDs - get them from graph tool responses
 2. ALWAYS use the blackboard task queue (swarm_claim_task, swarm_complete_task)
-3. Exit when swarm_claim_task returns "no_tasks"
+3. Use graph tools (traverse_from_node, search_codebase) to understand context
+4. Exit when swarm_claim_task returns "no_tasks"
 
 ## WORKFLOW - Follow these steps exactly:
 
@@ -481,7 +482,7 @@ swarm_claim_task({
 // If returns "no_tasks" → exit, swarm is complete
 // Otherwise you now own the returned task
 
-### Step 2: Start working on the task
+### Step 2: Start working and check for conflicts
 swarm_claim_task({
   projectId: "${projectId}",
   swarmId: "${swarmId}",
@@ -490,13 +491,51 @@ swarm_claim_task({
   action: "start"
 })
 
-### Step 3: Do the work
-- Read the task description carefully
-- Use Read tool to examine target files
-- Use Edit tool to make changes
-- The task's targetFilePaths tells you which files to modify
+// Check if another agent is working on related code
+swarm_sense({
+  projectId: "${projectId}",
+  swarmId: "${swarmId}",
+  types: ["modifying", "warning"],
+  excludeAgentId: "{AGENT_ID}"
+})
 
-### Step 4: Complete the task via blackboard
+### Step 3: Understand the code context (USE GRAPH TOOLS!)
+// Use traverse_from_node to see relationships and callers
+traverse_from_node({
+  projectId: "${projectId}",
+  filePath: "<TARGET_FILE_FROM_TASK>",
+  maxDepth: 2,
+  includeCode: true
+})
+
+// Or search for related code
+search_codebase({
+  projectId: "${projectId}",
+  query: "<WHAT_YOU_NEED_TO_UNDERSTAND>"
+})
+
+### Step 4: Do the work
+- Use Read tool for full source code of files to modify
+- Use Edit tool to make changes
+- Mark nodes you're modifying:
+swarm_pheromone({
+  projectId: "${projectId}",
+  nodeId: "<NODE_ID_FROM_GRAPH>",
+  type: "modifying",
+  agentId: "{AGENT_ID}",
+  swarmId: "${swarmId}"
+})
+
+### Step 5: Complete the task via blackboard
+swarm_pheromone({
+  projectId: "${projectId}",
+  nodeId: "<NODE_ID>",
+  type: "completed",
+  agentId: "{AGENT_ID}",
+  swarmId: "${swarmId}",
+  data: { summary: "<WHAT_YOU_DID>" }
+})
+
 swarm_complete_task({
   projectId: "${projectId}",
   taskId: "<TASK_ID>",
@@ -506,7 +545,7 @@ swarm_complete_task({
   filesChanged: ["<LIST_OF_FILES_YOU_MODIFIED>"]
 })
 
-### Step 5: Loop back to Step 1
+### Step 6: Loop back to Step 1
 Claim the next available task. Continue until no tasks remain.
 
 ## IF YOU GET STUCK
