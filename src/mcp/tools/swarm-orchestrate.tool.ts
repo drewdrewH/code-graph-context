@@ -457,33 +457,93 @@ function generateWorkerInstructions(
 ): string {
   const recommendedAgents = Math.min(maxAgents, Math.ceil(taskCount / 2), taskCount);
 
+  // Generate unique agent IDs for each worker
+  const agentIds = Array.from({ length: recommendedAgents }, (_, i) => `${swarmId}_worker_${i + 1}`);
+
+  const workerPrompt = `You are a swarm worker agent.
+- Agent ID: {AGENT_ID}
+- Swarm ID: ${swarmId}
+- Project: ${projectId}
+
+## CRITICAL RULES
+1. NEVER fabricate node IDs - get them from graph tool responses
+2. ALWAYS use the blackboard task queue (swarm_claim_task, swarm_complete_task)
+3. Exit when swarm_claim_task returns "no_tasks"
+
+## WORKFLOW - Follow these steps exactly:
+
+### Step 1: Claim a task from the blackboard
+swarm_claim_task({
+  projectId: "${projectId}",
+  swarmId: "${swarmId}",
+  agentId: "{AGENT_ID}"
+})
+// If returns "no_tasks" → exit, swarm is complete
+// Otherwise you now own the returned task
+
+### Step 2: Start working on the task
+swarm_claim_task({
+  projectId: "${projectId}",
+  swarmId: "${swarmId}",
+  agentId: "{AGENT_ID}",
+  taskId: "<TASK_ID_FROM_STEP_1>",
+  action: "start"
+})
+
+### Step 3: Do the work
+- Read the task description carefully
+- Use Read tool to examine target files
+- Use Edit tool to make changes
+- The task's targetFilePaths tells you which files to modify
+
+### Step 4: Complete the task via blackboard
+swarm_complete_task({
+  projectId: "${projectId}",
+  taskId: "<TASK_ID>",
+  agentId: "{AGENT_ID}",
+  action: "complete",
+  summary: "<DESCRIBE_WHAT_YOU_DID>",
+  filesChanged: ["<LIST_OF_FILES_YOU_MODIFIED>"]
+})
+
+### Step 5: Loop back to Step 1
+Claim the next available task. Continue until no tasks remain.
+
+## IF YOU GET STUCK
+swarm_complete_task({
+  projectId: "${projectId}",
+  taskId: "<TASK_ID>",
+  agentId: "{AGENT_ID}",
+  action: "fail",
+  reason: "<WHY_YOU_ARE_STUCK>",
+  retryable: true
+})
+Then claim another task.`;
+
+  const taskCalls = agentIds.map(agentId => {
+    const prompt = workerPrompt.replace(/\{AGENT_ID\}/g, agentId);
+    return `Task({
+  subagent_type: "general-purpose",
+  run_in_background: false,
+  prompt: \`${prompt}\`
+})`;
+  }).join('\n\n');
+
   return `
 ## Worker Agent Instructions
 
-To execute this swarm, spawn ${recommendedAgents} worker agent(s) using the Task tool:
+Spawn ${recommendedAgents} worker agent(s) IN PARALLEL (all Task calls in ONE message):
 
-\`\`\`
-Task({
-  subagent_type: "general-purpose",
-  prompt: "You are a swarm worker for swarm ${swarmId}. Project: ${projectId}.
-
-Your workflow:
-1. swarm_sense({ projectId: '${projectId}', swarmId: '${swarmId}', types: ['modifying', 'claiming'] })
-2. swarm_claim_task({ projectId: '${projectId}', swarmId: '${swarmId}', agentId: '<your-id>' })
-3. If task claimed: execute it, then swarm_complete_task with action: 'complete'
-4. Loop until no tasks remain
-
-Always leave pheromones when working. Exit when swarm_get_tasks shows no available/in_progress tasks.",
-  run_in_background: true
-})
+\`\`\`javascript
+${taskCalls}
 \`\`\`
 
-Launch ${recommendedAgents} agents in parallel for optimal execution.
+**CRITICAL:** Include ALL ${recommendedAgents} Task calls in a single message to run them in parallel.
 
 ## Monitoring Progress
 
 Check swarm progress:
-\`\`\`
+\`\`\`javascript
 swarm_get_tasks({
   projectId: "${projectId}",
   swarmId: "${swarmId}",
@@ -491,9 +551,9 @@ swarm_get_tasks({
 })
 \`\`\`
 
-## Cleanup (after completion)
+## Cleanup (after all workers complete)
 
-\`\`\`
+\`\`\`javascript
 swarm_cleanup({
   projectId: "${projectId}",
   swarmId: "${swarmId}"
