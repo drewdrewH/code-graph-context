@@ -38,6 +38,11 @@ export const TOOL_NAMES = {
   swarmPheromone: 'swarm_pheromone',
   swarmSense: 'swarm_sense',
   swarmCleanup: 'swarm_cleanup',
+  swarmPostTask: 'swarm_post_task',
+  swarmClaimTask: 'swarm_claim_task',
+  swarmCompleteTask: 'swarm_complete_task',
+  swarmGetTasks: 'swarm_get_tasks',
+  swarmOrchestrate: 'swarm_orchestrate',
 } as const;
 
 // Tool Metadata
@@ -478,6 +483,275 @@ swarm_cleanup({ projectId: "backend", all: true })
 \`\`\`
 
 **Note:** \`warning\` pheromones are preserved by default. Pass \`keepTypes: []\` to delete everything.`,
+  },
+  [TOOL_NAMES.swarmPostTask]: {
+    title: 'Swarm Post Task',
+    description: `Post a task to the swarm blackboard for agents to claim and work on.
+
+**What is the Blackboard?**
+The blackboard is a shared task queue where agents post work, claim tasks, and coordinate. Unlike pheromones (indirect coordination), tasks are explicit work items with dependencies.
+
+**Parameters:**
+- projectId: Project to post the task in
+- swarmId: Group related tasks together
+- title: Short task title (max 200 chars)
+- description: Detailed description of what needs to be done
+- type: Task category (implement, refactor, fix, test, review, document, investigate, plan)
+- priority: Urgency level (critical, high, normal, low, backlog)
+- targetNodeIds: Code nodes this task affects (from search_codebase)
+- targetFilePaths: File paths this task affects
+- dependencies: Task IDs that must complete before this task can start
+- createdBy: Your agent ID
+- metadata: Additional context (acceptance criteria, notes, etc.)
+
+**Task Lifecycle:**
+available → claimed → in_progress → needs_review → completed
+                  ↘ blocked (if dependencies incomplete)
+                  ↘ failed (if something goes wrong)
+
+**Dependency Management:**
+Tasks with incomplete dependencies are automatically marked as "blocked" and become "available" when all dependencies complete.
+
+**Example:**
+\`\`\`
+swarm_post_task({
+  projectId: "backend",
+  swarmId: "feature_auth",
+  title: "Implement JWT validation",
+  description: "Add JWT token validation to the auth middleware...",
+  type: "implement",
+  priority: "high",
+  targetNodeIds: ["proj_xxx:Class:AuthMiddleware"],
+  dependencies: ["task_abc123"],  // Must complete first
+  createdBy: "planner_agent"
+})
+\`\`\``,
+  },
+  [TOOL_NAMES.swarmClaimTask]: {
+    title: 'Swarm Claim Task',
+    description: `Claim a task from the blackboard to work on it.
+
+**Actions:**
+- claim: Reserve a task (prevents others from taking it)
+- start: Begin working on a claimed task (transitions to in_progress)
+- release: Give up a task you've claimed (makes it available again)
+
+**Auto-Selection:**
+If you don't specify a taskId, the tool claims the highest-priority available task matching your criteria:
+- types: Only consider certain task types (e.g., ["fix", "implement"])
+- minPriority: Only consider tasks at or above this priority
+
+**Claim Flow:**
+1. swarm_claim_task({ action: "claim" }) - Reserve the task
+2. swarm_claim_task({ action: "start", taskId: "..." }) - Begin work
+3. [Do the work]
+4. swarm_complete_task({ action: "complete" }) - Finish
+
+**Example - Claim specific task:**
+\`\`\`
+swarm_claim_task({
+  projectId: "backend",
+  swarmId: "feature_auth",
+  agentId: "worker_1",
+  taskId: "task_abc123",
+  action: "claim"
+})
+\`\`\`
+
+**Example - Auto-select highest priority:**
+\`\`\`
+swarm_claim_task({
+  projectId: "backend",
+  swarmId: "feature_auth",
+  agentId: "worker_1",
+  types: ["implement", "fix"],
+  minPriority: "normal"
+})
+\`\`\`
+
+**Releasing Tasks:**
+If you can't complete a task, release it so others can pick it up:
+\`\`\`
+swarm_claim_task({
+  projectId: "backend",
+  taskId: "task_abc123",
+  agentId: "worker_1",
+  action: "release",
+  releaseReason: "Blocked by external API issue"
+})
+\`\`\``,
+  },
+  [TOOL_NAMES.swarmCompleteTask]: {
+    title: 'Swarm Complete Task',
+    description: `Mark a task as completed, failed, or request review.
+
+**Actions:**
+- complete: Task finished successfully (triggers dependent tasks to become available)
+- fail: Task failed (can be retried if retryable=true)
+- request_review: Submit work for review before completion
+- approve: Reviewer approves the work (completes the task)
+- reject: Reviewer rejects (returns to in_progress or marks failed)
+- retry: Make a failed task available again
+
+**Completing with Artifacts:**
+\`\`\`
+swarm_complete_task({
+  projectId: "backend",
+  taskId: "task_abc123",
+  agentId: "worker_1",
+  action: "complete",
+  summary: "Implemented JWT validation with RS256 signing",
+  artifacts: {
+    files: ["src/auth/jwt.service.ts"],
+    commits: ["abc123"],
+    pullRequests: ["#42"]
+  },
+  filesChanged: ["src/auth/jwt.service.ts", "src/auth/auth.module.ts"],
+  linesAdded: 150,
+  linesRemoved: 20
+})
+\`\`\`
+
+**Request Review (for important changes):**
+\`\`\`
+swarm_complete_task({
+  projectId: "backend",
+  taskId: "task_abc123",
+  agentId: "worker_1",
+  action: "request_review",
+  summary: "Implemented auth - needs security review",
+  reviewNotes: "Please verify token expiration logic"
+})
+\`\`\`
+
+**Approve/Reject (for reviewers):**
+\`\`\`
+swarm_complete_task({
+  projectId: "backend",
+  taskId: "task_abc123",
+  agentId: "reviewer_1",
+  action: "approve",
+  reviewerId: "reviewer_1",
+  notes: "LGTM"
+})
+\`\`\`
+
+**Failing a Task:**
+\`\`\`
+swarm_complete_task({
+  projectId: "backend",
+  taskId: "task_abc123",
+  agentId: "worker_1",
+  action: "fail",
+  reason: "External API is down",
+  errorDetails: "ConnectionTimeout after 30s",
+  retryable: true
+})
+\`\`\``,
+  },
+  [TOOL_NAMES.swarmGetTasks]: {
+    title: 'Swarm Get Tasks',
+    description: `Query tasks from the blackboard with filters.
+
+**Basic Usage:**
+\`\`\`
+// Get all available tasks in a swarm
+swarm_get_tasks({
+  projectId: "backend",
+  swarmId: "feature_auth",
+  statuses: ["available"]
+})
+
+// Get a specific task with full details
+swarm_get_tasks({
+  projectId: "backend",
+  taskId: "task_abc123"
+})
+
+// Get your claimed/in-progress tasks
+swarm_get_tasks({
+  projectId: "backend",
+  claimedBy: "worker_1",
+  statuses: ["claimed", "in_progress"]
+})
+\`\`\`
+
+**Filters:**
+- swarmId: Filter by swarm
+- statuses: Task statuses (available, claimed, in_progress, blocked, needs_review, completed, failed, cancelled)
+- types: Task types (implement, refactor, fix, test, review, document, investigate, plan)
+- claimedBy: Agent who has the task
+- createdBy: Agent who created the task
+- minPriority: Minimum priority level
+
+**Sorting:**
+- priority: Highest priority first (default)
+- created: Newest first
+- updated: Most recently updated first
+
+**Additional Data:**
+- includeStats: true - Get aggregate statistics (counts by status, type, agent)
+- includeDependencyGraph: true - Get task dependency graph for visualization
+
+**Example with stats:**
+\`\`\`
+swarm_get_tasks({
+  projectId: "backend",
+  swarmId: "feature_auth",
+  includeStats: true
+})
+// Returns: { tasks: [...], stats: { byStatus: {available: 5, in_progress: 2}, ... } }
+\`\`\``,
+  },
+  [TOOL_NAMES.swarmOrchestrate]: {
+    title: 'Swarm Orchestrate',
+    description: `Orchestrate multiple agents to tackle complex, multi-file code tasks in parallel.
+
+**What This Does:**
+Spawns and coordinates multiple LLM worker agents to execute complex codebase changes. Uses the code graph to understand dependencies and the swarm system for coordination.
+
+**Example Tasks:**
+- "Rename getUserById to fetchUser across the codebase"
+- "Add JSDoc comments to all exported functions in src/core/"
+- "Convert all class components to functional React components"
+- "Add deprecation warnings to all v1 API endpoints"
+
+**How It Works:**
+1. **Analyze** - Uses search_codebase to find affected nodes and impact_analysis for dependencies
+2. **Plan** - Decomposes task into atomic, dependency-ordered SwarmTasks
+3. **Spawn** - Starts N worker agents that claim tasks and leave pheromones
+4. **Monitor** - Tracks progress, detects blocked agents, enables self-healing
+5. **Complete** - Aggregates results and cleans up pheromones
+
+**Parameters:**
+- projectId: Project to operate on
+- task: Natural language description of the task
+- maxAgents: Maximum concurrent worker agents (default: 3)
+- dryRun: If true, only plan without executing (default: false)
+- autoApprove: Skip approval step for each task (default: false)
+- priority: Overall priority level (critical, high, normal, low, backlog)
+
+**Self-Healing:**
+- Pheromone decay automatically frees stuck work
+- Failed tasks become available for retry
+- Blocked agents release tasks for others
+
+**Example:**
+\`\`\`
+swarm_orchestrate({
+  projectId: "backend",
+  task: "Add JSDoc comments to all exported functions in src/services/",
+  maxAgents: 3,
+  dryRun: false
+})
+\`\`\`
+
+**Returns:**
+- swarmId: Unique identifier for this swarm run
+- status: planning | executing | completed | failed
+- plan: Task breakdown with dependency graph
+- progress: Real-time completion stats
+- results: Summary of changes made`,
   },
 } as const;
 

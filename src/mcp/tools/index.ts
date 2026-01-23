@@ -19,8 +19,13 @@ import { createParseTypescriptProjectTool } from './parse-typescript-project.too
 import { createSearchCodebaseTool } from './search-codebase.tool.js';
 import { createStartWatchProjectTool } from './start-watch-project.tool.js';
 import { createStopWatchProjectTool } from './stop-watch-project.tool.js';
+import { createSwarmClaimTaskTool } from './swarm-claim-task.tool.js';
 import { createSwarmCleanupTool } from './swarm-cleanup.tool.js';
+import { createSwarmCompleteTaskTool } from './swarm-complete-task.tool.js';
+import { createSwarmGetTasksTool } from './swarm-get-tasks.tool.js';
+import { createSwarmOrchestrateTool } from './swarm-orchestrate.tool.js';
 import { createSwarmPheromoneTool } from './swarm-pheromone.tool.js';
+import { createSwarmPostTaskTool } from './swarm-post-task.tool.js';
 import { createSwarmSenseTool } from './swarm-sense.tool.js';
 import { createTestNeo4jConnectionTool } from './test-neo4j-connection.tool.js';
 import { createTraverseFromNodeTool } from './traverse-from-node.tool.js';
@@ -81,8 +86,17 @@ export const registerAllTools = (server: McpServer): void => {
   createStopWatchProjectTool(server);
   createListWatchersTool(server);
 
-  // Register swarm coordination tools
+  // Register swarm coordination tools (pheromones for indirect coordination)
   createSwarmPheromoneTool(server);
   createSwarmSenseTool(server);
   createSwarmCleanupTool(server);
+
+  // Register swarm task tools (blackboard for explicit task management)
+  createSwarmPostTaskTool(server);
+  createSwarmClaimTaskTool(server);
+  createSwarmCompleteTaskTool(server);
+  createSwarmGetTasksTool(server);
+
+  // Register swarm orchestration tool (meta-tool for coordinating multi-agent work)
+  createSwarmOrchestrateTool(server);
 };
