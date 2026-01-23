@@ -33,17 +33,21 @@ const COMPLETE_TASK_QUERY = `
 
   // Check if waiting tasks now have all dependencies completed
   WITH t, collect(waiting) as waitingTasks
+
+  // Unblock tasks that have all dependencies met
   UNWIND (CASE WHEN size(waitingTasks) = 0 THEN [null] ELSE waitingTasks END) as waiting
   OPTIONAL MATCH (waiting)-[:DEPENDS_ON]->(otherDep:SwarmTask)
   WHERE otherDep.status <> 'completed' AND otherDep.id <> t.id
   WITH t, waiting, count(otherDep) as remainingDeps
-  WHERE waiting IS NOT NULL AND remainingDeps = 0
 
-  // Unblock tasks that now have all dependencies met
-  SET waiting.status = 'available',
-      waiting.updatedAt = timestamp()
+  // Update status for tasks with no remaining deps (but don't filter out the row)
+  FOREACH (_ IN CASE WHEN waiting IS NOT NULL AND remainingDeps = 0 THEN [1] ELSE [] END |
+    SET waiting.status = 'available', waiting.updatedAt = timestamp()
+  )
 
-  WITH t, collect(waiting.id) as unblockedTaskIds
+  WITH t, CASE WHEN waiting IS NOT NULL AND remainingDeps = 0 THEN waiting.id ELSE null END as unblockedId
+  WITH t, collect(unblockedId) as allUnblockedIds
+  WITH t, [id IN allUnblockedIds WHERE id IS NOT NULL] as unblockedTaskIds
 
   RETURN t.id as id,
          t.title as title,
@@ -119,16 +123,21 @@ const APPROVE_TASK_QUERY = `
 
   // Check if waiting tasks now have all dependencies completed
   WITH t, collect(waiting) as waitingTasks
+
+  // Unblock tasks that have all dependencies met
   UNWIND (CASE WHEN size(waitingTasks) = 0 THEN [null] ELSE waitingTasks END) as waiting
   OPTIONAL MATCH (waiting)-[:DEPENDS_ON]->(otherDep:SwarmTask)
   WHERE otherDep.status <> 'completed' AND otherDep.id <> t.id
   WITH t, waiting, count(otherDep) as remainingDeps
-  WHERE waiting IS NOT NULL AND remainingDeps = 0
 
-  SET waiting.status = 'available',
-      waiting.updatedAt = timestamp()
+  // Update status for tasks with no remaining deps (but don't filter out the row)
+  FOREACH (_ IN CASE WHEN waiting IS NOT NULL AND remainingDeps = 0 THEN [1] ELSE [] END |
+    SET waiting.status = 'available', waiting.updatedAt = timestamp()
+  )
 
-  WITH t, collect(waiting.id) as unblockedTaskIds
+  WITH t, CASE WHEN waiting IS NOT NULL AND remainingDeps = 0 THEN waiting.id ELSE null END as unblockedId
+  WITH t, collect(unblockedId) as allUnblockedIds
+  WITH t, [id IN allUnblockedIds WHERE id IS NOT NULL] as unblockedTaskIds
 
   RETURN t.id as id,
          t.title as title,
