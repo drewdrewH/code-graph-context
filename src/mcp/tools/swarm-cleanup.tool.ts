@@ -13,7 +13,7 @@ import { createErrorResponse, createSuccessResponse, resolveProjectIdOrError, de
 /**
  * Neo4j query to delete pheromones by swarm ID
  */
-const CLEANUP_BY_SWARM_QUERY = `
+const CLEANUP_PHEROMONES_BY_SWARM_QUERY = `
   MATCH (p:Pheromone)
   WHERE p.projectId = $projectId
     AND p.swarmId = $swarmId
@@ -21,6 +21,18 @@ const CLEANUP_BY_SWARM_QUERY = `
   WITH p, p.agentId as agentId, p.type as type
   DETACH DELETE p
   RETURN count(p) as deleted, collect(DISTINCT agentId) as agents, collect(DISTINCT type) as types
+`;
+
+/**
+ * Neo4j query to delete SwarmTask nodes by swarm ID
+ */
+const CLEANUP_TASKS_BY_SWARM_QUERY = `
+  MATCH (t:SwarmTask)
+  WHERE t.projectId = $projectId
+    AND t.swarmId = $swarmId
+  WITH t, t.status as status
+  DETACH DELETE t
+  RETURN count(t) as deleted, collect(DISTINCT status) as statuses
 `;
 
 /**
@@ -51,10 +63,16 @@ const CLEANUP_ALL_QUERY = `
 /**
  * Count queries for dry run
  */
-const COUNT_BY_SWARM_QUERY = `
+const COUNT_PHEROMONES_BY_SWARM_QUERY = `
   MATCH (p:Pheromone)
   WHERE p.projectId = $projectId AND p.swarmId = $swarmId AND NOT p.type IN $keepTypes
   RETURN count(p) as count, collect(DISTINCT p.agentId) as agents, collect(DISTINCT p.type) as types
+`;
+
+const COUNT_TASKS_BY_SWARM_QUERY = `
+  MATCH (t:SwarmTask)
+  WHERE t.projectId = $projectId AND t.swarmId = $swarmId
+  RETURN count(t) as count, collect(DISTINCT t.status) as statuses
 `;
 
 const COUNT_BY_AGENT_QUERY = `
@@ -77,9 +95,14 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
       description: TOOL_METADATA[TOOL_NAMES.swarmCleanup].description,
       inputSchema: {
         projectId: z.string().describe('Project ID, name, or path'),
-        swarmId: z.string().optional().describe('Delete all pheromones from this swarm'),
+        swarmId: z.string().optional().describe('Delete all pheromones and tasks from this swarm'),
         agentId: z.string().optional().describe('Delete all pheromones from this agent'),
         all: z.boolean().optional().default(false).describe('Delete ALL pheromones in project (use with caution)'),
+        includeTasks: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe('Also delete SwarmTask nodes (default: true, only applies when swarmId is provided)'),
         keepTypes: z
           .array(z.string())
           .optional()
@@ -88,7 +111,7 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
         dryRun: z.boolean().optional().default(false).describe('Preview what would be deleted without deleting'),
       },
     },
-    async ({ projectId, swarmId, agentId, all = false, keepTypes = ['warning'], dryRun = false }) => {
+    async ({ projectId, swarmId, agentId, all = false, includeTasks = true, keepTypes = ['warning'], dryRun = false }) => {
       const neo4jService = new Neo4jService();
 
       // Resolve project ID
@@ -117,58 +140,91 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
         });
 
         const params: Record<string, unknown> = { projectId: resolvedProjectId, keepTypes };
-        let deleteQuery: string;
-        let countQuery: string;
+        let pheromoneDeleteQuery: string;
+        let pheromoneCountQuery: string;
         let mode: string;
 
         if (swarmId) {
           params.swarmId = swarmId;
-          deleteQuery = CLEANUP_BY_SWARM_QUERY;
-          countQuery = COUNT_BY_SWARM_QUERY;
+          pheromoneDeleteQuery = CLEANUP_PHEROMONES_BY_SWARM_QUERY;
+          pheromoneCountQuery = COUNT_PHEROMONES_BY_SWARM_QUERY;
           mode = 'swarm';
         } else if (agentId) {
           params.agentId = agentId;
-          deleteQuery = CLEANUP_BY_AGENT_QUERY;
-          countQuery = COUNT_BY_AGENT_QUERY;
+          pheromoneDeleteQuery = CLEANUP_BY_AGENT_QUERY;
+          pheromoneCountQuery = COUNT_BY_AGENT_QUERY;
           mode = 'agent';
         } else {
-          deleteQuery = CLEANUP_ALL_QUERY;
-          countQuery = COUNT_ALL_QUERY;
+          pheromoneDeleteQuery = CLEANUP_ALL_QUERY;
+          pheromoneCountQuery = COUNT_ALL_QUERY;
           mode = 'all';
         }
 
         if (dryRun) {
-          const result = await neo4jService.run(countQuery, params);
-          const count = result[0]?.count ?? 0;
+          const pheromoneResult = await neo4jService.run(pheromoneCountQuery, params);
+          const pheromoneCount = pheromoneResult[0]?.count ?? 0;
+
+          let taskCount = 0;
+          let taskStatuses: string[] = [];
+          if (swarmId && includeTasks) {
+            const taskResult = await neo4jService.run(COUNT_TASKS_BY_SWARM_QUERY, params);
+            taskCount = taskResult[0]?.count ?? 0;
+            taskCount = typeof taskCount === 'object' && 'toNumber' in taskCount ? (taskCount as any).toNumber() : taskCount;
+            taskStatuses = taskResult[0]?.statuses ?? [];
+          }
 
           return createSuccessResponse(
             JSON.stringify({
               success: true,
               dryRun: true,
               mode,
-              wouldDelete: typeof count === 'object' && 'toNumber' in count ? count.toNumber() : count,
-              agents: result[0]?.agents ?? [],
-              swarms: result[0]?.swarms ?? [],
-              types: result[0]?.types ?? [],
+              pheromones: {
+                wouldDelete: typeof pheromoneCount === 'object' && 'toNumber' in pheromoneCount ? (pheromoneCount as any).toNumber() : pheromoneCount,
+                agents: pheromoneResult[0]?.agents ?? [],
+                types: pheromoneResult[0]?.types ?? [],
+              },
+              tasks: swarmId && includeTasks ? {
+                wouldDelete: taskCount,
+                statuses: taskStatuses,
+              } : null,
               keepTypes,
               projectId: resolvedProjectId,
             }),
           );
         }
 
-        const result = await neo4jService.run(deleteQuery, params);
-        const deleted = result[0]?.deleted ?? 0;
+        // Delete pheromones
+        const pheromoneResult = await neo4jService.run(pheromoneDeleteQuery, params);
+        const pheromonesDeleted = pheromoneResult[0]?.deleted ?? 0;
+
+        // Delete tasks if swarmId provided and includeTasks is true
+        let tasksDeleted = 0;
+        let taskStatuses: string[] = [];
+        if (swarmId && includeTasks) {
+          const taskResult = await neo4jService.run(CLEANUP_TASKS_BY_SWARM_QUERY, params);
+          tasksDeleted = taskResult[0]?.deleted ?? 0;
+          tasksDeleted = typeof tasksDeleted === 'object' && 'toNumber' in tasksDeleted ? (tasksDeleted as any).toNumber() : tasksDeleted;
+          taskStatuses = taskResult[0]?.statuses ?? [];
+        }
 
         return createSuccessResponse(
           JSON.stringify({
             success: true,
             mode,
-            deleted: typeof deleted === 'object' && 'toNumber' in deleted ? deleted.toNumber() : deleted,
-            agents: result[0]?.agents ?? [],
-            swarms: result[0]?.swarms ?? [],
-            types: result[0]?.types ?? [],
+            pheromones: {
+              deleted: typeof pheromonesDeleted === 'object' && 'toNumber' in pheromonesDeleted ? (pheromonesDeleted as any).toNumber() : pheromonesDeleted,
+              agents: pheromoneResult[0]?.agents ?? [],
+              types: pheromoneResult[0]?.types ?? [],
+            },
+            tasks: swarmId && includeTasks ? {
+              deleted: tasksDeleted,
+              statuses: taskStatuses,
+            } : null,
             keepTypes,
             projectId: resolvedProjectId,
+            message: swarmId && includeTasks
+              ? `Cleaned up ${pheromonesDeleted} pheromones and ${tasksDeleted} tasks`
+              : `Cleaned up ${pheromonesDeleted} pheromones`,
           }),
         );
       } catch (error) {

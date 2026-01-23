@@ -291,8 +291,13 @@ Task({
 
 ---
 
-## Monitoring Progress
+## Orchestrator Responsibilities
 
+**You (the main Claude session) are the orchestrator.** After spawning workers, you MUST:
+
+### 1. Monitor Progress
+
+Poll until all workers complete:
 ```javascript
 swarm_get_tasks({
   projectId: "<PROJECT>",
@@ -301,37 +306,60 @@ swarm_get_tasks({
 })
 ```
 
-Returns:
+Check the `progress` object:
 ```javascript
 {
   progress: {
     completed: 8,
     inProgress: 2,
-    available: 2,
+    available: 0,
     blocked: 0,
-    failed: 0,
+    failed: 2,
     percentComplete: 67,
+    isComplete: false,  // true when all tasks done
     summary: "8/12 completed (67%)"
-  },
-  activeWorkers: [
-    { agentId: "worker_1", status: "working", nodesBeingWorked: 1 }
-  ]
+  }
 }
 ```
 
----
+### 2. Determine Completion
 
-## Cleanup
+Swarm is complete when:
+- `inProgress === 0` AND `available === 0` (no work left)
+- OR all tasks are `completed` or `failed`
 
-When the swarm completes:
+### 3. Handle Failed Tasks
+
+If `failed > 0`, decide:
+- **Retry**: Call `swarm_complete_task({ taskId, action: "retry" })` to make task available again
+- **Spawn new worker**: Create another Task agent to handle retries
+- **Abandon**: Accept the failures and proceed to cleanup
+
+### 4. MANDATORY Cleanup
+
+**After swarm completes, you MUST clean up ALL artifacts:**
 
 ```javascript
+// Remove all pheromones for this swarm
 swarm_cleanup({
   projectId: "<PROJECT>",
   swarmId: "<SWARM_ID>",
-  keepTypes: ["warning"]  // Preserve warnings
+  keepTypes: []  // Remove everything, including warnings
 })
 ```
+
+**Why cleanup is critical:**
+- Pheromones pollute the graph for future operations
+- Old SwarmTask nodes clutter queries
+- Failed/incomplete tasks block future swarms
+
+### 5. Report Results
+
+After cleanup, summarize:
+- Tasks completed successfully
+- Tasks that failed (and why)
+- Files changed across all workers
+- Any warnings or issues discovered
 
 ---
 
