@@ -136,7 +136,7 @@ const GET_ACTIVE_WORKERS_QUERY = `
   WHERE ($swarmId IS NULL OR p.swarmId = $swarmId)
     AND p.type IN ['modifying', 'claiming']
   WITH p.agentId as agentId, p.type as type,
-       max(p.updatedAt) as lastActivity,
+       max(p.timestamp) as lastActivity,
        count(p) as nodeCount
   RETURN agentId, type,
          lastActivity,

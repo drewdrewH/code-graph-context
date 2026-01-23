@@ -30,13 +30,14 @@ import {
   generateSwarmId,
   generateTaskId,
   ORCHESTRATOR_CONFIG,
+  getHalfLife,
 } from './swarm-constants.js';
 
 /**
  * Query to search for nodes matching the task description
  */
 const SEMANTIC_SEARCH_QUERY = `
-  CALL db.index.vector.queryNodes('code_embeddings', toInteger($limit), $embedding)
+  CALL db.index.vector.queryNodes('embedded_nodes_idx', toInteger($limit), $embedding)
   YIELD node, score
   WHERE node.projectId = $projectId
     AND score >= $minSimilarity
@@ -92,14 +93,15 @@ const CREATE_PHEROMONE_QUERY = `
     projectId: $projectId
   })
   ON CREATE SET
+    p.id = randomUUID(),
     p.swarmId = $swarmId,
     p.intensity = $intensity,
-    p.createdAt = timestamp(),
-    p.updatedAt = timestamp(),
+    p.timestamp = timestamp(),
+    p.halfLife = $halfLife,
     p.data = $data
   ON MATCH SET
     p.intensity = $intensity,
-    p.updatedAt = timestamp(),
+    p.timestamp = timestamp(),
     p.data = $data
   MERGE (p)-[:MARKS]->(target)
   RETURN p.nodeId AS nodeId
@@ -127,6 +129,25 @@ const CREATE_TASK_QUERY = `
     updatedAt: timestamp(),
     metadata: $metadata
   })
+
+  // Link to target code nodes if they exist
+  WITH t
+  OPTIONAL MATCH (target)
+  WHERE target.id IN $targetNodeIds
+    AND target.projectId = $projectId
+    AND NOT target:SwarmTask
+    AND NOT target:Pheromone
+  WITH t, collect(DISTINCT target) as targets
+  FOREACH (target IN targets | MERGE (t)-[:TARGETS]->(target))
+
+  // Link to dependency tasks if they exist
+  WITH t
+  OPTIONAL MATCH (dep:SwarmTask)
+  WHERE dep.id IN $dependencies
+    AND dep.projectId = $projectId
+  WITH t, collect(DISTINCT dep) as deps
+  FOREACH (dep IN deps | MERGE (t)-[:DEPENDS_ON]->(dep))
+
   RETURN t.id AS id
 `;
 
@@ -366,6 +387,7 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
               swarmId,
               type: 'proposal',
               intensity: 1.0,
+              halfLife: getHalfLife('proposal'),
               data: JSON.stringify({ task, swarmId }),
             });
           }

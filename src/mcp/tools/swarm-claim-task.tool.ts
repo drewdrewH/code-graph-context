@@ -25,8 +25,8 @@ const CLAIM_TASK_BY_ID_QUERY = `
   WHERE dep.status <> 'completed'
   WITH t, count(dep) as incompleteDeps
 
-  // Only claim if no incomplete dependencies (or task was already available)
-  WHERE incompleteDeps = 0 OR t.status = 'available'
+  // Only claim if all dependencies are complete
+  WHERE incompleteDeps = 0
 
   // Atomic claim
   SET t.status = 'claimed',

@@ -90,6 +90,15 @@ const CHECK_DEPENDENCIES_QUERY = `
          [d IN incompleteDeps | {id: d.id, title: d.title, status: d.status}] as blockedBy
 `;
 
+/**
+ * Query to update task status to blocked
+ */
+const SET_TASK_BLOCKED_QUERY = `
+  MATCH (t:SwarmTask {id: $taskId, projectId: $projectId})
+  SET t.status = 'blocked', t.updatedAt = timestamp()
+  RETURN t.id as id
+`;
+
 export const createSwarmPostTaskTool = (server: McpServer): void => {
   server.registerTool(
     TOOL_NAMES.swarmPostTask,
@@ -216,6 +225,14 @@ export const createSwarmPostTaskTool = (server: McpServer): void => {
         }
 
         const isBlocked = dependencyStatus.incompleteDeps > 0;
+
+        // Update task status to blocked if there are incomplete dependencies
+        if (isBlocked) {
+          await neo4jService.run(SET_TASK_BLOCKED_QUERY, {
+            taskId,
+            projectId: resolvedProjectId,
+          });
+        }
 
         return createSuccessResponse(
           JSON.stringify({
