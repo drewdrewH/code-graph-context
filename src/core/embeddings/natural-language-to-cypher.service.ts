@@ -24,7 +24,7 @@ interface SemanticTypeCategories {
 export class NaturalLanguageToCypherService {
   private assistantId: string;
   private readonly openai: OpenAI;
-  private readonly MODEL = 'gpt-4o-mini'; // Using GPT-4 Turbo
+  private readonly MODEL = 'gpt-4o'; // GPT-4o for better Cypher generation accuracy
   private schemaPath: string | null = null;
   private cachedSemanticTypes: SemanticTypeCategories | null = null;
   private readonly messageInstructions = `
