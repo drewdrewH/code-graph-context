@@ -10,6 +10,8 @@ import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA } from '../constants.js';
 import { createErrorResponse, createSuccessResponse, resolveProjectIdOrError, debugLog } from '../utils.js';
 
+type Neo4jServiceType = InstanceType<typeof Neo4jService>;
+
 /**
  * Query to complete a task with artifacts
  */
@@ -82,10 +84,11 @@ const FAIL_TASK_QUERY = `
 
 /**
  * Query to mark task as needs_review
+ * Accepts both in_progress and claimed states (agent may have done work without calling start)
  */
 const REVIEW_TASK_QUERY = `
   MATCH (t:SwarmTask {id: $taskId, projectId: $projectId})
-  WHERE t.status = 'in_progress' AND t.claimedBy = $agentId
+  WHERE t.status IN ['in_progress', 'claimed'] AND t.claimedBy = $agentId
 
   SET t.status = 'needs_review',
       t.reviewRequestedAt = timestamp(),
@@ -190,6 +193,72 @@ const RETRY_TASK_QUERY = `
          t.retryCount as retryCount
 `;
 
+/**
+ * Query to get current task state for better error messages
+ */
+const GET_TASK_STATE_QUERY = `
+  MATCH (t:SwarmTask {id: $taskId, projectId: $projectId})
+  RETURN t.id as id,
+         t.title as title,
+         t.status as status,
+         t.claimedBy as claimedBy,
+         t.claimedAt as claimedAt,
+         t.startedAt as startedAt,
+         t.completedAt as completedAt,
+         t.failedAt as failedAt,
+         t.retryable as retryable,
+         t.abandonCount as abandonCount
+`;
+
+/**
+ * Helper to get task state and format error message
+ */
+async function getTaskStateError(
+  neo4jService: Neo4jServiceType,
+  taskId: string,
+  projectId: string,
+  action: string,
+  agentId: string,
+): Promise<string> {
+  const stateResult = await neo4jService.run(GET_TASK_STATE_QUERY, {
+    taskId,
+    projectId,
+  });
+
+  if (stateResult.length === 0) {
+    return `Task ${taskId} not found.`;
+  }
+
+  const state = stateResult[0];
+  const claimedBy = state.claimedBy || 'none';
+  const isOwner = claimedBy === agentId;
+
+  let suggestion = '';
+  if (action === 'complete' || action === 'fail') {
+    if (state.status === 'available') {
+      suggestion = 'You must claim the task first using swarm_claim_task.';
+    } else if (!isOwner) {
+      suggestion = `Task is claimed by "${claimedBy}", not you.`;
+    } else if (state.status === 'completed') {
+      suggestion = 'Task is already completed.';
+    } else if (state.status === 'failed') {
+      suggestion = 'Task has failed. Use action="retry" to make it available again.';
+    }
+  } else if (action === 'request_review') {
+    if (!isOwner) {
+      suggestion = `Task is claimed by "${claimedBy}", not you.`;
+    } else if (state.status === 'available') {
+      suggestion = 'You must claim and work on the task first.';
+    }
+  }
+
+  return (
+    `Cannot ${action} task ${taskId}. ` +
+    `Current state: ${state.status}, claimedBy: ${claimedBy}. ` +
+    (suggestion || 'Check that you own the task and it is in a valid state.')
+  );
+}
+
 export const createSwarmCompleteTaskTool = (server: McpServer): void => {
   server.registerTool(
     TOOL_NAMES.swarmCompleteTask,
@@ -278,15 +347,7 @@ export const createSwarmCompleteTaskTool = (server: McpServer): void => {
       const resolvedProjectId = projectResult.projectId;
 
       try {
-        await debugLog('Swarm complete task', {
-          action,
-          taskId,
-          projectId: resolvedProjectId,
-          agentId,
-        });
-
         let result;
-        let responseData: any = { success: true, action };
 
         switch (action) {
           case 'complete':
@@ -306,26 +367,17 @@ export const createSwarmCompleteTaskTool = (server: McpServer): void => {
             });
 
             if (result.length === 0) {
-              return createErrorResponse(
-                `Cannot complete task ${taskId}. It may not exist, not be in_progress, or you don't own it.`,
-              );
+              const errorMsg = await getTaskStateError(neo4jService, taskId, resolvedProjectId, 'complete', agentId);
+              return createErrorResponse(errorMsg);
             }
 
-            responseData.task = {
-              id: result[0].id,
-              title: result[0].title,
-              status: result[0].status,
-              completedAt: typeof result[0].completedAt === 'object'
-                ? result[0].completedAt.toNumber()
-                : result[0].completedAt,
-              summary: result[0].summary,
-              claimedBy: result[0].claimedBy,
-            };
-            responseData.unblockedTasks = result[0].unblockedTaskIds || [];
-            responseData.message = responseData.unblockedTasks.length > 0
-              ? `Task completed. ${responseData.unblockedTasks.length} dependent task(s) are now available.`
-              : 'Task completed successfully.';
-            break;
+            return createSuccessResponse(
+              JSON.stringify({
+                action: 'completed',
+                taskId: result[0].id,
+                ...(result[0].unblockedTaskIds?.length > 0 && { unblockedTasks: result[0].unblockedTaskIds }),
+              }),
+            );
 
           case 'fail':
             if (!reason) {
@@ -342,25 +394,13 @@ export const createSwarmCompleteTaskTool = (server: McpServer): void => {
             });
 
             if (result.length === 0) {
-              return createErrorResponse(
-                `Cannot fail task ${taskId}. It may not exist, not be in_progress/claimed, or you don't own it.`,
-              );
+              const errorMsg = await getTaskStateError(neo4jService, taskId, resolvedProjectId, 'fail', agentId);
+              return createErrorResponse(errorMsg);
             }
 
-            responseData.task = {
-              id: result[0].id,
-              title: result[0].title,
-              status: result[0].status,
-              failedAt: typeof result[0].failedAt === 'object'
-                ? result[0].failedAt.toNumber()
-                : result[0].failedAt,
-              failureReason: result[0].failureReason,
-              retryable: result[0].retryable,
-            };
-            responseData.message = retryable
-              ? 'Task marked as failed. Use action="retry" to make it available again.'
-              : 'Task marked as failed (not retryable).';
-            break;
+            return createSuccessResponse(
+              JSON.stringify({ action: 'failed', taskId: result[0].id, retryable: result[0].retryable }),
+            );
 
           case 'request_review':
             if (!summary) {
@@ -378,23 +418,19 @@ export const createSwarmCompleteTaskTool = (server: McpServer): void => {
             });
 
             if (result.length === 0) {
-              return createErrorResponse(
-                `Cannot request review for task ${taskId}. It may not exist, not be in_progress, or you don't own it.`,
+              const errorMsg = await getTaskStateError(
+                neo4jService,
+                taskId,
+                resolvedProjectId,
+                'request_review',
+                agentId,
               );
+              return createErrorResponse(errorMsg);
             }
 
-            responseData.task = {
-              id: result[0].id,
-              title: result[0].title,
-              status: result[0].status,
-              reviewRequestedAt: typeof result[0].reviewRequestedAt === 'object'
-                ? result[0].reviewRequestedAt.toNumber()
-                : result[0].reviewRequestedAt,
-              summary: result[0].summary,
-              claimedBy: result[0].claimedBy,
-            };
-            responseData.message = 'Task submitted for review.';
-            break;
+            return createSuccessResponse(
+              JSON.stringify({ action: 'review_requested', taskId: result[0].id }),
+            );
 
           case 'approve':
             if (!reviewerId) {
@@ -414,20 +450,13 @@ export const createSwarmCompleteTaskTool = (server: McpServer): void => {
               );
             }
 
-            responseData.task = {
-              id: result[0].id,
-              title: result[0].title,
-              status: result[0].status,
-              completedAt: typeof result[0].completedAt === 'object'
-                ? result[0].completedAt.toNumber()
-                : result[0].completedAt,
-              approvedBy: result[0].approvedBy,
-            };
-            responseData.unblockedTasks = result[0].unblockedTaskIds || [];
-            responseData.message = responseData.unblockedTasks.length > 0
-              ? `Task approved. ${responseData.unblockedTasks.length} dependent task(s) are now available.`
-              : 'Task approved and completed.';
-            break;
+            return createSuccessResponse(
+              JSON.stringify({
+                action: 'approved',
+                taskId: result[0].id,
+                ...(result[0].unblockedTaskIds?.length > 0 && { unblockedTasks: result[0].unblockedTaskIds }),
+              }),
+            );
 
           case 'reject':
             if (!reviewerId) {
@@ -448,17 +477,9 @@ export const createSwarmCompleteTaskTool = (server: McpServer): void => {
               );
             }
 
-            responseData.task = {
-              id: result[0].id,
-              title: result[0].title,
-              status: result[0].status,
-              claimedBy: result[0].claimedBy,
-              rejectionNotes: result[0].rejectionNotes,
-            };
-            responseData.message = markAsFailed
-              ? 'Task rejected and marked as failed.'
-              : 'Task rejected and returned to in_progress for the original agent to fix.';
-            break;
+            return createSuccessResponse(
+              JSON.stringify({ action: 'rejected', taskId: result[0].id, status: result[0].status }),
+            );
 
           case 'retry':
             result = await neo4jService.run(RETRY_TASK_QUERY, {
@@ -472,22 +493,13 @@ export const createSwarmCompleteTaskTool = (server: McpServer): void => {
               );
             }
 
-            responseData.task = {
-              id: result[0].id,
-              title: result[0].title,
-              status: result[0].status,
-              retryCount: typeof result[0].retryCount === 'object'
-                ? result[0].retryCount.toNumber()
-                : result[0].retryCount,
-            };
-            responseData.message = `Task is now available for retry (attempt #${responseData.task.retryCount + 1}).`;
-            break;
+            return createSuccessResponse(
+              JSON.stringify({ action: 'retried', taskId: result[0].id, status: 'available' }),
+            );
 
           default:
             return createErrorResponse(`Unknown action: ${action}`);
         }
-
-        return createSuccessResponse(JSON.stringify(responseData));
       } catch (error) {
         await debugLog('Swarm complete task error', { error: String(error) });
         return createErrorResponse(error instanceof Error ? error : String(error));

@@ -53,118 +53,44 @@ export const TOOL_METADATA = {
   },
   [TOOL_NAMES.searchCodebase]: {
     title: 'Search Codebase',
-    description: `Search the codebase using semantic similarity to find relevant code, functions, classes, and implementations.
+    description: `Semantic search for code, functions, classes, implementations. Returns normalized JSON with source code.
 
-**Before searching:**
-Use list_projects to see available projects and get the project name/ID to search.
-
-Returns normalized JSON with source code snippets. Uses JSON:API pattern to deduplicate nodes.
-
-**Default Usage (Recommended)**:
-Start with default parameters for richest context in a single call. Most queries complete successfully.
+Use list_projects first to get project name/ID.
 
 Parameters:
 - query: Natural language description of what you're looking for
+- maxDepth (default: 3): Relationship hops to traverse
+- includeCode (default: true): Set false for structure only
+- snippetLength (default: 700): Code snippet length
+- maxNodesPerChain (default: 5): Chains per depth level
 
-**Token Optimization (Only if needed)**:
-Use these parameters ONLY if you encounter token limit errors (>25,000 tokens):
-
-- maxDepth (default: 3): Reduce to 1-2 for shallow exploration
-- maxNodesPerChain (default: 5): Limit chains shown per depth level
-- includeCode (default: true): Set false to get structure only, fetch code separately
-- snippetLength (default: 700): Reduce to 400-600 for smaller code snippets
-- skip (default: 0): For pagination (skip N results)
-
-**Progressive Strategy**:
-1. Try with defaults first
-2. If token error: Use maxDepth=1, includeCode=false for structure
-3. Then traverse deeper or Read specific files for full code
-
-**Compact Mode** (for exploration without full source code):
-- includeCode: false → Returns just names, types, and file paths
-- snippetLength: 200 → Smaller code previews
-- maxNodesPerChain: 2 → Fewer relationship chains per depth`,
+If output too large: reduce maxDepth, set includeCode=false, or reduce snippetLength.`,
   },
   [TOOL_NAMES.naturalLanguageToCypher]: {
     title: 'Natural Language to Cypher',
-    description: `Convert natural language queries into Cypher queries for Neo4j.
+    description: `Convert natural language to Cypher for complex queries search_codebase can't handle.
 
-**Before using:**
-Use list_projects to see available projects and get the project name.
+Use list_projects first to get project name.
 
-**When to use:**
-- For complex queries that search_codebase can't handle
-- When you need custom filtering or aggregation
-- To explore specific relationship patterns
+**Node types:** SourceFile, Class, Function, Method, Interface, Property, Parameter, Import, Export, Enum, TypeAlias
 
-**Parameters:**
-- projectId: Project name, path, or ID (use list_projects to find)
-- query: Natural language description of what you want to find
+**Key relationships:** CONTAINS, HAS_MEMBER, HAS_PARAMETER, IMPORTS, EXTENDS, IMPLEMENTS, CALLS, TYPED_AS
 
-**Examples:**
-- "Find all classes with more than 5 methods"
-- "List functions that have more than 3 parameters"
-- "Find files that import from a path containing 'utils'"
-- "Show interfaces with 'Response' in their name"
-- "Find all exported functions"
+**NestJS:** Use semanticType property (e.g., semanticType='NestController'), not decorators. Relationships: INJECTS, EXPOSES, MODULE_IMPORTS/PROVIDES/EXPORTS
 
-**Tips:**
-- Import nodes store file paths, not module names (use 'path containing X')
-- Node types: SourceFile, Class, Function, Method, Interface, Property, Parameter, Constructor, Import, Export, Decorator, Enum, Variable, TypeAlias
-- Relationships: CONTAINS, IMPORTS, EXTENDS, IMPLEMENTS, HAS_MEMBER, HAS_PARAMETER, TYPED_AS, CALLS, DECORATED_WITH
-- For NestJS, use semanticType property instead of decorators (e.g., semanticType = 'NestController')
-
-**Relationships (Core):**
-- CONTAINS: File/class contains members
-- HAS_MEMBER: Class/interface has methods/properties
-- HAS_PARAMETER: Method/function has parameters
-- IMPORTS: SourceFile imports another
-- EXPORTS: SourceFile exports items
-- EXTENDS: Class/interface extends another
-- IMPLEMENTS: Class implements interface(s)
-- CALLS: Method/function calls another
-- TYPED_AS: Parameter/property has type annotation
-- DECORATED_WITH: Node has decorators
-
-**Relationships (NestJS/Framework):**
-- INJECTS: Service/controller injects dependency
-- EXPOSES: Controller exposes HTTP endpoints
-- MODULE_IMPORTS, MODULE_PROVIDES, MODULE_EXPORTS: NestJS module system
-- GUARDED_BY, TRANSFORMED_BY, INTERCEPTED_BY: Security/middleware
-
-**Query Phrasing:**
-Phrase queries using properties known to exist (filePath, name) rather than abstract concepts:
-- Use "in account folder" or "filePath contains /account/" instead of "in account module"
-- Use "classes extending DbService" not "services that extend DbService" (Service is a decorator, not a type)
-- Use "with name containing 'Controller'" instead of "controllers"
-The tool performs better with concrete, schema-aligned language.`,
+**Tips:** Use concrete properties (filePath, name) not abstract concepts. Import nodes store file paths, not module names.`,
   },
   [TOOL_NAMES.traverseFromNode]: {
     title: 'Traverse from Node',
-    description: `Traverse the graph starting from a specific node ID to explore its connections and relationships in detail.
+    description: `Explore connections from a node ID (from search_codebase results).
 
 Parameters:
-- nodeId (required): The node ID to start traversal from (obtained from search_codebase)
-- maxDepth (default: 3): How many relationship hops to traverse (1-10)
-- skip (default: 0): Number of results to skip for pagination
-
-Advanced options (use when needed):
-- includeCode (default: true): Set to false for structure-only view without source code
-- maxNodesPerChain (default: 5): Limit chains shown per depth level (applied independently at each depth)
-- summaryOnly: Set to true for just file paths and statistics without detailed traversal
-
-Best practices:
-- Use list_projects first to see available projects
-- Start with search_codebase to find initial nodes
-- Default includes source code snippets for immediate context
-- Set includeCode: false for high-level architecture view only
-- Use summaryOnly: true for a quick overview of many connections
-
-**Compact Mode** (for exploration without full source code):
-- summaryOnly: true → Returns only file paths and statistics
-- includeCode: false → Structure without source code
-- snippetLength: 200 → Smaller code previews
-- maxTotalNodes: 20 → Limit total unique nodes returned`,
+- nodeId (required): Starting node ID
+- maxDepth (default: 3): Relationship hops (1-10)
+- includeCode (default: true): Set false for structure only
+- summaryOnly: true for file paths and stats only
+- maxNodesPerChain (default: 5): Chains per depth level
+- maxTotalNodes: Cap unique nodes returned`,
   },
   [TOOL_NAMES.parseTypescriptProject]: {
     title: 'Parse TypeScript Project',
@@ -241,517 +167,104 @@ Use the name or path in other tools instead of the cryptic projectId.`,
   },
   [TOOL_NAMES.startWatchProject]: {
     title: 'Start Watch Project',
-    description: `Start watching a project for file changes and automatically update the graph.
+    description: `Watch project for .ts file changes and auto-update graph.
 
-**Parameters:**
-- projectPath (required): Absolute path to the project root
-- tsconfigPath (required): Path to tsconfig.json
-- projectId (optional): Custom project ID (auto-generated if omitted)
-- debounceMs (optional): Delay before processing changes (default: 1000ms)
+Parameters: projectPath (required), tsconfigPath (required), debounceMs (default: 1000ms).
 
-**Behavior:**
-- Watches for .ts file changes (add/change/delete)
-- Automatically triggers incremental graph updates
-- Sends MCP notifications for progress updates
-- Excludes node_modules, dist, build, .git, *.d.ts, *.js
-
-**Usage:**
-start_watch_project({ projectPath: "/path/to/project", tsconfigPath: "/path/to/project/tsconfig.json" })
-
-Use list_watchers to see active watchers, stop_watch_project to stop.`,
+Auto-excludes node_modules, dist, build, .git. Use list_watchers to see active, stop_watch_project to stop.`,
   },
   [TOOL_NAMES.stopWatchProject]: {
     title: 'Stop Watch Project',
-    description: `Stop watching a project for file changes.
-
-**Parameters:**
-- projectId (required): Project ID to stop watching
-
-**Usage:**
-stop_watch_project({ projectId: "proj_abc123..." })
-
-Use list_watchers to see active watchers.`,
+    description: `Stop watching a project. Requires projectId.`,
   },
   [TOOL_NAMES.listWatchers]: {
     title: 'List Watchers',
-    description: `List all active file watchers.
-
-Returns information about each watcher:
-- projectId: The project being watched
-- projectPath: File system path
-- status: active, paused, or error
-- debounceMs: Configured debounce delay
-- pendingChanges: Number of queued file changes
-- lastUpdateTime: When the graph was last updated
-- errorMessage: Error details if status is "error"
-
-Use stop_watch_project to stop a watcher.`,
+    description: `List active file watchers with status, pending changes, last update time.`,
   },
   [TOOL_NAMES.detectDeadCode]: {
     title: 'Detect Dead Code',
-    description: `Identify potentially unused code in the codebase including exports never imported, private methods never called, and orphan interfaces.
+    description: `Find unused exports, uncalled methods, orphan interfaces. Use list_projects first.
 
-**Before analyzing:**
-Use list_projects to see available projects and get the project name.
+Returns risk level, dead code items with confidence (HIGH/MEDIUM/LOW), grouped by type and category.
 
-Returns:
-- Risk level (LOW/MEDIUM/HIGH/CRITICAL) based on dead code count
-- Dead code items with confidence levels (HIGH/MEDIUM/LOW) and categories
-- Grouped by type (methods, classes, interfaces, etc.)
-- Grouped by category (library-export, ui-component, internal-unused)
-- Affected files list
-- Excluded entry points for audit (controllers, modules, etc.)
+Key parameters:
+- projectId (required)
+- filterCategory: library-export, ui-component, internal-unused, all (default: all)
+- minConfidence: LOW/MEDIUM/HIGH (default: LOW)
+- summaryOnly: true for stats only
+- excludePatterns, excludeSemanticTypes: Additional exclusions
 
-Parameters:
-- projectId: Project name, path, or ID (required)
-- excludePatterns: Additional file patterns to exclude (e.g., ["*.config.ts", "*.seed.ts"])
-- excludeSemanticTypes: Additional semantic types to exclude (e.g., ["EntityClass", "DTOClass"])
-- excludeLibraryExports: Exclude all items from packages/* directories (default: false)
-- excludeCoreTypes: Exclude specific AST types (e.g., ["InterfaceDeclaration", "EnumDeclaration"])
-- includeEntryPoints: Include excluded entry points in audit section (default: true)
-- minConfidence: Minimum confidence to include (LOW/MEDIUM/HIGH, default: LOW)
-- filterCategory: Filter by category (library-export, ui-component, internal-unused, all) (default: all)
-- summaryOnly: Return only statistics without full dead code list (default: false)
-- limit: Maximum items per page (default: 100, max: 500)
-- offset: Number of items to skip for pagination (default: 0)
-
-**Categories:**
-- library-export: Exports from packages/* directories (may be used by external consumers)
-- ui-component: Exports from components/ui/* (component library, intentionally broad API)
-- internal-unused: Regular internal code that appears unused
-
-**Auto-excluded entry points:**
-- Semantic types: NestController, NestModule, NestGuard, NestPipe, NestInterceptor, NestFilter, NestProvider, NestService, HttpEndpoint
-- File patterns: main.ts, *.module.ts, *.controller.ts, index.ts
-
-**Confidence levels:**
-- HIGH: Exported but never imported or referenced
-- MEDIUM: Private with no internal calls
-- LOW: Could be used dynamically
-
-Use filterCategory=internal-unused for actionable dead code cleanup.`,
+Auto-excludes NestJS entry points (controllers, modules, guards, etc.). Use filterCategory=internal-unused for actionable cleanup.`,
   },
   [TOOL_NAMES.detectDuplicateCode]: {
     title: 'Detect Duplicate Code',
-    description: `Find duplicate code patterns using structural (AST hash) and semantic (embedding similarity) analysis.
-
-**Before analyzing:**
-Use list_projects to see available projects and get the project name.
-
-Returns:
-- Duplicate groups with similarity scores
-- Confidence levels (HIGH/MEDIUM/LOW)
-- Grouped by detection type (structural, semantic)
-- Recommendations for each duplicate group
-- Affected files list
+    description: `Find duplicates using structural (AST hash) and semantic (embedding) analysis. Use list_projects first.
 
 Parameters:
-- projectId: Project name, path, or ID (required)
-- type: Detection approach - "structural", "semantic", or "all" (default: all)
-- minSimilarity: Minimum similarity for semantic duplicates (0.5-1.0, default: 0.80)
-- includeCode: Include source code snippets (default: false)
-- maxResults: Maximum duplicate groups per page (default: 20, max: 100)
-- scope: Node types to analyze - "methods", "functions", "classes", or "all" (default: all)
-- summaryOnly: Return only statistics without full duplicates list (default: false)
-- offset: Number of groups to skip for pagination (default: 0)
-
-**Detection Types:**
-- structural: Finds exact duplicates by normalized code hash (ignores formatting, variable names, literals)
-- semantic: Finds similar code using embedding similarity (catches different implementations of same logic)
-- all: Runs both detection types
-
-**Similarity Thresholds:**
-- 0.90+: Very high similarity, almost certainly duplicates
-- 0.85-0.90: High similarity, likely duplicates with minor variations
-- 0.80-0.85: Moderate similarity, worth reviewing
-
-Use this to identify refactoring opportunities and reduce code duplication.`,
+- projectId (required)
+- type: structural, semantic, or all (default: all)
+- minSimilarity: 0.5-1.0 (default: 0.80). 0.90+ = almost certain duplicates
+- scope: methods, functions, classes, or all (default: all)
+- summaryOnly: true for stats only
+- includeCode: Include source snippets (default: false)`,
   },
   [TOOL_NAMES.swarmPheromone]: {
     title: 'Swarm Pheromone',
-    description: `Leave a pheromone marker on a code node for stigmergic coordination between agents.
+    description: `Mark a code node with a pheromone for coordination. Types: exploring (2min), modifying (10min), claiming (1hr), completed (24hr), warning (permanent), blocked (5min), proposal (1hr), needs_review (30min).
 
-**What is Stigmergy?**
-Agents coordinate indirectly by leaving markers (pheromones) on code nodes. Other agents sense these markers and adapt their behavior. No direct messaging needed.
-
-**Pheromone Types:**
-- exploring: "I'm looking at this" (2 min half-life)
-- modifying: "I'm actively working on this" (10 min half-life)
-- claiming: "This is my territory" (1 hour half-life)
-- completed: "I finished work here" (24 hour half-life)
-- warning: "Danger - don't touch" (never decays)
-- blocked: "I'm stuck on this" (5 min half-life)
-- proposal: "Proposed artifact awaiting approval" (1 hour half-life)
-- needs_review: "Someone should check this" (30 min half-life)
-
-**Parameters:**
-- nodeId: The code node ID to mark
-- type: Type of pheromone (see above)
-- agentId: Your unique agent identifier
-- swarmId: Swarm ID from orchestrator (for bulk cleanup)
-- intensity: 0.0-1.0, how strong the signal (default: 1.0)
-- data: Optional metadata (summary, reason, etc.)
-- remove: Set true to remove the pheromone
-
-**Workflow states** (exploring, claiming, modifying, completed, blocked) are mutually exclusive per agent+node. Setting one automatically removes others.
-
-**Usage Pattern:**
-1. Before starting work: swarm_sense to check what's claimed
-2. Claim your target: swarm_pheromone({ nodeId, type: "claiming", agentId, swarmId })
-3. Refresh periodically if working long
-4. Mark complete: swarm_pheromone({ nodeId, type: "completed", agentId, swarmId, data: { summary: "..." } })
-
-**Decay:**
-Pheromones automatically fade over time. If an agent dies, its markers decay and work becomes available again.`,
+Workflow states (exploring/claiming/modifying/completed/blocked) are mutually exclusive per agent+node. Use remove:true to delete. Pheromones decay automatically.`,
   },
   [TOOL_NAMES.swarmSense]: {
     title: 'Swarm Sense',
-    description: `Query pheromones in the code graph to sense what other agents are doing.
+    description: `Query active pheromones to see what other agents are doing. Filter by swarmId, types, nodeIds, agentIds. Use excludeAgentId to see only others' activity.
 
-**What This Does:**
-Returns active pheromones with their current intensity (after decay). Use this to:
-- See what nodes are being worked on
-- Avoid conflicts with other agents
-- Find unclaimed work
-- Check if your dependencies are being modified
-
-**Parameters:**
-- swarmId: Filter by swarm ID (see only this swarm's pheromones)
-- types: Filter by pheromone types (e.g., ["modifying", "claiming"])
-- nodeIds: Check specific nodes
-- agentIds: Filter by specific agents
-- excludeAgentId: Exclude your own pheromones (see what OTHERS are doing)
-- minIntensity: Minimum intensity after decay (default: 0.3)
-- limit: Max results (default: 50)
-- includeStats: Get summary statistics by type
-- cleanup: Remove fully decayed pheromones (intensity < 0.01)
-
-**Usage Pattern:**
-\`\`\`
-// Before starting work, check what's taken
-swarm_sense({
-  types: ["modifying", "claiming"],
-  minIntensity: 0.3
-})
-
-// Check a specific node before modifying
-swarm_sense({
-  nodeIds: ["proj_xxx:Service:UserService"],
-  types: ["modifying", "warning"]
-})
-
-// See what other agents are doing (exclude self)
-swarm_sense({
-  excludeAgentId: "my-agent-id",
-  types: ["exploring", "modifying"]
-})
-\`\`\`
-
-**Decay:**
-Intensity decreases over time (exponential decay). A pheromone with intensity 0.25 is almost gone. Below minIntensity threshold, it's not returned.`,
+Returns pheromones with current intensity after decay. minIntensity default: 0.3. Add includeStats:true for summary counts.`,
   },
   [TOOL_NAMES.swarmCleanup]: {
     title: 'Swarm Cleanup',
-    description: `Bulk delete pheromones after a swarm completes.
-
-**When to use:**
-Call this when a swarm finishes to clean up all its pheromones. Prevents pollution for future swarms.
-
-**Parameters:**
-- projectId: Required - the project
-- swarmId: Delete all pheromones from this swarm
-- agentId: Delete all pheromones from this specific agent
-- all: Set true to delete ALL pheromones in project (use with caution)
-- keepTypes: Pheromone types to preserve (default: ["warning"])
-- dryRun: Preview what would be deleted without deleting
-
-**Must specify one of:** swarmId, agentId, or all=true
-
-**Examples:**
-\`\`\`
-// Clean up after a swarm completes
-swarm_cleanup({ projectId: "backend", swarmId: "swarm_abc123" })
-
-// Preview what would be deleted
-swarm_cleanup({ projectId: "backend", swarmId: "swarm_abc123", dryRun: true })
-
-// Clean up a specific agent's pheromones
-swarm_cleanup({ projectId: "backend", agentId: "swarm_abc123_auth" })
-
-// Nuclear option: delete all (except warnings)
-swarm_cleanup({ projectId: "backend", all: true })
-\`\`\`
-
-**Note:** \`warning\` pheromones are preserved by default. Pass \`keepTypes: []\` to delete everything.`,
+    description: `Bulk delete pheromones. Specify swarmId, agentId, or all:true. Warning pheromones preserved by default (override with keepTypes:[]). Use dryRun:true to preview.`,
   },
   [TOOL_NAMES.swarmPostTask]: {
     title: 'Swarm Post Task',
-    description: `Post a task to the swarm blackboard for agents to claim and work on.
+    description: `Post a task to the swarm queue. Required: projectId, swarmId, title, description, type, createdBy.
 
-**What is the Blackboard?**
-The blackboard is a shared task queue where agents post work, claim tasks, and coordinate. Unlike pheromones (indirect coordination), tasks are explicit work items with dependencies.
+Types: implement, refactor, fix, test, review, document, investigate, plan. Priority: critical, high, normal, low, backlog.
 
-**Parameters:**
-- projectId: Project to post the task in
-- swarmId: Group related tasks together
-- title: Short task title (max 200 chars)
-- description: Detailed description of what needs to be done
-- type: Task category (implement, refactor, fix, test, review, document, investigate, plan)
-- priority: Urgency level (critical, high, normal, low, backlog)
-- targetNodeIds: Code nodes this task affects (from search_codebase)
-- targetFilePaths: File paths this task affects
-- dependencies: Task IDs that must complete before this task can start
-- createdBy: Your agent ID
-- metadata: Additional context (acceptance criteria, notes, etc.)
-
-**Task Lifecycle:**
-available → claimed → in_progress → needs_review → completed
-                  ↘ blocked (if dependencies incomplete)
-                  ↘ failed (if something goes wrong)
-
-**Dependency Management:**
-Tasks with incomplete dependencies are automatically marked as "blocked" and become "available" when all dependencies complete.
-
-**Example:**
-\`\`\`
-swarm_post_task({
-  projectId: "backend",
-  swarmId: "feature_auth",
-  title: "Implement JWT validation",
-  description: "Add JWT token validation to the auth middleware...",
-  type: "implement",
-  priority: "high",
-  targetNodeIds: ["proj_xxx:Class:AuthMiddleware"],
-  dependencies: ["task_abc123"],  // Must complete first
-  createdBy: "planner_agent"
-})
-\`\`\``,
+Use dependencies array for task ordering. Tasks with incomplete deps auto-block until ready.`,
   },
   [TOOL_NAMES.swarmClaimTask]: {
     title: 'Swarm Claim Task',
-    description: `Claim a task from the blackboard to work on it.
+    description: `Claim a task from the swarm task queue.
 
-**Actions:**
-- claim: Reserve a task (prevents others from taking it)
-- start: Begin working on a claimed task (transitions to in_progress)
-- release: Give up a task you've claimed (makes it available again)
+**Actions:** claim_and_start (default, recommended), claim, start, release, abandon, force_start
 
-**Auto-Selection:**
-If you don't specify a taskId, the tool claims the highest-priority available task matching your criteria:
-- types: Only consider certain task types (e.g., ["fix", "implement"])
-- minPriority: Only consider tasks at or above this priority
+**Flow:** claim_and_start → do work → swarm_complete_task
 
-**Claim Flow:**
-1. swarm_claim_task({ action: "claim" }) - Reserve the task
-2. swarm_claim_task({ action: "start", taskId: "..." }) - Begin work
-3. [Do the work]
-4. swarm_complete_task({ action: "complete" }) - Finish
+Without taskId, claims highest-priority available task. Use types/minPriority to filter.
 
-**Example - Claim specific task:**
-\`\`\`
-swarm_claim_task({
-  projectId: "backend",
-  swarmId: "feature_auth",
-  agentId: "worker_1",
-  taskId: "task_abc123",
-  action: "claim"
-})
-\`\`\`
-
-**Example - Auto-select highest priority:**
-\`\`\`
-swarm_claim_task({
-  projectId: "backend",
-  swarmId: "feature_auth",
-  agentId: "worker_1",
-  types: ["implement", "fix"],
-  minPriority: "normal"
-})
-\`\`\`
-
-**Releasing Tasks:**
-If you can't complete a task, release it so others can pick it up:
-\`\`\`
-swarm_claim_task({
-  projectId: "backend",
-  taskId: "task_abc123",
-  agentId: "worker_1",
-  action: "release",
-  releaseReason: "Blocked by external API issue"
-})
-\`\`\``,
+Recovery: Use abandon to release stuck tasks, force_start to recover from failed start.`,
   },
   [TOOL_NAMES.swarmCompleteTask]: {
     title: 'Swarm Complete Task',
     description: `Mark a task as completed, failed, or request review.
 
-**Actions:**
-- complete: Task finished successfully (triggers dependent tasks to become available)
-- fail: Task failed (can be retried if retryable=true)
-- request_review: Submit work for review before completion
-- approve: Reviewer approves the work (completes the task)
-- reject: Reviewer rejects (returns to in_progress or marks failed)
-- retry: Make a failed task available again
+**Actions:** complete, fail, request_review, approve, reject, retry
 
-**Completing with Artifacts:**
-\`\`\`
-swarm_complete_task({
-  projectId: "backend",
-  taskId: "task_abc123",
-  agentId: "worker_1",
-  action: "complete",
-  summary: "Implemented JWT validation with RS256 signing",
-  artifacts: {
-    files: ["src/auth/jwt.service.ts"],
-    commits: ["abc123"],
-    pullRequests: ["#42"]
-  },
-  filesChanged: ["src/auth/jwt.service.ts", "src/auth/auth.module.ts"],
-  linesAdded: 150,
-  linesRemoved: 20
-})
-\`\`\`
+Required: summary (for complete/request_review), reason (for fail), reviewerId (for approve/reject).
 
-**Request Review (for important changes):**
-\`\`\`
-swarm_complete_task({
-  projectId: "backend",
-  taskId: "task_abc123",
-  agentId: "worker_1",
-  action: "request_review",
-  summary: "Implemented auth - needs security review",
-  reviewNotes: "Please verify token expiration logic"
-})
-\`\`\`
-
-**Approve/Reject (for reviewers):**
-\`\`\`
-swarm_complete_task({
-  projectId: "backend",
-  taskId: "task_abc123",
-  agentId: "reviewer_1",
-  action: "approve",
-  reviewerId: "reviewer_1",
-  notes: "LGTM"
-})
-\`\`\`
-
-**Failing a Task:**
-\`\`\`
-swarm_complete_task({
-  projectId: "backend",
-  taskId: "task_abc123",
-  agentId: "worker_1",
-  action: "fail",
-  reason: "External API is down",
-  errorDetails: "ConnectionTimeout after 30s",
-  retryable: true
-})
-\`\`\``,
+Complete unblocks dependent tasks. Failed tasks can be retried if retryable=true.`,
   },
   [TOOL_NAMES.swarmGetTasks]: {
     title: 'Swarm Get Tasks',
-    description: `Query tasks from the blackboard with filters.
+    description: `Query tasks with filters. Use taskId for single task, or filter by swarmId, statuses, types, claimedBy, createdBy, minPriority.
 
-**Basic Usage:**
-\`\`\`
-// Get all available tasks in a swarm
-swarm_get_tasks({
-  projectId: "backend",
-  swarmId: "feature_auth",
-  statuses: ["available"]
-})
-
-// Get a specific task with full details
-swarm_get_tasks({
-  projectId: "backend",
-  taskId: "task_abc123"
-})
-
-// Get your claimed/in-progress tasks
-swarm_get_tasks({
-  projectId: "backend",
-  claimedBy: "worker_1",
-  statuses: ["claimed", "in_progress"]
-})
-\`\`\`
-
-**Filters:**
-- swarmId: Filter by swarm
-- statuses: Task statuses (available, claimed, in_progress, blocked, needs_review, completed, failed, cancelled)
-- types: Task types (implement, refactor, fix, test, review, document, investigate, plan)
-- claimedBy: Agent who has the task
-- createdBy: Agent who created the task
-- minPriority: Minimum priority level
-
-**Sorting:**
-- priority: Highest priority first (default)
-- created: Newest first
-- updated: Most recently updated first
-
-**Additional Data:**
-- includeStats: true - Get aggregate statistics (counts by status, type, agent)
-- includeDependencyGraph: true - Get task dependency graph for visualization
-
-**Example with stats:**
-\`\`\`
-swarm_get_tasks({
-  projectId: "backend",
-  swarmId: "feature_auth",
-  includeStats: true
-})
-// Returns: { tasks: [...], stats: { byStatus: {available: 5, in_progress: 2}, ... } }
-\`\`\``,
+Sort by: priority (default), created, updated. Add includeStats:true for aggregate counts.`,
   },
   [TOOL_NAMES.swarmOrchestrate]: {
     title: 'Swarm Orchestrate',
-    description: `Orchestrate multiple agents to tackle complex, multi-file code tasks in parallel.
+    description: `Coordinate multiple agents for complex multi-file tasks. Analyzes codebase, decomposes into atomic tasks, spawns workers, monitors progress.
 
-**What This Does:**
-Spawns and coordinates multiple LLM worker agents to execute complex codebase changes. Uses the code graph to understand dependencies and the swarm system for coordination.
-
-**Example Tasks:**
-- "Rename getUserById to fetchUser across the codebase"
-- "Add JSDoc comments to all exported functions in src/core/"
-- "Convert all class components to functional React components"
-- "Add deprecation warnings to all v1 API endpoints"
-
-**How It Works:**
-1. **Analyze** - Uses search_codebase to find affected nodes and impact_analysis for dependencies
-2. **Plan** - Decomposes task into atomic, dependency-ordered SwarmTasks
-3. **Spawn** - Starts N worker agents that claim tasks and leave pheromones
-4. **Monitor** - Tracks progress, detects blocked agents, enables self-healing
-5. **Complete** - Aggregates results and cleans up pheromones
-
-**Parameters:**
-- projectId: Project to operate on
-- task: Natural language description of the task
-- maxAgents: Maximum concurrent worker agents (default: 3)
-- dryRun: If true, only plan without executing (default: false)
-- autoApprove: Skip approval step for each task (default: false)
-- priority: Overall priority level (critical, high, normal, low, backlog)
-
-**Self-Healing:**
-- Pheromone decay automatically frees stuck work
-- Failed tasks become available for retry
-- Blocked agents release tasks for others
-
-**Example:**
-\`\`\`
-swarm_orchestrate({
-  projectId: "backend",
-  task: "Add JSDoc comments to all exported functions in src/services/",
-  maxAgents: 3,
-  dryRun: false
-})
-\`\`\`
-
-**Returns:**
-- swarmId: Unique identifier for this swarm run
-- status: planning | executing | completed | failed
-- plan: Task breakdown with dependency graph
-- progress: Real-time completion stats
-- results: Summary of changes made`,
+Use dryRun:true to preview plan. maxAgents controls parallelism (default: 3). Failed tasks auto-retry via pheromone decay.`,
   },
 } as const;
 
