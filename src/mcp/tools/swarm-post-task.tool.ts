@@ -19,6 +19,22 @@ import {
 } from './swarm-constants.js';
 
 /**
+ * Query to get node IDs for a file path (fallback when no nodeIds provided)
+ * Uses ENDS WITH for flexible matching (handles absolute vs relative paths)
+ */
+const GET_NODES_FOR_FILE_QUERY = `
+  MATCH (n)
+  WHERE (n.filePath = $filePath OR n.filePath ENDS WITH $filePath)
+    AND n.projectId = $projectId
+    AND n.id IS NOT NULL
+    AND NOT n:Pheromone
+    AND NOT n:SwarmTask
+  RETURN n.id AS id
+  ORDER BY n.startLine
+  LIMIT 20
+`;
+
+/**
  * Neo4j query to create a new SwarmTask node
  */
 const CREATE_TASK_QUERY = `
@@ -170,16 +186,24 @@ export const createSwarmPostTaskTool = (server: McpServer): void => {
         const priorityScore = TASK_PRIORITIES[priority as TaskPriority];
         const metadataJson = metadata ? JSON.stringify(metadata) : null;
 
-        await debugLog('Creating swarm task', {
-          taskId,
-          projectId: resolvedProjectId,
-          swarmId,
-          title,
-          type,
-          priority,
-          targetNodeIds: targetNodeIds.length,
-          dependencies: dependencies.length,
-        });
+        // Filter out null/undefined, then fallback to file query if empty
+        let resolvedNodeIds = (targetNodeIds || []).filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        );
+        if (resolvedNodeIds.length === 0 && targetFilePaths.length > 0) {
+          for (const filePath of targetFilePaths) {
+            const fileNodes = await neo4jService.run(GET_NODES_FOR_FILE_QUERY, {
+              filePath,
+              projectId: resolvedProjectId,
+            });
+            if (fileNodes.length > 0) {
+              resolvedNodeIds = [
+                ...resolvedNodeIds,
+                ...fileNodes.map((n) => n.id as string).filter(Boolean),
+              ];
+            }
+          }
+        }
 
         // Create the task
         const result = await neo4jService.run(CREATE_TASK_QUERY, {
@@ -191,7 +215,7 @@ export const createSwarmPostTaskTool = (server: McpServer): void => {
           type,
           priority,
           priorityScore,
-          targetNodeIds,
+          targetNodeIds: resolvedNodeIds,
           targetFilePaths,
           dependencies,
           createdBy,

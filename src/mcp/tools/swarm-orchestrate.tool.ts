@@ -108,6 +108,22 @@ const CREATE_PHEROMONE_QUERY = `
 `;
 
 /**
+ * Query to get node IDs for a file path (fallback when decomposition has no nodeIds)
+ * Uses ENDS WITH for flexible matching (handles absolute vs relative paths)
+ */
+const GET_NODES_FOR_FILE_QUERY = `
+  MATCH (n)
+  WHERE (n.filePath = $filePath OR n.filePath ENDS WITH $filePath)
+    AND n.projectId = $projectId
+    AND n.id IS NOT NULL
+    AND NOT n:Pheromone
+    AND NOT n:SwarmTask
+  RETURN n.id AS id, n.name AS name, n.coreType AS coreType
+  ORDER BY n.startLine
+  LIMIT 20
+`;
+
+/**
  * Query to create a SwarmTask node
  */
 const CREATE_TASK_QUERY = `
@@ -245,16 +261,7 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
         }
         const resolvedProjectId = projectResult.projectId;
 
-        await debugLog('Swarm orchestration started', {
-          swarmId,
-          projectId: resolvedProjectId,
-          task,
-          maxAgents,
-          dryRun,
-        });
-
         // Step 2: Semantic search to find affected nodes
-        await debugLog('Searching for affected nodes', { task });
 
         let embedding: number[];
         try {
@@ -287,13 +294,7 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
           endLine: typeof r.endLine === 'object' ? (r.endLine as any).toNumber() : r.endLine as number,
         }));
 
-        await debugLog('Found affected nodes', {
-          count: affectedNodes.length,
-          files: [...new Set(affectedNodes.map((n) => n.filePath))].length,
-        });
-
         // Step 3: Run impact analysis on each node
-        await debugLog('Running impact analysis', { nodeCount: affectedNodes.length });
 
         const impactMap = new Map<string, ImpactResult>();
 
@@ -321,8 +322,6 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
         }
 
         // Step 4: Decompose task into atomic tasks
-        await debugLog('Decomposing task', { nodeCount: affectedNodes.length });
-
         const decomposition: DecompositionResult = await taskDecomposer.decomposeTask(
           task,
           affectedNodes,
@@ -334,19 +333,27 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
           return createErrorResponse('Task decomposition produced no actionable tasks');
         }
 
-        await debugLog('Task decomposition complete', {
-          totalTasks: decomposition.tasks.length,
-          parallelizable: decomposition.summary.parallelizable,
-        });
-
         // Step 5: Create SwarmTasks on the blackboard (unless dry run)
         if (!dryRun) {
-          await debugLog('Creating SwarmTasks', { count: decomposition.tasks.length });
 
           for (const atomicTask of decomposition.tasks) {
             // Determine initial status based on dependencies
             const hasUnmetDeps = atomicTask.dependencies.length > 0;
             const initialStatus = hasUnmetDeps ? 'blocked' : 'available';
+
+            // Filter out null/undefined nodeIds, then fallback to file query if empty
+            let targetNodeIds = (atomicTask.nodeIds || []).filter(
+              (id): id is string => typeof id === 'string' && id.length > 0,
+            );
+            if (targetNodeIds.length === 0 && atomicTask.filePath) {
+              const fileNodes = await neo4jService.run(GET_NODES_FOR_FILE_QUERY, {
+                filePath: atomicTask.filePath,
+                projectId: resolvedProjectId,
+              });
+              if (fileNodes.length > 0) {
+                targetNodeIds = fileNodes.map((n) => n.id as string).filter(Boolean);
+              }
+            }
 
             await neo4jService.run(CREATE_TASK_QUERY, {
               taskId: atomicTask.id,
@@ -358,15 +365,16 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
               priority: atomicTask.priority,
               priorityScore: atomicTask.priorityScore,
               status: initialStatus,
-              targetNodeIds: atomicTask.nodeIds,
+              targetNodeIds,
               targetFilePaths: [atomicTask.filePath],
               dependencies: atomicTask.dependencies,
               createdBy: 'orchestrator',
               metadata: JSON.stringify(atomicTask.metadata ?? {}),
             });
-          }
 
-          await debugLog('SwarmTasks created', { swarmId, count: decomposition.tasks.length });
+            // Update the atomicTask.nodeIds for pheromone creation below
+            atomicTask.nodeIds = targetNodeIds;
+          }
 
           // Step 5b: Leave "proposal" pheromones on all target nodes
           // This signals to other agents that work is planned for these nodes
@@ -376,8 +384,6 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
               uniqueNodeIds.add(nodeId);
             }
           }
-
-          await debugLog('Creating proposal pheromones', { nodeCount: uniqueNodeIds.size });
 
           for (const nodeId of uniqueNodeIds) {
             await neo4jService.run(CREATE_PHEROMONE_QUERY, {
@@ -391,8 +397,6 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
               data: JSON.stringify({ task, swarmId }),
             });
           }
-
-          await debugLog('Proposal pheromones created', { swarmId, count: uniqueNodeIds.size });
         }
 
         // Step 6: Generate worker instructions
@@ -429,12 +433,6 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
             : `Swarm ready! ${decomposition.tasks.length} tasks created. ${decomposition.summary.parallelizable} can run in parallel.`,
         };
 
-        await debugLog('Swarm orchestration complete', {
-          swarmId,
-          status: result.status,
-          totalTasks: result.plan.totalTasks,
-        });
-
         return createSuccessResponse(JSON.stringify(result, null, 2));
       } catch (error) {
         await debugLog('Swarm orchestration error', { swarmId, error: String(error) });
@@ -460,103 +458,65 @@ function generateWorkerInstructions(
   // Generate unique agent IDs for each worker
   const agentIds = Array.from({ length: recommendedAgents }, (_, i) => `${swarmId}_worker_${i + 1}`);
 
-  const workerPrompt = `You are a swarm worker agent.
+  const workerPrompt = `You are a swarm worker agent with access to a code graph.
 - Agent ID: {AGENT_ID}
 - Swarm ID: ${swarmId}
 - Project: ${projectId}
 
-## CRITICAL RULES
-1. NEVER fabricate node IDs - get them from graph tool responses
-2. ALWAYS use the blackboard task queue (swarm_claim_task, swarm_complete_task)
-3. Use graph tools (traverse_from_node, search_codebase) to understand context
-4. Exit when swarm_claim_task returns "no_tasks"
+## RULES
+1. Use graph tools (traverse_from_node, search_codebase) for context
+2. Tasks provide: targets (best), targetNodeIds (good), targetFilePaths (fallback)
+3. Exit when swarm_claim_task returns "no_tasks"
 
-## WORKFLOW - Follow these steps exactly:
+## WORKFLOW
 
-### Step 1: Claim a task from the blackboard
+### Step 1: Claim a task
 swarm_claim_task({
   projectId: "${projectId}",
   swarmId: "${swarmId}",
   agentId: "{AGENT_ID}"
 })
-// If returns "no_tasks" → exit, swarm is complete
-// Otherwise you now own the returned task
+// Returns: { task: { id, targets: [{nodeId, name, filePath}], targetFilePaths, ... } }
+// If "no_tasks" → exit
 
-### Step 2: Start working and check for conflicts
-swarm_claim_task({
-  projectId: "${projectId}",
-  swarmId: "${swarmId}",
-  agentId: "{AGENT_ID}",
-  taskId: "<TASK_ID_FROM_STEP_1>",
-  action: "start"
-})
-
-// Check if another agent is working on related code
-swarm_sense({
-  projectId: "${projectId}",
-  swarmId: "${swarmId}",
-  types: ["modifying", "warning"],
-  excludeAgentId: "{AGENT_ID}"
-})
-
-### Step 3: Understand the code context (USE GRAPH TOOLS!)
-// Use traverse_from_node to see relationships and callers
+### Step 2: Understand context via graph (USE NODE IDs!)
+// Priority: task.targets[0].nodeId > task.targetNodeIds[0] > search
 traverse_from_node({
   projectId: "${projectId}",
-  filePath: "<TARGET_FILE_FROM_TASK>",
-  maxDepth: 2,
-  includeCode: true
+  nodeId: "<nodeId_FROM_task.targets>",
+  maxDepth: 2
 })
 
-// Or search for related code
-search_codebase({
-  projectId: "${projectId}",
-  query: "<WHAT_YOU_NEED_TO_UNDERSTAND>"
-})
+// Fallback if no nodeIds:
+search_codebase({ projectId: "${projectId}", query: "<TASK_DESCRIPTION>" })
 
-### Step 4: Do the work
-- Use Read tool for full source code of files to modify
-- Use Edit tool to make changes
-- Mark nodes you're modifying:
+### Step 3: Mark nodes you're analyzing/modifying
 swarm_pheromone({
   projectId: "${projectId}",
-  nodeId: "<NODE_ID_FROM_GRAPH>",
+  nodeId: "<nodeId>",
   type: "modifying",
   agentId: "{AGENT_ID}",
   swarmId: "${swarmId}"
 })
 
-### Step 5: Complete the task via blackboard
-swarm_pheromone({
-  projectId: "${projectId}",
-  nodeId: "<NODE_ID>",
-  type: "completed",
-  agentId: "{AGENT_ID}",
-  swarmId: "${swarmId}",
-  data: { summary: "<WHAT_YOU_DID>" }
-})
+### Step 4: Do the work
+- Read tool for full source
+- Edit tool for changes
 
+### Step 5: Complete the task
 swarm_complete_task({
   projectId: "${projectId}",
   taskId: "<TASK_ID>",
   agentId: "{AGENT_ID}",
   action: "complete",
-  summary: "<DESCRIBE_WHAT_YOU_DID>",
-  filesChanged: ["<LIST_OF_FILES_YOU_MODIFIED>"]
+  summary: "<WHAT_YOU_DID>",
+  filesChanged: ["<FILES>"]
 })
 
-### Step 6: Loop back to Step 1
-Claim the next available task. Continue until no tasks remain.
+### Step 6: Loop to Step 1
 
-## IF YOU GET STUCK
-swarm_complete_task({
-  projectId: "${projectId}",
-  taskId: "<TASK_ID>",
-  agentId: "{AGENT_ID}",
-  action: "fail",
-  reason: "<WHY_YOU_ARE_STUCK>",
-  retryable: true
-})
+## IF STUCK
+swarm_complete_task({ ..., action: "fail", reason: "<WHY>", retryable: true })
 Then claim another task.`;
 
   const taskCalls = agentIds.map(agentId => {
