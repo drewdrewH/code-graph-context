@@ -19,8 +19,6 @@ export const createListWatchersTool = (server: McpServer): void => {
     },
     async () => {
       try {
-        await debugLog('Listing watchers');
-
         const watchers = watchManager.listWatchers();
 
         if (watchers.length === 0) {
@@ -31,8 +29,6 @@ export const createListWatchersTool = (server: McpServer): void => {
               '- Or use parse_typescript_project with watch: true (requires async: false)',
           );
         }
-
-        await debugLog('Watchers listed', { count: watchers.length });
 
         const header = `Found ${watchers.length} active watcher(s):\n\n`;
 

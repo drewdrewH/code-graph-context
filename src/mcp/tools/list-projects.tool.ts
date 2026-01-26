@@ -31,7 +31,6 @@ export const createListProjectsTool = (server: McpServer): void => {
     async () => {
       const neo4jService = new Neo4jService();
       try {
-        await debugLog('Listing projects');
         const results = await neo4jService.run(LIST_PROJECTS_QUERY, {});
 
         if (results.length === 0) {
@@ -47,8 +46,6 @@ export const createListProjectsTool = (server: McpServer): void => {
           edgeCount: r.edgeCount as number | null,
           updatedAt: r.updatedAt?.toString() ?? 'Unknown',
         }));
-
-        await debugLog('Projects listed', { count: projects.length });
 
         // Format output for readability
         const header = `Found ${projects.length} project(s):\n\n`;

@@ -241,16 +241,6 @@ export const createSwarmGetTasksTool = (server: McpServer): void => {
       const resolvedProjectId = projectResult.projectId;
 
       try {
-        await debugLog('Swarm get tasks', {
-          projectId: resolvedProjectId,
-          swarmId,
-          taskId,
-          statuses,
-          types,
-          claimedBy,
-          limit,
-        });
-
         // If taskId is provided, get single task with full details
         if (taskId) {
           const result = await neo4jService.run(GET_TASK_BY_ID_QUERY, {

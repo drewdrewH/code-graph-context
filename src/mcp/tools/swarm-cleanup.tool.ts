@@ -130,15 +130,6 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
           );
         }
 
-        await debugLog('Swarm cleanup operation', {
-          projectId: resolvedProjectId,
-          swarmId,
-          agentId,
-          all,
-          keepTypes,
-          dryRun,
-        });
-
         const params: Record<string, unknown> = { projectId: resolvedProjectId, keepTypes };
         let pheromoneDeleteQuery: string;
         let pheromoneCountQuery: string;

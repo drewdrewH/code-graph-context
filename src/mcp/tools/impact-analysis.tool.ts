@@ -111,14 +111,6 @@ export const createImpactAnalysisTool = (server: McpServer): void => {
           return createErrorResponse('Either nodeId or filePath must be provided');
         }
 
-        await debugLog('Impact analysis started', {
-          projectId: resolvedProjectId,
-          nodeId,
-          filePath,
-          maxDepth,
-          frameworkConfig,
-        });
-
         // Merge default weights with framework-specific weights
         const weights = { ...DEFAULT_RELATIONSHIP_WEIGHTS, ...frameworkConfig?.relationshipWeights };
         const highRiskTypes = new Set(frameworkConfig?.highRiskTypes ?? []);
@@ -266,13 +258,6 @@ export const createImpactAnalysisTool = (server: McpServer): void => {
           affectedFiles,
           criticalPaths,
         };
-
-        await debugLog('Impact analysis complete', {
-          nodeId: nodeId ?? filePath,
-          riskLevel,
-          directCount: directDependents.length,
-          transitiveCount: transitiveDependents.length,
-        });
 
         return createSuccessResponse(JSON.stringify(result, null, 2));
       } catch (error) {

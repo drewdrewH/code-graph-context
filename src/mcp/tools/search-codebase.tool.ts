@@ -87,8 +87,6 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         const sanitizedSkip = sanitizeNumericInput(skip, 0);
         const sanitizedSnippetLength = sanitizeNumericInput(snippetLength, DEFAULTS.codeSnippetLength);
 
-        await debugLog('Search codebase started', { projectId: resolvedProjectId, query });
-
         const embeddingsService = new EmbeddingsService();
         const traversalHandler = new TraversalHandler(neo4jService);
 
@@ -103,7 +101,6 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         });
 
         if (vectorResults.length === 0) {
-          await debugLog('No relevant code found', { projectId: resolvedProjectId, query, minSimilarity });
           return createSuccessResponse(
             `No code found with similarity >= ${minSimilarity}. ` +
               `Try rephrasing your query or lowering the minSimilarity threshold. Query: "${query}"`,
@@ -116,29 +113,11 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
 
         // Check if best match meets threshold - prevents traversing low-relevance results
         if (similarityScore < minSimilarity) {
-          await debugLog('Best match below similarity threshold', {
-            projectId: resolvedProjectId,
-            query,
-            score: similarityScore,
-            threshold: minSimilarity,
-          });
           return createSuccessResponse(
             `No sufficiently relevant code found. Best match score: ${similarityScore.toFixed(3)} ` +
               `(threshold: ${minSimilarity}). Try rephrasing your query.`,
           );
         }
-
-        await debugLog('Vector search completed, starting traversal', {
-          projectId: resolvedProjectId,
-          nodeId,
-          similarityScore,
-          resultsCount: vectorResults.length,
-          maxDepth: sanitizedMaxDepth,
-          maxNodesPerChain: sanitizedMaxNodesPerChain,
-          skip: sanitizedSkip,
-          includeCode,
-          snippetLength: sanitizedSnippetLength,
-        });
 
         // Include similarity score in the title so users can see relevance
         const scoreDisplay = typeof similarityScore === 'number' ? similarityScore.toFixed(3) : 'N/A';

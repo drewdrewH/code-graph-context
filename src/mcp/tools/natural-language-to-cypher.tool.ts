@@ -65,8 +65,6 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
           return createSuccessResponse(MESSAGES.errors.serviceNotInitialized);
         }
 
-        await debugLog('Natural language to Cypher conversion started', { projectId: resolvedProjectId, query });
-
         const cypherResult = await naturalLanguageToCypherService.promptToQuery(query, resolvedProjectId);
 
         // Validate Cypher syntax using EXPLAIN (no execution, just parse)
@@ -90,12 +88,6 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
 
         // Execute the validated query
         const results = await neo4jService.run(cypherResult.cypher, parameters);
-
-        await debugLog('Cypher query executed', {
-          projectId: resolvedProjectId,
-          cypher: cypherResult.cypher,
-          resultsCount: results.length,
-        });
 
         const formattedResponse = formatQueryResults(results, query, cypherResult);
         return createSuccessResponse(JSON.stringify(formattedResponse, null, 2));

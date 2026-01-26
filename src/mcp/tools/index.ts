@@ -36,26 +36,16 @@ let globalToolCallCount = 0;
 /**
  * Log tool call start (exported for use by individual tools)
  */
-export const logToolCallStart = async (toolName: string, params?: any): Promise<number> => {
+export const logToolCallStart = async (_toolName: string, _params?: unknown): Promise<number> => {
   globalToolCallCount++;
-  const callId = globalToolCallCount;
-  await debugLog(`Tool call START: ${toolName}`, {
-    callId,
-    totalCalls: globalToolCallCount,
-    params: params ? JSON.stringify(params).substring(0, 500) : 'none',
-  });
-  return callId;
+  return globalToolCallCount;
 };
 
 /**
  * Log tool call end (exported for use by individual tools)
  */
-export const logToolCallEnd = async (toolName: string, callId: number, success: boolean, duration?: number): Promise<void> => {
-  await debugLog(`Tool call END: ${toolName}`, {
-    callId,
-    success,
-    duration: duration ? `${duration}ms` : 'unknown',
-  });
+export const logToolCallEnd = async (_toolName: string, _callId: number, _success: boolean, _duration?: number): Promise<void> => {
+  // No-op - verbose logging disabled
 };
 
 /**

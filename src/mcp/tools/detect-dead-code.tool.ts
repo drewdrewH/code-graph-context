@@ -232,13 +232,6 @@ export const createDetectDeadCodeTool = (server: McpServer): void => {
         if (!projectResult.success) return projectResult.error;
         const resolvedProjectId = projectResult.projectId;
 
-        await debugLog('Dead code detection started', {
-          projectId: resolvedProjectId,
-          excludePatterns,
-          excludeSemanticTypes,
-          minConfidence,
-        });
-
         // Query project's actual semantic types (data-driven, per-project detection)
         const semanticTypesResult = (await neo4jService.run(QUERIES.GET_PROJECT_SEMANTIC_TYPES, {
           projectId: resolvedProjectId,
@@ -485,17 +478,6 @@ export const createDetectDeadCodeTool = (server: McpServer): void => {
             affectedFiles,
           };
         }
-
-        await debugLog('Dead code detection complete', {
-          projectId: resolvedProjectId,
-          totalCount: deadCodeItems.length,
-          filteredCount: filteredItems.length,
-          filterCategory,
-          riskLevel,
-          summaryOnly,
-          offset,
-          limit,
-        });
 
         return createSuccessResponse(JSON.stringify(result, null, 2));
       } catch (error) {

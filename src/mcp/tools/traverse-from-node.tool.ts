@@ -140,22 +140,6 @@ export const createTraverseFromNodeTool = (server: McpServer): void => {
         const sanitizedMaxDepth = sanitizeNumericInput(maxDepth, DEFAULTS.traversalDepth, MAX_TRAVERSAL_DEPTH);
         const sanitizedSkip = sanitizeNumericInput(skip, DEFAULTS.skipOffset);
 
-        await debugLog('Node traversal started', {
-          projectId: resolvedProjectId,
-          nodeId: resolvedNodeId,
-          filePath,
-          maxDepth: sanitizedMaxDepth,
-          skip: sanitizedSkip,
-          limit,
-          direction,
-          relationshipTypes,
-          includeCode,
-          maxNodesPerChain,
-          summaryOnly,
-          snippetLength,
-          maxTotalNodes,
-        });
-
         // Safety check - resolvedNodeId should be set at this point
         if (!resolvedNodeId) {
           return createErrorResponse('Could not resolve node ID from provided parameters.');

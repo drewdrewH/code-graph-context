@@ -221,13 +221,6 @@ export const createDetectDuplicateCodeTool = (server: McpServer): void => {
         if (!projectResult.success) return projectResult.error;
         const resolvedProjectId = projectResult.projectId;
 
-        await debugLog('Duplicate code detection started', {
-          projectId: resolvedProjectId,
-          type,
-          minSimilarity,
-          scope,
-        });
-
         const coreTypes = getScopeFilter(scope as Scope);
         const duplicateGroups: DuplicateGroup[] = [];
         let groupCounter = 1;
@@ -413,16 +406,6 @@ export const createDetectDuplicateCodeTool = (server: McpServer): void => {
             usedInSemanticGroup.add(nodeId2);
           }
 
-          // Log semantic query diagnostics
-          await debugLog('Semantic query diagnostics', {
-            rawResults: semanticQueryResults,
-            filteredAsSameFile,
-            filteredAsSeenPair,
-            filteredAsStructural,
-            filteredAsUsedInGroup,
-            structuralPairsCount: structuralPairs.size,
-            finalSemanticGroups: duplicateGroups.filter((g) => g.type === 'semantic').length,
-          });
         }
 
         // Sort by similarity (descending)
@@ -470,8 +453,6 @@ export const createDetectDuplicateCodeTool = (server: McpServer): void => {
             };
           }
 
-          // Log diagnostic so user sees it in debug output
-          await debugLog('Semantic duplicate diagnostic', semanticDiagnostic);
         }
 
         // Build summary with warning if no embeddings
@@ -536,16 +517,6 @@ export const createDetectDuplicateCodeTool = (server: McpServer): void => {
         if (semanticDiagnostic) {
           result.semanticDiagnostic = semanticDiagnostic;
         }
-
-        await debugLog('Duplicate code detection complete', {
-          projectId: resolvedProjectId,
-          totalGroups,
-          structuralGroups: allStructuralGroups.length,
-          semanticGroups: allSemanticGroups.length,
-          summaryOnly,
-          offset,
-          maxResults,
-        });
 
         return createSuccessResponse(JSON.stringify(result, null, 2));
       } catch (error) {
