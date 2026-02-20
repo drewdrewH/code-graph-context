@@ -44,14 +44,14 @@ export class GraphGeneratorHandler {
     batchSize: number = DEFAULTS.batchSize,
     clearExisting = true,
   ): Promise<ImportResult> {
-    console.log(`Generating graph from JSON file: ${graphJsonPath}`);
+    console.error(`Generating graph from JSON file: ${graphJsonPath}`);
     await debugLog('Starting graph generation', { graphJsonPath, batchSize, clearExisting, projectId: this.projectId });
 
     try {
       const graphData = await this.loadGraphData(graphJsonPath);
       const { nodes, edges, metadata } = graphData;
 
-      console.log(`Generating graph with ${nodes.length} nodes and ${edges.length} edges`);
+      console.error(`Generating graph with ${nodes.length} nodes and ${edges.length} edges`);
       await debugLog('Graph data loaded', { nodeCount: nodes.length, edgeCount: edges.length });
 
       if (clearExisting) {
@@ -85,18 +85,18 @@ export class GraphGeneratorHandler {
 
   private async clearExistingData(): Promise<void> {
     if (this.projectId) {
-      console.log(`Clearing existing graph data for project: ${this.projectId}...`);
+      console.error(`Clearing existing graph data for project: ${this.projectId}...`);
       await this.neo4jService.run(QUERIES.CLEAR_PROJECT, { projectId: this.projectId });
       await debugLog('Existing project graph data cleared', { projectId: this.projectId });
     } else {
-      console.log('Clearing ALL existing graph data (no projectId set)...');
+      console.error('Clearing ALL existing graph data (no projectId set)...');
       await this.neo4jService.run(QUERIES.CLEAR_DATABASE);
       await debugLog('Existing graph data cleared');
     }
   }
 
   private async createProjectIndexes(): Promise<void> {
-    console.log('Creating project indexes...');
+    console.error('Creating project indexes...');
     await this.neo4jService.run(QUERIES.CREATE_PROJECT_INDEX_EMBEDDED);
     await this.neo4jService.run(QUERIES.CREATE_PROJECT_INDEX_SOURCEFILE);
     await this.neo4jService.run(QUERIES.CREATE_PROJECT_ID_INDEX_EMBEDDED);
@@ -106,14 +106,14 @@ export class GraphGeneratorHandler {
   }
 
   private async importNodes(nodes: Neo4jNode[], batchSize: number): Promise<void> {
-    console.log(`Importing ${nodes.length} nodes with embeddings...`);
+    console.error(`Importing ${nodes.length} nodes with embeddings...`);
 
     for (let i = 0; i < nodes.length; i += batchSize) {
       const batch = await this.processNodeBatch(nodes.slice(i, i + batchSize));
       const result = await this.neo4jService.run(QUERIES.CREATE_NODE, { nodes: batch });
 
       const batchEnd = Math.min(i + batchSize, nodes.length);
-      console.log(`Created ${result[0].created} nodes in batch ${i + 1}-${batchEnd}`);
+      console.error(`Created ${result[0].created} nodes in batch ${i + 1}-${batchEnd}`);
 
       await debugLog('Node batch imported', {
         batchStart: i + 1,
@@ -196,7 +196,7 @@ export class GraphGeneratorHandler {
   }
 
   private async importEdges(edges: any[], batchSize: number): Promise<void> {
-    console.log(`Importing ${edges.length} edges using APOC...`);
+    console.error(`Importing ${edges.length} edges using APOC...`);
 
     for (let i = 0; i < edges.length; i += batchSize) {
       const batch = edges.slice(i, i + batchSize).map((edge) => ({
@@ -210,7 +210,7 @@ export class GraphGeneratorHandler {
       });
 
       const batchEnd = Math.min(i + batchSize, edges.length);
-      console.log(`Created ${result[0].created} edges in batch ${i + 1}-${batchEnd}`);
+      console.error(`Created ${result[0].created} edges in batch ${i + 1}-${batchEnd}`);
 
       await debugLog('Edge batch imported', {
         batchStart: i + 1,
@@ -221,7 +221,7 @@ export class GraphGeneratorHandler {
   }
 
   private async createVectorIndexes(): Promise<void> {
-    console.log('Creating vector indexes...');
+    console.error('Creating vector indexes...');
     await this.neo4jService.run(QUERIES.CREATE_EMBEDDED_VECTOR_INDEX);
     await debugLog('Vector indexes created');
   }

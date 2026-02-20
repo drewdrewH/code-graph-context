@@ -364,7 +364,7 @@ class WatchManager {
         timestamp: new Date().toISOString(),
       });
 
-      console.log(
+      console.error(
         `[WatchManager] Incremental parse completed for ${state.projectId}: ` +
           `${result.nodesUpdated} nodes, ${result.edgesUpdated} edges in ${elapsedMs}ms`,
       );
@@ -430,7 +430,7 @@ class WatchManager {
           edgesUpdated: result.edgesUpdated
         });
         if (result.nodesUpdated > 0 || result.edgesUpdated > 0) {
-          console.log(
+          console.error(
             `[WatchManager] Synced missed changes for ${state.projectId}: ` +
               `${result.nodesUpdated} nodes, ${result.edgesUpdated} edges`,
           );
@@ -499,7 +499,7 @@ class WatchManager {
 
     this.watchers.delete(projectId);
 
-    console.log(`[WatchManager] Stopped watching project: ${projectId}`);
+    console.error(`[WatchManager] Stopped watching project: ${projectId}`);
 
     return true;
   }
@@ -526,7 +526,7 @@ class WatchManager {
   async stopAllWatchers(): Promise<void> {
     const projectIds = Array.from(this.watchers.keys());
     await Promise.all(projectIds.map((id) => this.stopWatching(id)));
-    console.log(`[WatchManager] Stopped all ${projectIds.length} watchers`);
+    console.error(`[WatchManager] Stopped all ${projectIds.length} watchers`);
   }
 
   /**

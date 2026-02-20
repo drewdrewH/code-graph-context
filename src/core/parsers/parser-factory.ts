@@ -47,8 +47,8 @@ export class ParserFactory {
     // Select framework schemas based on project type
     const frameworkSchemas = this.selectFrameworkSchemas(projectType, customFrameworkSchemas);
 
-    console.log(`📦 Creating parser for ${projectType} project`);
-    console.log(`📚 Framework schemas: ${frameworkSchemas.map((s) => s.name).join(', ')}`);
+    console.error(`📦 Creating parser for ${projectType} project`);
+    console.error(`📚 Framework schemas: ${frameworkSchemas.map((s) => s.name).join(', ')}`);
 
     return new TypeScriptParser(
       workspacePath,
@@ -141,7 +141,7 @@ export class ParserFactory {
     lazyLoad: boolean = false,
   ): Promise<TypeScriptParser> {
     const projectType = await this.detectProjectType(workspacePath);
-    console.log(`🔍 Auto-detected project type: ${projectType}`);
+    console.error(`🔍 Auto-detected project type: ${projectType}`);
 
     return this.createParser({
       workspacePath,

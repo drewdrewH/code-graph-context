@@ -71,7 +71,7 @@ class JobManager {
     this.cleanupInterval = setInterval(() => {
       const cleaned = this.cleanupOldJobs();
       if (cleaned > 0) {
-        console.log(`[JobManager] Cleaned up ${cleaned} old jobs`);
+        console.error(`[JobManager] Cleaned up ${cleaned} old jobs`);
       }
     }, JOBS.cleanupIntervalMs);
 
@@ -106,7 +106,7 @@ class JobManager {
         );
       }
       if (cleaned > 0) {
-        console.log(`[JobManager] Auto-cleaned ${cleaned} old jobs to make room for new job`);
+        console.error(`[JobManager] Auto-cleaned ${cleaned} old jobs to make room for new job`);
       }
     }
 

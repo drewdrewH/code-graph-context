@@ -283,11 +283,11 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
         const shouldUseStreaming =
           useStreaming === 'always' || (useStreaming === 'auto' && totalFiles > PARSING.streamingThreshold && chunkSize > 0);
 
-        console.log(`📊 Project has ${totalFiles} files. Streaming: ${shouldUseStreaming ? 'enabled' : 'disabled'}`);
+        console.error(`📊 Project has ${totalFiles} files. Streaming: ${shouldUseStreaming ? 'enabled' : 'disabled'}`);
 
         if (shouldUseStreaming && clearExisting !== false) {
           // Use streaming import for large projects
-          console.log(`🚀 Using streaming import with chunk size ${chunkSize}`);
+          console.error(`🚀 Using streaming import with chunk size ${chunkSize}`);
           await debugLog('Using streaming import', { totalFiles, chunkSize });
 
           // Create Project node BEFORE starting import (status: parsing)
@@ -368,7 +368,7 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
 
         const { nodes, edges, savedCrossFileEdges, resolvedProjectId: finalProjectId } = graphData;
 
-        console.log(`Parsed ${nodes.length} nodes / ${edges.length} edges for project ${finalProjectId}`);
+        console.error(`Parsed ${nodes.length} nodes / ${edges.length} edges for project ${finalProjectId}`);
         await debugLog('Parsing completed', {
           nodeCount: nodes.length,
           edgeCount: edges.length,
@@ -377,7 +377,7 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
 
         const outputPath = join(projectPath, FILE_PATHS.graphOutput);
         writeFileSync(outputPath, JSON.stringify(graphData, null, LOG_CONFIG.jsonIndentation));
-        console.log(`Graph data written to ${outputPath}`);
+        console.error(`Graph data written to ${outputPath}`);
 
         try {
           // Set projectId for project-scoped operations (clear, indexes)
@@ -395,7 +395,7 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
             await debugLog('Cross-file edges recreated', { recreatedCount, expected: savedCrossFileEdges.length });
           }
 
-          console.log('Graph generation completed:', result);
+          console.error('Graph generation completed:', result);
           await debugLog('Neo4j import completed', result);
 
           // Update Project node status to complete

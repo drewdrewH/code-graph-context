@@ -217,7 +217,7 @@ Provide ONLY the JSON response with no additional text, markdown formatting, or 
 
     if (process.env.OPENAI_ASSISTANT_ID) {
       this.assistantId = process.env.OPENAI_ASSISTANT_ID;
-      console.log(`Using existing assistant with ID: ${this.assistantId} `);
+      console.error(`Using existing assistant with ID: ${this.assistantId}`);
       return this.assistantId;
     }
 
@@ -465,7 +465,7 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
 `;
 
     // SECURITY: Only log prompt length, not full content which may contain sensitive data
-    console.log(`NL-to-Cypher: Processing prompt (${prompt.length} chars) for project ${projectId}`);
+    console.error(`NL-to-Cypher: Processing prompt (${prompt.length} chars) for project ${projectId}`);
     const run = await this.openai.beta.threads.createAndRunPoll({
       assistant_id: this.assistantId,
       thread: {
@@ -480,7 +480,7 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
 
     const threadId = run.thread_id;
     // SECURITY: Log minimal info, avoid exposing full objects that may contain sensitive data
-    console.log(`NL-to-Cypher: Thread ${threadId}, status: ${run.status}`);
+    console.error(`NL-to-Cypher: Thread ${threadId}, status: ${run.status}`);
 
     // Validate run completed successfully
     if (run.status !== 'completed') {
@@ -503,7 +503,7 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
       );
     }
     // SECURITY: Don't log full message content which may contain user data
-    console.log(`NL-to-Cypher: Received message with ${latestMessage.content?.length ?? 0} content blocks`);
+    console.error(`NL-to-Cypher: Received message with ${latestMessage.content?.length ?? 0} content blocks`);
 
     if (!latestMessage.content || latestMessage.content.length === 0) {
       throw new Error(
@@ -528,7 +528,7 @@ Remember to include WHERE n.projectId = $projectId for all node patterns.
     }
 
     // SECURITY: Don't log the full text value which may contain sensitive queries
-    console.log(`NL-to-Cypher: Parsing response (${textValue.length} chars)`);
+    console.error(`NL-to-Cypher: Parsing response (${textValue.length} chars)`);
 
     // Parse the response with proper error handling
     let result: { cypher: string; parameters?: Record<string, unknown>; explanation?: string };

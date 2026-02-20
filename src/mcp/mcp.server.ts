@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 // Go up two levels from dist/mcp/mcp.server.js to the root
 const rootDir = join(__dirname, '..', '..');
-dotenv.config({ path: join(rootDir, '.env') });
+dotenv.config({ path: join(rootDir, '.env'), quiet: true });
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';

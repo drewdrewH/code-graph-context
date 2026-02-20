@@ -263,7 +263,7 @@ export class TraversalHandler {
 
     for (let depth = 1; depth <= maxDepth; depth++) {
       if (currentSourceIds.length === 0) {
-        console.log(`No source nodes to explore at depth ${depth}`);
+        console.error(`No source nodes to explore at depth ${depth}`);
         break;
       }
 
@@ -277,7 +277,7 @@ export class TraversalHandler {
       });
 
       if (traversalResults.length === 0) {
-        console.log(`No connections found at depth ${depth}`);
+        console.error(`No connections found at depth ${depth}`);
         break;
       }
 
