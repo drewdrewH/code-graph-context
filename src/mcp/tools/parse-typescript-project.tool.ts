@@ -116,9 +116,9 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
           .default('auto')
           .describe('When to use streaming import: auto (>100 files), always, or never'),
         async: z
-          .boolean()
+          .coerce.boolean()
           .optional()
-          .default(false)
+          .default(true)
           .describe('Run parsing in background and return job ID immediately. Use check_parse_status to monitor.'),
         watch: z
           .boolean()
