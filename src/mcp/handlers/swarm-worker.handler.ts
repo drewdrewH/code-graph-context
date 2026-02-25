@@ -10,7 +10,6 @@
  */
 
 import { ORCHESTRATOR_CONFIG, WorkerState, generateAgentId } from '../tools/swarm-constants.js';
-import { debugLog } from '../utils.js';
 
 /**
  * Worker configuration
@@ -239,10 +238,7 @@ Begin working now. Start by sensing the environment and claiming your first task
   /**
    * Update worker progress
    */
-  updateWorkerProgress(
-    agentId: string,
-    update: Partial<WorkerProgress>,
-  ): WorkerProgress | null {
+  updateWorkerProgress(agentId: string, update: Partial<WorkerProgress>): WorkerProgress | null {
     const progress = this.workerProgress.get(agentId);
     if (!progress) return null;
 

@@ -13,7 +13,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
-import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
+import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA } from '../constants.js';
 import {
   TaskDecompositionHandler,
@@ -21,17 +21,9 @@ import {
   ImpactResult,
   DecompositionResult,
 } from '../handlers/task-decomposition.handler.js';
-import { swarmWorkerHandler } from '../handlers/swarm-worker.handler.js';
 import { createErrorResponse, createSuccessResponse, resolveProjectIdOrError, debugLog } from '../utils.js';
 
-import {
-  TASK_PRIORITIES,
-  TaskPriority,
-  generateSwarmId,
-  generateTaskId,
-  ORCHESTRATOR_CONFIG,
-  getHalfLife,
-} from './swarm-constants.js';
+import { TASK_PRIORITIES, TaskPriority, generateSwarmId, ORCHESTRATOR_CONFIG, getHalfLife } from './swarm-constants.js';
 
 /**
  * Query to search for nodes matching the task description
@@ -290,8 +282,8 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
           semanticType: r.semanticType as string | undefined,
           filePath: r.filePath as string,
           sourceCode: r.sourceCode as string | undefined,
-          startLine: typeof r.startLine === 'object' ? (r.startLine as any).toNumber() : r.startLine as number,
-          endLine: typeof r.endLine === 'object' ? (r.endLine as any).toNumber() : r.endLine as number,
+          startLine: typeof r.startLine === 'object' ? (r.startLine as any).toNumber() : (r.startLine as number),
+          endLine: typeof r.endLine === 'object' ? (r.endLine as any).toNumber() : (r.endLine as number),
         }));
 
         // Step 3: Run impact analysis on each node
@@ -310,9 +302,10 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
               nodeId: node.id,
               riskLevel: impact.riskLevel as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
               directDependents: {
-                count: typeof impact.dependentCount === 'object'
-                  ? (impact.dependentCount as any).toNumber()
-                  : impact.dependentCount as number,
+                count:
+                  typeof impact.dependentCount === 'object'
+                    ? (impact.dependentCount as any).toNumber()
+                    : (impact.dependentCount as number),
                 byType: {},
               },
               transitiveDependents: { count: 0 },
@@ -335,7 +328,6 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
 
         // Step 5: Create SwarmTasks on the blackboard (unless dry run)
         if (!dryRun) {
-
           for (const atomicTask of decomposition.tasks) {
             // Determine initial status based on dependencies
             const hasUnmetDeps = atomicTask.dependencies.length > 0;
@@ -447,12 +439,7 @@ export const createSwarmOrchestrateTool = (server: McpServer): void => {
 /**
  * Generate instructions for spawning worker agents
  */
-function generateWorkerInstructions(
-  swarmId: string,
-  projectId: string,
-  maxAgents: number,
-  taskCount: number,
-): string {
+function generateWorkerInstructions(swarmId: string, projectId: string, maxAgents: number, taskCount: number): string {
   const recommendedAgents = Math.min(maxAgents, Math.ceil(taskCount / 2), taskCount);
 
   // Generate unique agent IDs for each worker
@@ -519,14 +506,16 @@ swarm_complete_task({
 swarm_complete_task({ ..., action: "fail", reason: "<WHY>", retryable: true })
 Then claim another task.`;
 
-  const taskCalls = agentIds.map(agentId => {
-    const prompt = workerPrompt.replace(/\{AGENT_ID\}/g, agentId);
-    return `Task({
+  const taskCalls = agentIds
+    .map((agentId) => {
+      const prompt = workerPrompt.replace(/\{AGENT_ID\}/g, agentId);
+      return `Task({
   subagent_type: "general-purpose",
   run_in_background: false,
   prompt: \`${prompt}\`
 })`;
-  }).join('\n\n');
+    })
+    .join('\n\n');
 
   return `
 ## Worker Agent Instructions
@@ -564,9 +553,7 @@ swarm_cleanup({
 /**
  * Build dependency graph edges for visualization
  */
-function buildDependencyGraph(
-  decomposition: DecompositionResult,
-): Array<{ from: string; to: string }> {
+function buildDependencyGraph(decomposition: DecompositionResult): Array<{ from: string; to: string }> {
   const edges: Array<{ from: string; to: string }> = [];
 
   for (const task of decomposition.tasks) {

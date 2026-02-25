@@ -15,33 +15,42 @@ export const PHEROMONE_CONFIG = {
   blocked: { halfLife: 5 * 60 * 1000, description: 'Stuck' },
   proposal: { halfLife: 60 * 60 * 1000, description: 'Awaiting approval' },
   needs_review: { halfLife: 30 * 60 * 1000, description: 'Review requested' },
+  session_context: { halfLife: 8 * 60 * 60 * 1000, description: 'Session working context marker' },
 } as const;
 
 /**
  * Task status values for the blackboard task queue
  */
 export const TASK_STATUSES: readonly [string, ...string[]] = [
-  'available',    // Ready to be claimed by an agent
-  'claimed',      // An agent has claimed but not started
-  'in_progress',  // Agent is actively working
-  'blocked',      // Task is blocked by dependencies or issues
+  'available', // Ready to be claimed by an agent
+  'claimed', // An agent has claimed but not started
+  'in_progress', // Agent is actively working
+  'blocked', // Task is blocked by dependencies or issues
   'needs_review', // Work done, awaiting review
-  'completed',    // Successfully finished
-  'failed',       // Task failed
-  'cancelled',    // Task was cancelled
+  'completed', // Successfully finished
+  'failed', // Task failed
+  'cancelled', // Task was cancelled
 ];
 
-export type TaskStatus = 'available' | 'claimed' | 'in_progress' | 'blocked' | 'needs_review' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus =
+  | 'available'
+  | 'claimed'
+  | 'in_progress'
+  | 'blocked'
+  | 'needs_review'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 /**
  * Task priority levels (higher = more urgent)
  */
 export const TASK_PRIORITIES = {
-  critical: 100,  // Must be done immediately
-  high: 75,       // Important, do soon
-  normal: 50,     // Standard priority
-  low: 25,        // Can wait
-  backlog: 0,     // Do when nothing else is available
+  critical: 100, // Must be done immediately
+  high: 75, // Important, do soon
+  normal: 50, // Standard priority
+  low: 25, // Can wait
+  backlog: 0, // Do when nothing else is available
 } as const;
 
 export type TaskPriority = keyof typeof TASK_PRIORITIES;
@@ -50,14 +59,14 @@ export type TaskPriority = keyof typeof TASK_PRIORITIES;
  * Task types for categorization
  */
 export const TASK_TYPES: readonly [string, ...string[]] = [
-  'implement',    // Write new code
-  'refactor',     // Improve existing code
-  'fix',          // Bug fix
-  'test',         // Write/fix tests
-  'review',       // Code review
-  'document',     // Documentation
-  'investigate',  // Research/explore
-  'plan',         // Planning/design
+  'implement', // Write new code
+  'refactor', // Improve existing code
+  'fix', // Bug fix
+  'test', // Write/fix tests
+  'review', // Code review
+  'document', // Documentation
+  'investigate', // Research/explore
+  'plan', // Planning/design
 ];
 
 export type TaskType = 'implement' | 'refactor' | 'fix' | 'test' | 'review' | 'document' | 'investigate' | 'plan';
@@ -93,7 +102,7 @@ export const WORKFLOW_STATES: PheromoneType[] = ['exploring', 'claiming', 'modif
 /**
  * Flags can coexist with workflow states.
  */
-export const FLAG_TYPES: PheromoneType[] = ['warning', 'proposal', 'needs_review'];
+export const FLAG_TYPES: PheromoneType[] = ['warning', 'proposal', 'needs_review', 'session_context'];
 
 // ============================================================================
 // ORCHESTRATOR CONSTANTS
@@ -140,8 +149,7 @@ export const TASK_INFERENCE_PATTERNS = {
   rename: {
     keywords: ['rename', 'change name', 'refactor name'],
     taskType: 'refactor' as const,
-    description: (oldName: string, newName: string) =>
-      `Rename "${oldName}" to "${newName}" and update all references`,
+    description: (oldName: string, newName: string) => `Rename "${oldName}" to "${newName}" and update all references`,
   },
   document: {
     keywords: ['jsdoc', 'document', 'add comments', 'add documentation'],

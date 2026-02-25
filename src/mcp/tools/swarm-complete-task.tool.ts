@@ -272,45 +272,20 @@ export const createSwarmCompleteTaskTool = (server: McpServer): void => {
         action: z
           .enum(['complete', 'fail', 'request_review', 'approve', 'reject', 'retry'])
           .describe('Action to take on the task'),
-        summary: z
-          .string()
-          .optional()
-          .describe('Summary of what was done (required for complete/request_review)'),
+        summary: z.string().optional().describe('Summary of what was done (required for complete/request_review)'),
         artifacts: z
           .record(z.unknown())
           .optional()
           .describe('Artifacts produced: { files: [], commits: [], pullRequests: [], notes: string }'),
-        filesChanged: z
-          .array(z.string())
-          .optional()
-          .describe('List of files that were modified'),
+        filesChanged: z.array(z.string()).optional().describe('List of files that were modified'),
         linesAdded: z.number().int().optional().describe('Number of lines added'),
         linesRemoved: z.number().int().optional().describe('Number of lines removed'),
-        reason: z
-          .string()
-          .optional()
-          .describe('Reason for failure (required if action=fail)'),
-        errorDetails: z
-          .string()
-          .optional()
-          .describe('Technical error details for debugging'),
-        retryable: z
-          .boolean()
-          .optional()
-          .default(true)
-          .describe('Whether the task can be retried after failure'),
-        reviewNotes: z
-          .string()
-          .optional()
-          .describe('Notes for the reviewer (for request_review)'),
-        reviewerId: z
-          .string()
-          .optional()
-          .describe('ID of the reviewer (required for approve/reject)'),
-        notes: z
-          .string()
-          .optional()
-          .describe('Approval/rejection notes'),
+        reason: z.string().optional().describe('Reason for failure (required if action=fail)'),
+        errorDetails: z.string().optional().describe('Technical error details for debugging'),
+        retryable: z.boolean().optional().default(true).describe('Whether the task can be retried after failure'),
+        reviewNotes: z.string().optional().describe('Notes for the reviewer (for request_review)'),
+        reviewerId: z.string().optional().describe('ID of the reviewer (required for approve/reject)'),
+        notes: z.string().optional().describe('Approval/rejection notes'),
         markAsFailed: z
           .boolean()
           .optional()
@@ -428,9 +403,7 @@ export const createSwarmCompleteTaskTool = (server: McpServer): void => {
               return createErrorResponse(errorMsg);
             }
 
-            return createSuccessResponse(
-              JSON.stringify({ action: 'review_requested', taskId: result[0].id }),
-            );
+            return createSuccessResponse(JSON.stringify({ action: 'review_requested', taskId: result[0].id }));
 
           case 'approve':
             if (!reviewerId) {

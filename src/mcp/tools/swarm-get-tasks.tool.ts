@@ -179,10 +179,7 @@ export const createSwarmGetTasksTool = (server: McpServer): void => {
           .array(z.enum(TASK_STATUSES))
           .optional()
           .describe('Filter by task statuses (e.g., ["available", "in_progress"])'),
-        types: z
-          .array(z.enum(TASK_TYPES))
-          .optional()
-          .describe('Filter by task types (e.g., ["implement", "fix"])'),
+        types: z.array(z.enum(TASK_TYPES)).optional().describe('Filter by task types (e.g., ["implement", "fix"])'),
         claimedBy: z.string().optional().describe('Filter tasks claimed by a specific agent'),
         createdBy: z.string().optional().describe('Filter tasks created by a specific agent'),
         minPriority: z
@@ -273,8 +270,7 @@ export const createSwarmGetTasksTool = (server: McpServer): void => {
           }
 
           // Convert Neo4j integers
-          const convertTimestamp = (ts: any) =>
-            typeof ts === 'object' && ts?.toNumber ? ts.toNumber() : ts;
+          const convertTimestamp = (ts: any) => (typeof ts === 'object' && ts?.toNumber ? ts.toNumber() : ts);
 
           task.createdAt = convertTimestamp(task.createdAt);
           task.updatedAt = convertTimestamp(task.updatedAt);
@@ -286,9 +282,7 @@ export const createSwarmGetTasksTool = (server: McpServer): void => {
         }
 
         // Get list of tasks
-        const minPriorityScore = minPriority
-          ? TASK_PRIORITIES[minPriority as TaskPriority]
-          : null;
+        const minPriorityScore = minPriority ? TASK_PRIORITIES[minPriority as TaskPriority] : null;
 
         const tasksResult = await neo4jService.run(GET_TASKS_QUERY, {
           projectId: resolvedProjectId,
@@ -303,8 +297,7 @@ export const createSwarmGetTasksTool = (server: McpServer): void => {
           skip: Math.floor(skip),
         });
 
-        const convertTimestamp = (ts: any) =>
-          typeof ts === 'object' && ts?.toNumber ? ts.toNumber() : ts;
+        const convertTimestamp = (ts: any) => (typeof ts === 'object' && ts?.toNumber ? ts.toNumber() : ts);
 
         const tasks = tasksResult.map((t: any) => {
           // Parse metadata if present
@@ -413,9 +406,10 @@ export const createSwarmGetTasksTool = (server: McpServer): void => {
             total: stats.total,
             percentComplete: stats.total > 0 ? Math.round((done / stats.total) * 100) : 0,
             isComplete: done === stats.total && stats.total > 0,
-            summary: stats.total === 0
-              ? 'No tasks'
-              : `${completed}/${stats.total} completed (${Math.round((done / stats.total) * 100)}%)`,
+            summary:
+              stats.total === 0
+                ? 'No tasks'
+                : `${completed}/${stats.total} completed (${Math.round((done / stats.total) * 100)}%)`,
           };
 
           // Get active workers from pheromones
@@ -429,9 +423,8 @@ export const createSwarmGetTasksTool = (server: McpServer): void => {
             status: w.type === 'modifying' ? 'working' : 'claiming',
             lastActivity: typeof w.lastActivity === 'object' ? w.lastActivity.toNumber() : w.lastActivity,
             nodesBeingWorked: typeof w.nodeCount === 'object' ? w.nodeCount.toNumber() : w.nodeCount,
-            minutesSinceActivity: typeof w.minutesSinceActivity === 'object'
-              ? w.minutesSinceActivity.toNumber()
-              : w.minutesSinceActivity,
+            minutesSinceActivity:
+              typeof w.minutesSinceActivity === 'object' ? w.minutesSinceActivity.toNumber() : w.minutesSinceActivity,
           }));
         }
 

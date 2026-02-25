@@ -5,8 +5,6 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { debugLog } from '../utils.js';
-
 import { createCheckParseStatusTool } from './check-parse-status.tool.js';
 import { createDetectDeadCodeTool } from './detect-dead-code.tool.js';
 import { createDetectDuplicateCodeTool } from './detect-duplicate-code.tool.js';
@@ -17,6 +15,8 @@ import { createListWatchersTool } from './list-watchers.tool.js';
 import { createNaturalLanguageToCypherTool } from './natural-language-to-cypher.tool.js';
 import { createParseTypescriptProjectTool } from './parse-typescript-project.tool.js';
 import { createSearchCodebaseTool } from './search-codebase.tool.js';
+import { createRestoreSessionBookmarkTool, createSaveSessionBookmarkTool } from './session-bookmark.tool.js';
+import { createRecallSessionNotesTool, createSaveSessionNoteTool } from './session-note.tool.js';
 import { createStartWatchProjectTool } from './start-watch-project.tool.js';
 import { createStopWatchProjectTool } from './stop-watch-project.tool.js';
 import { createSwarmClaimTaskTool } from './swarm-claim-task.tool.js';
@@ -44,7 +44,12 @@ export const logToolCallStart = async (_toolName: string, _params?: unknown): Pr
 /**
  * Log tool call end (exported for use by individual tools)
  */
-export const logToolCallEnd = async (_toolName: string, _callId: number, _success: boolean, _duration?: number): Promise<void> => {
+export const logToolCallEnd = async (
+  _toolName: string,
+  _callId: number,
+  _success: boolean,
+  _duration?: number,
+): Promise<void> => {
   // No-op - verbose logging disabled
 };
 
@@ -89,4 +94,12 @@ export const registerAllTools = (server: McpServer): void => {
 
   // Register swarm orchestration tool (meta-tool for coordinating multi-agent work)
   createSwarmOrchestrateTool(server);
+
+  // Register session bookmark tools (cross-session context continuity)
+  createSaveSessionBookmarkTool(server);
+  createRestoreSessionBookmarkTool(server);
+
+  // Register session note tools (durable observations and decisions)
+  createSaveSessionNoteTool(server);
+  createRecallSessionNotesTool(server);
 };

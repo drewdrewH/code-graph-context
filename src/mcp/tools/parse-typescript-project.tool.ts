@@ -115,8 +115,8 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
           .optional()
           .default('auto')
           .describe('When to use streaming import: auto (>100 files), always, or never'),
-        async: z
-          .coerce.boolean()
+        async: z.coerce
+          .boolean()
           .optional()
           .default(true)
           .describe('Run parsing in background and return job ID immediately. Use check_parse_status to monitor.'),
@@ -281,7 +281,8 @@ export const createParseTypescriptProjectTool = (server: McpServer): void => {
         const discoveredFiles = await parser.discoverSourceFiles();
         const totalFiles = discoveredFiles.length;
         const shouldUseStreaming =
-          useStreaming === 'always' || (useStreaming === 'auto' && totalFiles > PARSING.streamingThreshold && chunkSize > 0);
+          useStreaming === 'always' ||
+          (useStreaming === 'auto' && totalFiles > PARSING.streamingThreshold && chunkSize > 0);
 
         console.error(`📊 Project has ${totalFiles} files. Streaming: ${shouldUseStreaming ? 'enabled' : 'disabled'}`);
 

@@ -223,6 +223,7 @@ export class GraphGeneratorHandler {
   private async createVectorIndexes(): Promise<void> {
     console.error('Creating vector indexes...');
     await this.neo4jService.run(QUERIES.CREATE_EMBEDDED_VECTOR_INDEX);
+    await this.neo4jService.run(QUERIES.CREATE_SESSION_NOTES_VECTOR_INDEX);
     await debugLog('Vector indexes created');
   }
 

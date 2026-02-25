@@ -292,10 +292,7 @@ ${nodeList}${moreText}`;
    * then the task for A should wait for B's task to complete.
    * This ensures changes propagate correctly through the dependency chain.
    */
-  private calculateDependencies(
-    tasks: DecomposedTask[],
-    impactMap: Map<string, ImpactResult>,
-  ): Map<string, string[]> {
+  private calculateDependencies(tasks: DecomposedTask[], impactMap: Map<string, ImpactResult>): Map<string, string[]> {
     const taskByFile = new Map<string, DecomposedTask>();
     for (const task of tasks) {
       taskByFile.set(task.filePath, task);
@@ -376,10 +373,7 @@ ${nodeList}${moreText}`;
   /**
    * Estimate overall complexity of the decomposed tasks
    */
-  private estimateComplexity(
-    tasks: DecomposedTask[],
-    impactMap: Map<string, ImpactResult>,
-  ): 'LOW' | 'MEDIUM' | 'HIGH' {
+  private estimateComplexity(tasks: DecomposedTask[], impactMap: Map<string, ImpactResult>): 'LOW' | 'MEDIUM' | 'HIGH' {
     // Consider: number of tasks, dependency depth, impact levels
     const taskCount = tasks.length;
     const criticalCount = tasks.filter((t) => t.impactLevel === 'CRITICAL').length;
@@ -406,10 +400,7 @@ ${nodeList}${moreText}`;
   /**
    * Get tasks that can run in parallel (no pending dependencies)
    */
-  getParallelizableTasks(
-    allTasks: DecomposedTask[],
-    completedTaskIds: Set<string>,
-  ): DecomposedTask[] {
+  getParallelizableTasks(allTasks: DecomposedTask[], completedTaskIds: Set<string>): DecomposedTask[] {
     return allTasks.filter((task) => {
       // Already completed
       if (completedTaskIds.has(task.id)) return false;

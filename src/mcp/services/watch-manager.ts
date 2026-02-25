@@ -79,7 +79,6 @@ export type IncrementalParseHandler = (
   tsconfigPath: string,
 ) => Promise<{ nodesUpdated: number; edgesUpdated: number }>;
 
-
 class WatchManager {
   private watchers: Map<string, WatcherState> = new Map();
   private mcpServer: Server | null = null;
@@ -127,7 +126,7 @@ class WatchManager {
         // This is expected if the client doesn't support logging capability
         debugLog('sendNotification: MCP message failed (expected if client lacks logging)', {
           type: notification.type,
-          error: String(error)
+          error: String(error),
         });
       });
   }
@@ -147,7 +146,8 @@ class WatchManager {
     // Enforce maximum watcher limit
     if (this.watchers.size >= WATCH.maxWatchers) {
       throw new Error(
-        `Maximum watcher limit (${WATCH.maxWatchers}) reached. ` + `Stop an existing watcher before starting a new one.`,
+        `Maximum watcher limit (${WATCH.maxWatchers}) reached. ` +
+          `Stop an existing watcher before starting a new one.`,
       );
     }
 
@@ -236,7 +236,13 @@ class WatchManager {
    * Handle a file system event
    */
   private handleFileEvent(state: WatcherState, type: WatchEventType, filePath: string): void {
-    debugLog('handleFileEvent START', { type, filePath, projectId: state.projectId, status: state.status, isStopping: state.isStopping });
+    debugLog('handleFileEvent START', {
+      type,
+      filePath,
+      projectId: state.projectId,
+      status: state.status,
+      isStopping: state.isStopping,
+    });
 
     // Ignore events if watcher is stopping or not active
     if (state.isStopping || state.status !== 'active') {
@@ -300,13 +306,13 @@ class WatchManager {
       projectId: state.projectId,
       isProcessing: state.isProcessing,
       pendingCount: state.pendingEvents.length,
-      isStopping: state.isStopping
+      isStopping: state.isStopping,
     });
 
     // Don't process if already processing, no events, or watcher is stopping
     if (state.isProcessing || state.pendingEvents.length === 0 || state.isStopping) {
       await debugLog('processEvents: early return', {
-        reason: state.isProcessing ? 'already processing' : state.pendingEvents.length === 0 ? 'no events' : 'stopping'
+        reason: state.isProcessing ? 'already processing' : state.pendingEvents.length === 0 ? 'no events' : 'stopping',
       });
       return;
     }
@@ -338,12 +344,12 @@ class WatchManager {
 
       await debugLog('processEvents: calling incrementalParseHandler', {
         projectPath: state.projectPath,
-        projectId: state.projectId
+        projectId: state.projectId,
       });
       const result = await this.incrementalParseHandler(state.projectPath, state.projectId, state.tsconfigPath);
       await debugLog('processEvents: incrementalParseHandler returned', {
         nodesUpdated: result.nodesUpdated,
-        edgesUpdated: result.edgesUpdated
+        edgesUpdated: result.edgesUpdated,
       });
 
       state.lastUpdateTime = new Date();
@@ -404,7 +410,10 @@ class WatchManager {
         debugLog('handleWatcherError: cleanup succeeded', { projectId: state.projectId });
       })
       .catch((cleanupError) => {
-        debugLog('handleWatcherError: cleanup failed', { projectId: state.projectId, cleanupError: String(cleanupError) });
+        debugLog('handleWatcherError: cleanup failed', {
+          projectId: state.projectId,
+          cleanupError: String(cleanupError),
+        });
         console.error(`[WatchManager] Failed to cleanup errored watcher ${state.projectId}:`, cleanupError);
       });
   }
@@ -427,7 +436,7 @@ class WatchManager {
         debugLog('syncMissedChanges: completed', {
           projectId: state.projectId,
           nodesUpdated: result.nodesUpdated,
-          edgesUpdated: result.edgesUpdated
+          edgesUpdated: result.edgesUpdated,
         });
         if (result.nodesUpdated > 0 || result.edgesUpdated > 0) {
           console.error(
@@ -437,7 +446,11 @@ class WatchManager {
         }
       })
       .catch((error) => {
-        debugLog('syncMissedChanges: error', { projectId: state.projectId, error: String(error), isStopping: state.isStopping });
+        debugLog('syncMissedChanges: error', {
+          projectId: state.projectId,
+          error: String(error),
+          isStopping: state.isStopping,
+        });
         // Only log if watcher hasn't been stopped
         if (!state.isStopping) {
           console.error(`[WatchManager] Failed to sync missed changes for ${state.projectId}:`, error);

@@ -278,22 +278,10 @@ export const createSwarmClaimTaskTool = (server: McpServer): void => {
               'start (begin work on claimed task), release (give up task), ' +
               'abandon (release with tracking), force_start (recover from stuck claimed state)',
           ),
-        releaseReason: z
-          .string()
-          .optional()
-          .describe('Reason for releasing/abandoning the task'),
+        releaseReason: z.string().optional().describe('Reason for releasing/abandoning the task'),
       },
     },
-    async ({
-      projectId,
-      swarmId,
-      agentId,
-      taskId,
-      types,
-      minPriority,
-      action = 'claim_and_start',
-      releaseReason,
-    }) => {
+    async ({ projectId, swarmId, agentId, taskId, types, minPriority, action = 'claim_and_start', releaseReason }) => {
       const neo4jService = new Neo4jService();
 
       // Resolve project ID
@@ -333,9 +321,7 @@ export const createSwarmClaimTaskTool = (server: McpServer): void => {
             );
           }
 
-          return createSuccessResponse(
-            JSON.stringify({ action: 'released', taskId: result[0].id }),
-          );
+          return createSuccessResponse(JSON.stringify({ action: 'released', taskId: result[0].id }));
         }
 
         // Handle abandon action (release with tracking)
@@ -365,12 +351,9 @@ export const createSwarmClaimTaskTool = (server: McpServer): void => {
             );
           }
 
-          const abandonCount = typeof result[0].abandonCount === 'object'
-            ? result[0].abandonCount.toNumber()
-            : result[0].abandonCount;
-          return createSuccessResponse(
-            JSON.stringify({ action: 'abandoned', taskId: result[0].id, abandonCount }),
-          );
+          const abandonCount =
+            typeof result[0].abandonCount === 'object' ? result[0].abandonCount.toNumber() : result[0].abandonCount;
+          return createSuccessResponse(JSON.stringify({ action: 'abandoned', taskId: result[0].id, abandonCount }));
         }
 
         // Handle force_start action (recovery from stuck claimed state)
@@ -471,9 +454,7 @@ export const createSwarmClaimTaskTool = (server: McpServer): void => {
           }
         } else {
           // Auto-select highest priority available task with retry logic
-          const minPriorityScore = minPriority
-            ? TASK_PRIORITIES[minPriority as TaskPriority]
-            : null;
+          const minPriorityScore = minPriority ? TASK_PRIORITIES[minPriority as TaskPriority] : null;
 
           // Retry loop to handle race conditions
           while (retryCount < MAX_CLAIM_RETRIES) {
@@ -493,16 +474,12 @@ export const createSwarmClaimTaskTool = (server: McpServer): void => {
             retryCount++;
             if (retryCount < MAX_CLAIM_RETRIES) {
               // Wait before retry with exponential backoff
-              await new Promise((resolve) =>
-                setTimeout(resolve, RETRY_DELAY_BASE_MS * Math.pow(2, retryCount - 1)),
-              );
+              await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_BASE_MS * Math.pow(2, retryCount - 1)));
             }
           }
 
           if (!result || result.length === 0) {
-            return createSuccessResponse(
-              JSON.stringify({ action: 'no_tasks', retryAttempts: retryCount }),
-            );
+            return createSuccessResponse(JSON.stringify({ action: 'no_tasks', retryAttempts: retryCount }));
           }
         }
 

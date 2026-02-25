@@ -6,11 +6,7 @@
 import fs from 'fs/promises';
 import { join } from 'path';
 
-import {
-  ensureNeo4jRunning,
-  isDockerInstalled,
-  isDockerRunning,
-} from '../cli/neo4j-docker.js';
+import { ensureNeo4jRunning, isDockerInstalled, isDockerRunning } from '../cli/neo4j-docker.js';
 import { Neo4jService, QUERIES } from '../storage/neo4j/neo4j.service.js';
 
 import { FILE_PATHS, LOG_CONFIG } from './constants.js';
@@ -25,8 +21,7 @@ const checkConfiguration = async (): Promise<void> => {
     console.error(
       JSON.stringify({
         level: 'warn',
-        message:
-          '[code-graph-context] OPENAI_API_KEY not set. Semantic search and NL queries unavailable.',
+        message: '[code-graph-context] OPENAI_API_KEY not set. Semantic search and NL queries unavailable.',
       }),
     );
     await debugLog('Configuration warning', { warning: 'OPENAI_API_KEY not set' });

@@ -43,6 +43,10 @@ export const TOOL_NAMES = {
   swarmCompleteTask: 'swarm_complete_task',
   swarmGetTasks: 'swarm_get_tasks',
   swarmOrchestrate: 'swarm_orchestrate',
+  saveSessionBookmark: 'save_session_bookmark',
+  restoreSessionBookmark: 'restore_session_bookmark',
+  saveSessionNote: 'save_session_note',
+  recallSessionNotes: 'recall_session_notes',
 } as const;
 
 // Tool Metadata
@@ -210,9 +214,9 @@ Parameters:
   },
   [TOOL_NAMES.swarmPheromone]: {
     title: 'Swarm Pheromone',
-    description: `Mark a code node with a pheromone for coordination. Types: exploring (2min), modifying (10min), claiming (1hr), completed (24hr), warning (permanent), blocked (5min), proposal (1hr), needs_review (30min).
+    description: `Mark a code node with a pheromone for coordination. Types: exploring (2min), modifying (10min), claiming (1hr), completed (24hr), warning (permanent), blocked (5min), proposal (1hr), needs_review (30min), session_context (8hr).
 
-Workflow states (exploring/claiming/modifying/completed/blocked) are mutually exclusive per agent+node. Use remove:true to delete. Pheromones decay automatically.`,
+Workflow states (exploring/claiming/modifying/completed/blocked) are mutually exclusive per agent+node. Flag types (warning/proposal/needs_review/session_context) can coexist. Use remove:true to delete. Pheromones decay automatically.`,
   },
   [TOOL_NAMES.swarmSense]: {
     title: 'Swarm Sense',
@@ -265,6 +269,75 @@ Sort by: priority (default), created, updated. Add includeStats:true for aggrega
     description: `Coordinate multiple agents for complex multi-file tasks. Analyzes codebase, decomposes into atomic tasks, spawns workers, monitors progress.
 
 Use dryRun:true to preview plan. maxAgents controls parallelism (default: 3). Failed tasks auto-retry via pheromone decay.`,
+  },
+  [TOOL_NAMES.saveSessionBookmark]: {
+    title: 'Save Session Bookmark',
+    description: `Save current session context as a bookmark for cross-session continuity.
+
+Records your working set (code node IDs), task context, findings, and next steps so a future session can resume exactly where you left off.
+
+Parameters:
+- projectId (required): Project ID, name, or path
+- sessionId (required): Unique session/conversation ID for recovery
+- agentId (required): Your agent identifier
+- summary (required, min 10 chars): Brief description of current work state
+- workingSetNodeIds (required): Code node IDs you are focused on
+- taskContext (required): High-level task being worked on
+- findings: Key discoveries or decisions made so far
+- nextSteps: What to do next when resuming
+- metadata: Additional structured data
+
+Returns bookmarkId for use with restore_session_bookmark.`,
+  },
+  [TOOL_NAMES.restoreSessionBookmark]: {
+    title: 'Restore Session Bookmark',
+    description: `Restore a previously saved session bookmark to resume work.
+
+Retrieves the bookmark, fetches working set code nodes (with source), and returns any session notes. Use after conversation compaction or when resuming a task in a new session.
+
+Parameters:
+- projectId (required): Project ID, name, or path
+- sessionId: Specific session to restore (latest bookmark if omitted)
+- agentId: Filter by agent ID (any agent if omitted)
+- includeCode (default: true): Include source code for working set nodes
+- snippetLength (default: 500): Max characters per code snippet
+
+Returns: bookmark data, working set nodes, session notes, and staleNodeIds (nodes no longer in graph after re-parse).`,
+  },
+  [TOOL_NAMES.saveSessionNote]: {
+    title: 'Save Session Note',
+    description: `Save an observation, decision, insight, or risk as a durable session note linked to code nodes.
+
+Notes survive session compaction and are recalled by restore_session_bookmark or recall_session_notes.
+
+Parameters:
+- projectId (required): Project ID, name, or path
+- sessionId (required): Session/conversation identifier
+- agentId (required): Your agent identifier
+- topic (required, 3-100 chars): Short topic label
+- content (required, min 10 chars): Full observation text
+- category (required): architectural, bug, insight, decision, risk, or todo
+- severity (default: info): info, warning, or critical
+- aboutNodeIds: Code node IDs this note is about (creates [:ABOUT] links)
+- expiresInHours: Auto-expire after N hours (omit for permanent)
+
+Returns noteId, hasEmbedding (enables semantic recall), and expiresAt.`,
+  },
+  [TOOL_NAMES.recallSessionNotes]: {
+    title: 'Recall Session Notes',
+    description: `Search and retrieve saved session notes. Supports semantic vector search (when query provided) or filter-based search.
+
+Parameters:
+- projectId (required): Project ID, name, or path
+- query: Natural language search — triggers semantic vector search when provided
+- category: Filter by architectural, bug, insight, decision, risk, todo
+- severity: Filter by info, warning, or critical
+- sessionId: Filter by session ID
+- agentId: Filter by agent ID
+- limit (default: 10, max: 50): Maximum notes to return
+- minSimilarity (default: 0.3): Minimum similarity for vector search
+
+Returns notes with topic, content, category, severity, relevance score (vector mode), and linked aboutNodes.`,
   },
 } as const;
 

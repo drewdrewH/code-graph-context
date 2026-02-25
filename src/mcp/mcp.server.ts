@@ -30,8 +30,8 @@ import { debugLog } from './utils.js';
 
 // Track server state for debugging
 let serverStartTime: Date;
-let toolCallCount = 0;
-let lastToolCall: string | null = null;
+const toolCallCount = 0;
+const lastToolCall: string | null = null;
 
 /**
  * Log memory usage and server stats

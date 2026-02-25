@@ -5,7 +5,15 @@
 
 import crypto from 'crypto';
 
-import { Neo4jEdgeProperties, Neo4jNode, Neo4jEdge, ParsedNode, ParsedEdge, CoreEdgeType, CORE_TYPESCRIPT_SCHEMA } from '../config/schema.js';
+import {
+  Neo4jEdgeProperties,
+  Neo4jNode,
+  Neo4jEdge,
+  ParsedNode,
+  ParsedEdge,
+  CoreEdgeType,
+  CORE_TYPESCRIPT_SCHEMA,
+} from '../config/schema.js';
 
 // ============================================
 // Node ID Generation

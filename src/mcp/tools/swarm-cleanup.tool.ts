@@ -111,7 +111,15 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
         dryRun: z.boolean().optional().default(false).describe('Preview what would be deleted without deleting'),
       },
     },
-    async ({ projectId, swarmId, agentId, all = false, includeTasks = true, keepTypes = ['warning'], dryRun = false }) => {
+    async ({
+      projectId,
+      swarmId,
+      agentId,
+      all = false,
+      includeTasks = true,
+      keepTypes = ['warning'],
+      dryRun = false,
+    }) => {
       const neo4jService = new Neo4jService();
 
       // Resolve project ID
@@ -125,9 +133,7 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
       try {
         // Validate: must specify swarmId, agentId, or all
         if (!swarmId && !agentId && !all) {
-          return createErrorResponse(
-            'Must specify one of: swarmId, agentId, or all=true. Use dryRun=true to preview.',
-          );
+          return createErrorResponse('Must specify one of: swarmId, agentId, or all=true. Use dryRun=true to preview.');
         }
 
         const params: Record<string, unknown> = { projectId: resolvedProjectId, keepTypes };
@@ -160,7 +166,8 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
           if (swarmId && includeTasks) {
             const taskResult = await neo4jService.run(COUNT_TASKS_BY_SWARM_QUERY, params);
             taskCount = taskResult[0]?.count ?? 0;
-            taskCount = typeof taskCount === 'object' && 'toNumber' in taskCount ? (taskCount as any).toNumber() : taskCount;
+            taskCount =
+              typeof taskCount === 'object' && 'toNumber' in taskCount ? (taskCount as any).toNumber() : taskCount;
             taskStatuses = taskResult[0]?.statuses ?? [];
           }
 
@@ -170,14 +177,20 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
               dryRun: true,
               mode,
               pheromones: {
-                wouldDelete: typeof pheromoneCount === 'object' && 'toNumber' in pheromoneCount ? (pheromoneCount as any).toNumber() : pheromoneCount,
+                wouldDelete:
+                  typeof pheromoneCount === 'object' && 'toNumber' in pheromoneCount
+                    ? (pheromoneCount as any).toNumber()
+                    : pheromoneCount,
                 agents: pheromoneResult[0]?.agents ?? [],
                 types: pheromoneResult[0]?.types ?? [],
               },
-              tasks: swarmId && includeTasks ? {
-                wouldDelete: taskCount,
-                statuses: taskStatuses,
-              } : null,
+              tasks:
+                swarmId && includeTasks
+                  ? {
+                      wouldDelete: taskCount,
+                      statuses: taskStatuses,
+                    }
+                  : null,
               keepTypes,
               projectId: resolvedProjectId,
             }),
@@ -194,7 +207,10 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
         if (swarmId && includeTasks) {
           const taskResult = await neo4jService.run(CLEANUP_TASKS_BY_SWARM_QUERY, params);
           tasksDeleted = taskResult[0]?.deleted ?? 0;
-          tasksDeleted = typeof tasksDeleted === 'object' && 'toNumber' in tasksDeleted ? (tasksDeleted as any).toNumber() : tasksDeleted;
+          tasksDeleted =
+            typeof tasksDeleted === 'object' && 'toNumber' in tasksDeleted
+              ? (tasksDeleted as any).toNumber()
+              : tasksDeleted;
           taskStatuses = taskResult[0]?.statuses ?? [];
         }
 
@@ -203,19 +219,26 @@ export const createSwarmCleanupTool = (server: McpServer): void => {
             success: true,
             mode,
             pheromones: {
-              deleted: typeof pheromonesDeleted === 'object' && 'toNumber' in pheromonesDeleted ? (pheromonesDeleted as any).toNumber() : pheromonesDeleted,
+              deleted:
+                typeof pheromonesDeleted === 'object' && 'toNumber' in pheromonesDeleted
+                  ? (pheromonesDeleted as any).toNumber()
+                  : pheromonesDeleted,
               agents: pheromoneResult[0]?.agents ?? [],
               types: pheromoneResult[0]?.types ?? [],
             },
-            tasks: swarmId && includeTasks ? {
-              deleted: tasksDeleted,
-              statuses: taskStatuses,
-            } : null,
+            tasks:
+              swarmId && includeTasks
+                ? {
+                    deleted: tasksDeleted,
+                    statuses: taskStatuses,
+                  }
+                : null,
             keepTypes,
             projectId: resolvedProjectId,
-            message: swarmId && includeTasks
-              ? `Cleaned up ${pheromonesDeleted} pheromones and ${tasksDeleted} tasks`
-              : `Cleaned up ${pheromonesDeleted} pheromones`,
+            message:
+              swarmId && includeTasks
+                ? `Cleaned up ${pheromonesDeleted} pheromones and ${tasksDeleted} tasks`
+                : `Cleaned up ${pheromonesDeleted} pheromones`,
           }),
         );
       } catch (error) {

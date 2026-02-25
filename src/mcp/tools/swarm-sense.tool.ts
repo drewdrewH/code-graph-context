@@ -26,6 +26,7 @@ const SENSE_PHEROMONES_QUERY = `
     AND ($agentIds IS NULL OR size($agentIds) = 0 OR p.agentId IN $agentIds)
     AND ($swarmId IS NULL OR p.swarmId = $swarmId)
     AND ($excludeAgentId IS NULL OR p.agentId <> $excludeAgentId)
+    AND ($sessionId IS NULL OR p.sessionId = $sessionId)
 
   // Calculate current intensity with exponential decay
   WITH p,
@@ -54,6 +55,7 @@ const SENSE_PHEROMONES_QUERY = `
     p.timestamp AS timestamp,
     p.data AS data,
     p.halfLife AS halfLifeMs,
+    p.sessionId AS sessionId,
     CASE WHEN target IS NOT NULL THEN labels(target)[0] ELSE null END AS targetType,
     CASE WHEN target IS NOT NULL THEN target.name ELSE null END AS targetName,
     CASE WHEN target IS NOT NULL THEN target.filePath ELSE null END AS targetFilePath
@@ -120,6 +122,10 @@ export const createSwarmSenseTool = (server: McpServer): void => {
           .string()
           .optional()
           .describe('Exclude pheromones from this agent ID (useful for seeing what OTHER agents are doing)'),
+        sessionId: z
+          .string()
+          .optional()
+          .describe('Filter pheromones by session ID. Use to recover context after compaction or session restart.'),
         minIntensity: z
           .number()
           .min(0)
@@ -150,6 +156,7 @@ export const createSwarmSenseTool = (server: McpServer): void => {
       agentIds,
       swarmId,
       excludeAgentId,
+      sessionId,
       minIntensity = 0.3,
       limit = 50,
       includeStats = false,
@@ -166,7 +173,6 @@ export const createSwarmSenseTool = (server: McpServer): void => {
       const resolvedProjectId = projectResult.projectId;
 
       try {
-
         const result: {
           pheromones: any[];
           stats?: any[];
@@ -201,6 +207,7 @@ export const createSwarmSenseTool = (server: McpServer): void => {
           agentIds: agentIds ?? null,
           swarmId: swarmId ?? null,
           excludeAgentId: excludeAgentId ?? null,
+          sessionId: sessionId ?? null,
           minIntensity,
           limit: Math.floor(limit),
         });
@@ -217,6 +224,7 @@ export const createSwarmSenseTool = (server: McpServer): void => {
             originalIntensity: p.originalIntensity,
             agentId: p.agentId,
             swarmId: p.swarmId,
+            sessionId: p.sessionId ?? null,
             timestamp: ts,
             age: ts ? `${Math.round((Date.now() - ts) / 1000)}s ago` : null,
             data: p.data ? JSON.parse(p.data) : null,

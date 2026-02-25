@@ -47,11 +47,13 @@ const CREATE_PHEROMONE_QUERY = `
     p.intensity = $intensity,
     p.timestamp = timestamp(),
     p.data = $data,
-    p.halfLife = $halfLife
+    p.halfLife = $halfLife,
+    p.sessionId = $sessionId
   ON MATCH SET
     p.intensity = $intensity,
     p.timestamp = timestamp(),
-    p.data = $data
+    p.data = $data,
+    p.sessionId = COALESCE($sessionId, p.sessionId)
 
   // Create relationship to target node if it exists
   WITH p, target
@@ -84,7 +86,7 @@ export const createSwarmPheromoneTool = (server: McpServer): void => {
         type: z
           .enum(PHEROMONE_TYPES as [string, ...string[]])
           .describe(
-            'Type of pheromone: exploring (browsing), modifying (active work), claiming (ownership), completed (done), warning (danger), blocked (stuck), proposal (awaiting approval), needs_review (review request)',
+            'Type of pheromone: exploring (browsing), modifying (active work), claiming (ownership), completed (done), warning (danger), blocked (stuck), proposal (awaiting approval), needs_review (review request), session_context (session working set)',
           ),
         intensity: z
           .number()
@@ -95,6 +97,10 @@ export const createSwarmPheromoneTool = (server: McpServer): void => {
           .describe('Pheromone intensity from 0.0 to 1.0 (default: 1.0)'),
         agentId: z.string().describe('Unique identifier for the agent leaving the pheromone'),
         swarmId: z.string().describe('Swarm ID for grouping related agents (e.g., "swarm_xyz")'),
+        sessionId: z
+          .string()
+          .optional()
+          .describe('Session identifier for cross-session recovery (e.g., conversation ID)'),
         data: z
           .record(z.unknown())
           .optional()
@@ -106,7 +112,7 @@ export const createSwarmPheromoneTool = (server: McpServer): void => {
           .describe('If true, removes the pheromone instead of creating/updating it'),
       },
     },
-    async ({ projectId, nodeId, type, intensity = 1.0, agentId, swarmId, data, remove = false }) => {
+    async ({ projectId, nodeId, type, intensity = 1.0, agentId, swarmId, sessionId, data, remove = false }) => {
       const neo4jService = new Neo4jService();
 
       // Resolve project ID
@@ -182,6 +188,7 @@ export const createSwarmPheromoneTool = (server: McpServer): void => {
           intensity,
           agentId,
           swarmId,
+          sessionId: sessionId ?? null,
           data: dataJson,
           halfLife,
         });

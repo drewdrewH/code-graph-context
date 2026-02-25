@@ -10,13 +10,7 @@ import { Neo4jService } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA } from '../constants.js';
 import { createErrorResponse, createSuccessResponse, resolveProjectIdOrError, debugLog } from '../utils.js';
 
-import {
-  TASK_STATUSES,
-  TASK_PRIORITIES,
-  TASK_TYPES,
-  TaskPriority,
-  generateTaskId,
-} from './swarm-constants.js';
+import { TASK_PRIORITIES, TASK_TYPES, TaskPriority, generateTaskId } from './swarm-constants.js';
 
 /**
  * Query to get node IDs for a file path (fallback when no nodeIds provided)
@@ -152,10 +146,7 @@ export const createSwarmPostTaskTool = (server: McpServer): void => {
           .default([])
           .describe('Task IDs that must be completed before this task can start'),
         createdBy: z.string().describe('Agent ID or identifier of who created this task'),
-        metadata: z
-          .record(z.unknown())
-          .optional()
-          .describe('Additional metadata (context, acceptance criteria, etc.)'),
+        metadata: z.record(z.unknown()).optional().describe('Additional metadata (context, acceptance criteria, etc.)'),
       },
     },
     async ({
@@ -197,10 +188,7 @@ export const createSwarmPostTaskTool = (server: McpServer): void => {
               projectId: resolvedProjectId,
             });
             if (fileNodes.length > 0) {
-              resolvedNodeIds = [
-                ...resolvedNodeIds,
-                ...fileNodes.map((n) => n.id as string).filter(Boolean),
-              ];
+              resolvedNodeIds = [...resolvedNodeIds, ...fileNodes.map((n) => n.id as string).filter(Boolean)];
             }
           }
         }
@@ -237,12 +225,12 @@ export const createSwarmPostTaskTool = (server: McpServer): void => {
           });
           if (depCheck.length > 0) {
             dependencyStatus = {
-              totalDeps: typeof depCheck[0].totalDeps === 'object'
-                ? depCheck[0].totalDeps.toNumber()
-                : depCheck[0].totalDeps,
-              incompleteDeps: typeof depCheck[0].incompleteDeps === 'object'
-                ? depCheck[0].incompleteDeps.toNumber()
-                : depCheck[0].incompleteDeps,
+              totalDeps:
+                typeof depCheck[0].totalDeps === 'object' ? depCheck[0].totalDeps.toNumber() : depCheck[0].totalDeps,
+              incompleteDeps:
+                typeof depCheck[0].incompleteDeps === 'object'
+                  ? depCheck[0].incompleteDeps.toNumber()
+                  : depCheck[0].incompleteDeps,
               blockedBy: depCheck[0].blockedBy || [],
             };
           }
@@ -275,9 +263,7 @@ export const createSwarmPostTaskTool = (server: McpServer): void => {
               targetFilePaths: task.targetFilePaths,
               dependencies: task.dependencies,
               createdBy: task.createdBy,
-              createdAt: typeof task.createdAt === 'object'
-                ? task.createdAt.toNumber()
-                : task.createdAt,
+              createdAt: typeof task.createdAt === 'object' ? task.createdAt.toNumber() : task.createdAt,
             },
             dependencyStatus: {
               isBlocked,

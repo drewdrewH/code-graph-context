@@ -405,7 +405,6 @@ export const createDetectDuplicateCodeTool = (server: McpServer): void => {
             usedInSemanticGroup.add(nodeId1);
             usedInSemanticGroup.add(nodeId2);
           }
-
         }
 
         // Sort by similarity (descending)
@@ -452,7 +451,6 @@ export const createDetectDuplicateCodeTool = (server: McpServer): void => {
               message: `${embeddingCount} nodes have embeddings but no semantic duplicates found above ${minSimilarity} similarity threshold.`,
             };
           }
-
         }
 
         // Build summary with warning if no embeddings

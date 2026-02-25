@@ -4,6 +4,7 @@
  */
 
 import { randomBytes } from 'crypto';
+
 import { JOBS } from '../constants.js';
 
 export type JobPhase = 'pending' | 'discovery' | 'parsing' | 'importing' | 'resolving' | 'complete';
@@ -50,7 +51,6 @@ const createInitialProgress = (): JobProgress => ({
   currentChunk: 0,
   totalChunks: 0,
 });
-
 
 class JobManager {
   private jobs: Map<string, ParseJob> = new Map();
