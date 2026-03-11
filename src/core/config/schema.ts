@@ -825,7 +825,6 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Enum', 'TypeScript'],
         primaryLabel: 'Enum',
         indexed: ['name', 'isExported'],
-        skipEmbedding: true,
       },
     },
 
@@ -888,7 +887,6 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['Variable', 'TypeScript'],
         primaryLabel: 'Variable',
         indexed: ['name'],
-        skipEmbedding: true,
       },
     },
     [CoreNodeType.TYPE_ALIAS]: {
@@ -909,7 +907,6 @@ export const CORE_TYPESCRIPT_SCHEMA: CoreTypeScriptSchema = {
         labels: ['TypeAlias', 'TypeScript'],
         primaryLabel: 'TypeAlias',
         indexed: ['name'],
-        skipEmbedding: true,
       },
     },
     [CoreNodeType.CONSTRUCTOR_DECLARATION]: {
