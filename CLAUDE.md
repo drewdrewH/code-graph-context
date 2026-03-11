@@ -147,8 +147,8 @@ model that starts automatically on first use.
 
 | Env Variable | Default | Description |
 |---|---|---|
-| `EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | HuggingFace model for local embeddings |
-| `EMBEDDING_DEVICE` | `cpu` | Device for embeddings (`cpu` or `mps`). CPU default avoids MPS memory bloat |
+| `EMBEDDING_MODEL` | `codesage/codesage-base-v2` | HuggingFace model for local embeddings |
+| `EMBEDDING_DEVICE` | `mps`/`cpu` | Device for embeddings. Auto-detects MPS on Apple Silicon |
 | `EMBEDDING_HALF_PRECISION` | `false` | Set `true` for float16 (halves memory) |
 | `EMBEDDING_SIDECAR_PORT` | `8787` | Port for the local embedding server |
 | `OPENAI_ENABLED` | `false` | Set `true` to use OpenAI instead of local |
@@ -158,7 +158,7 @@ model that starts automatically on first use.
 
 | Model | Dims | RAM | Quality | Best for |
 |---|---|---|---|---|
-| `Qwen/Qwen3-Embedding-0.6B` | 1024 | ~1.2 GB | Best | Default, code-aware, MTEB-Code #1 |
+| `codesage/codesage-base-v2` | 1024 | ~700 MB | Best | Default, code-specific encoder, fast |
 | `Qodo/Qodo-Embed-1-1.5B` | 1536 | ~9 GB | Great | Machines with 32+ GB RAM |
 | `BAAI/bge-base-en-v1.5` | 768 | ~500 MB | Good | General purpose, low RAM |
 | `sentence-transformers/all-MiniLM-L6-v2` | 384 | ~200 MB | OK | Minimal RAM, fast |
@@ -181,7 +181,7 @@ NEO4J_USER=neo4j
 NEO4J_PASSWORD=PASSWORD
 
 # Optional — local embeddings work without any of these
-EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
+EMBEDDING_MODEL=codesage/codesage-base-v2
 OPENAI_ENABLED=true
 OPENAI_API_KEY=sk-...
 ```

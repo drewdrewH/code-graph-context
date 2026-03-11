@@ -295,7 +295,7 @@ const setupSidecar = async (): Promise<void> => {
   }
 
   // Pre-download the embedding model so first real use is fast
-  const modelName = process.env.EMBEDDING_MODEL ?? 'Qwen/Qwen3-Embedding-0.6B';
+  const modelName = process.env.EMBEDDING_MODEL ?? 'codesage/codesage-base-v2';
   await preDownloadModel(sidecarDir, python, modelName);
 };
 

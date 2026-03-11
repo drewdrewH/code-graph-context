@@ -27,7 +27,7 @@ logger.info(f"Sidecar process starting (pid={os.getpid()})")
 app = FastAPI(title="code-graph-context embedding sidecar")
 
 model = None
-model_name = os.environ.get("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
+model_name = os.environ.get("EMBEDDING_MODEL", "codesage/codesage-base-v2")
 
 
 class EmbedRequest(BaseModel):
@@ -48,14 +48,11 @@ def load_model():
         import torch
         from sentence_transformers import SentenceTransformer
 
-        # Use CPU by default — MPS pre-allocates a massive memory pool (10+ GB)
-        # that bloats small models. CPU on Apple Silicon is fast enough for <1B models.
-        # Set EMBEDDING_DEVICE=mps to force GPU if needed for large models.
         device_override = os.environ.get("EMBEDDING_DEVICE", "").lower()
         if device_override:
             device = device_override
         else:
-            device = "cpu"
+            device = "mps" if torch.backends.mps.is_available() else "cpu"
         logger.info(f"Loading {model_name} on {device}...")
         logger.info(f"PyTorch version: {torch.__version__}, MPS available: {torch.backends.mps.is_available()}")
 

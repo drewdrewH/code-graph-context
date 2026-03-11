@@ -34,7 +34,7 @@ export const EMBEDDING_DIMENSIONS: Record<string, number> = {
   'text-embedding-3-large': 3072,
   'text-embedding-3-small': 1536,
   // Local models (via sidecar)
-  'Qwen/Qwen3-Embedding-0.6B': 1024,
+  'codesage/codesage-base-v2': 1024,
   'Qodo/Qodo-Embed-1-1.5B': 1536,
   'sentence-transformers/all-MiniLM-L6-v2': 384,
   'sentence-transformers/all-mpnet-base-v2': 768,
@@ -58,7 +58,7 @@ export const getEmbeddingDimensions = (): number => {
     const model = process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-large';
     return EMBEDDING_DIMENSIONS[model] ?? 3072;
   }
-  const model = process.env.EMBEDDING_MODEL ?? 'Qwen/Qwen3-Embedding-0.6B';
+  const model = process.env.EMBEDDING_MODEL ?? 'codesage/codesage-base-v2';
   return EMBEDDING_DIMENSIONS[model] ?? 1536;
 };
 

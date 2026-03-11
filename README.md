@@ -189,9 +189,9 @@ If you prefer to edit the config files directly:
 | `NEO4J_URI` | No | `bolt://localhost:7687` | Neo4j connection URI |
 | `NEO4J_USER` | No | `neo4j` | Neo4j username |
 | `NEO4J_PASSWORD` | No | `PASSWORD` | Neo4j password |
-| `EMBEDDING_MODEL` | No | `Qwen/Qwen3-Embedding-0.6B` | Local embedding model (see [Embedding Configuration](#embedding-configuration)) |
+| `EMBEDDING_MODEL` | No | `codesage/codesage-base-v2` | Local embedding model (see [Embedding Configuration](#embedding-configuration)) |
 | `EMBEDDING_SIDECAR_PORT` | No | `8787` | Port for local embedding server |
-| `EMBEDDING_DEVICE` | No | `cpu` | Device for embeddings (`cpu` or `mps`). CPU is default to avoid MPS memory bloat |
+| `EMBEDDING_DEVICE` | No | auto (`mps`/`cpu`) | Device for embeddings. Auto-detects MPS on Apple Silicon |
 | `EMBEDDING_HALF_PRECISION` | No | `false` | Set `true` for float16 (uses ~0.5x memory) |
 | `OPENAI_ENABLED` | No | `false` | Set `true` to use OpenAI instead of local |
 | `OPENAI_API_KEY` | No* | - | Required when `OPENAI_ENABLED=true` |
@@ -537,9 +537,9 @@ This enables queries like "find all hooks that use context" while maintaining AS
 
 Local embeddings are the default — **no API key needed**. The Python sidecar starts automatically on first use and runs a local model for high-quality code embeddings.
 
-The sidecar runs on **CPU by default** to avoid MPS memory pool bloat on Apple Silicon (MPS can pre-allocate 10+ GB even for small models). CPU is fast enough for models under 1B params. It also auto-shuts down after 3 minutes of inactivity to free memory, and restarts lazily when needed (~15-20s).
+The sidecar uses **MPS (Apple Silicon GPU)** when available, falling back to CPU. It auto-shuts down after 3 minutes of inactivity to free memory, and restarts lazily when needed (~15-20s).
 
-> **GPU acceleration:** Set `EMBEDDING_DEVICE=mps` to use Apple Silicon GPU for larger models (1B+ params). Only recommended on machines with 32+ GB RAM.
+> **Device override:** Set `EMBEDDING_DEVICE=cpu` to force CPU if MPS causes issues.
 >
 > **Half precision:** Set `EMBEDDING_HALF_PRECISION=true` to load the model in float16, roughly halving memory usage.
 
@@ -549,7 +549,7 @@ Set via the `EMBEDDING_MODEL` environment variable:
 
 | Model | Dimensions | RAM (fp16) | Quality | Best For |
 |-------|-----------|-----|---------|----------|
-| `Qwen/Qwen3-Embedding-0.6B` (default) | 1024 | ~1.2 GB | Best | Default, code-aware, MTEB-Code #1 |
+| `codesage/codesage-base-v2` (default) | 1024 | ~700 MB | Best | Default, code-specific encoder, fast |
 | `Qodo/Qodo-Embed-1-1.5B` | 1536 | ~4.5 GB | Great | Machines with 32+ GB RAM |
 | `BAAI/bge-base-en-v1.5` | 768 | ~250 MB | Good | General purpose, low RAM |
 | `sentence-transformers/all-MiniLM-L6-v2` | 384 | ~100 MB | OK | Minimal RAM, fast |
