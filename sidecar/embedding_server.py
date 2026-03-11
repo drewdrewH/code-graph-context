@@ -9,6 +9,8 @@ import os
 import sys
 import signal
 import logging
+import threading
+import time
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -19,6 +21,8 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 logger = logging.getLogger("embedding-sidecar")
+
+logger.info(f"Sidecar process starting (pid={os.getpid()})")
 
 app = FastAPI(title="code-graph-context embedding sidecar")
 
@@ -46,15 +50,19 @@ def load_model():
 
         device = "mps" if torch.backends.mps.is_available() else "cpu"
         logger.info(f"Loading {model_name} on {device}...")
+        logger.info(f"PyTorch version: {torch.__version__}, MPS available: {torch.backends.mps.is_available()}")
+
         model = SentenceTransformer(model_name, device=device)
+        logger.info(f"Model loaded into memory, running warmup...")
 
         # Warm up with a test embedding
         with torch.no_grad():
             test = model.encode(["warmup"], show_progress_bar=False)
         dims = len(test[0])
-        logger.info(f"Model loaded: {dims} dimensions, device={device}")
+        logger.info(f"Warmup complete: {dims} dimensions, device={device}")
+        logger.info(f"Sidecar ready (pid={os.getpid()})")
     except Exception as e:
-        logger.error(f"Failed to load model: {e}")
+        logger.error(f"Failed to load model: {e}", exc_info=True)
         raise
 
 
@@ -79,16 +87,21 @@ async def embed(req: EmbedRequest):
     if not req.texts:
         return EmbedResponse(embeddings=[], dimensions=0, model=model_name)
 
+    logger.info(f"Embed request: {len(req.texts)} texts, batch_size={req.batch_size}")
+    start = time.time()
+
     try:
         embeddings = _encode_with_oom_fallback(req.texts, req.batch_size)
         dims = len(embeddings[0])
+        elapsed = time.time() - start
+        logger.info(f"Embed complete: {len(embeddings)} embeddings in {elapsed:.2f}s")
         return EmbedResponse(
             embeddings=embeddings,
             dimensions=dims,
             model=model_name,
         )
     except Exception as e:
-        logger.error(f"Embedding error: {e}")
+        logger.error(f"Embedding error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -125,6 +138,7 @@ def _encode_with_oom_fallback(texts: list[str], batch_size: int) -> list[list[fl
         # Fall back to CPU for this request
         original_device = model.device
         model.to("cpu")
+        logger.info("Model moved to CPU for fallback encoding")
 
         try:
             # Use smaller batches on CPU
@@ -136,17 +150,19 @@ def _encode_with_oom_fallback(texts: list[str], batch_size: int) -> list[list[fl
                     show_progress_bar=False,
                     normalize_embeddings=True,
                 )
+            logger.info(f"CPU fallback encoding complete ({len(texts)} texts)")
             return result.tolist()
         finally:
             # Move back to MPS for future requests
             try:
                 model.to(original_device)
+                logger.info(f"Model moved back to {original_device}")
             except Exception:
                 logger.warning("Could not move model back to MPS, staying on CPU")
 
 
 def handle_signal(sig, _frame):
-    logger.info(f"Received signal {sig}, shutting down")
+    logger.info(f"Received signal {sig}, shutting down (pid={os.getpid()})")
     sys.exit(0)
 
 
@@ -159,14 +175,18 @@ def _watch_stdin():
     the pipe breaks and stdin closes. This is our most reliable way to detect
     parent death and self-terminate instead of becoming an orphan.
     """
-    import threading
 
     def _watcher():
+        logger.info("Stdin watcher thread started")
         try:
             # Blocks until stdin is closed (parent died)
-            sys.stdin.read()
-        except Exception:
-            pass
+            while True:
+                data = sys.stdin.read(1)
+                if not data:
+                    # EOF — parent closed the pipe
+                    break
+        except Exception as e:
+            logger.info(f"Stdin watcher exception: {e}")
         logger.info("Parent process died (stdin closed), shutting down")
         os._exit(0)
 
@@ -174,4 +194,8 @@ def _watch_stdin():
     t.start()
 
 
-_watch_stdin()
+# Only watch stdin if it's a pipe (not a TTY) — avoids issues when run manually
+if not sys.stdin.isatty():
+    _watch_stdin()
+else:
+    logger.info("Running in terminal mode, stdin watcher disabled")
