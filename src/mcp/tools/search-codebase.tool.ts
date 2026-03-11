@@ -51,6 +51,14 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
           .optional()
           .describe(`Length of code snippets to include (default: ${DEFAULTS.codeSnippetLength})`)
           .default(DEFAULTS.codeSnippetLength),
+        topK: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            'Number of top vector matches to return (default: 3, max: 10). The best match is traversed; others shown as alternatives.',
+          )
+          .default(3),
         minSimilarity: z
           .number()
           .optional()
@@ -71,6 +79,7 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
       skip = 0,
       includeCode = true,
       snippetLength = DEFAULTS.codeSnippetLength,
+      topK = 3,
       minSimilarity = 0.65,
       useWeightedTraversal = true,
     }) => {
@@ -86,6 +95,7 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         const sanitizedMaxNodesPerChain = sanitizeNumericInput(maxNodesPerChain, 5);
         const sanitizedSkip = sanitizeNumericInput(skip, 0);
         const sanitizedSnippetLength = sanitizeNumericInput(snippetLength, DEFAULTS.codeSnippetLength);
+        const sanitizedTopK = sanitizeNumericInput(topK, 3, 10);
 
         const embeddingsService = new EmbeddingsService();
         const traversalHandler = new TraversalHandler(neo4jService);
@@ -93,7 +103,7 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
         const embedding = await embeddingsService.embedText(query);
 
         const vectorResults = await neo4jService.run(QUERIES.VECTOR_SEARCH, {
-          limit: 1,
+          limit: sanitizedTopK,
           embedding,
           projectId: resolvedProjectId,
           fetchMultiplier: 10,
@@ -107,33 +117,57 @@ export const createSearchCodebaseTool = (server: McpServer): void => {
           );
         }
 
-        const startNode = vectorResults[0].node;
-        const nodeId = startNode.properties.id;
-        const similarityScore = vectorResults[0].score;
+        // Filter results that meet the similarity threshold
+        const qualifiedResults = vectorResults.filter((r: { score: number }) => r.score >= minSimilarity);
 
-        // Check if best match meets threshold - prevents traversing low-relevance results
-        if (similarityScore < minSimilarity) {
+        if (qualifiedResults.length === 0) {
+          const bestScore = vectorResults[0].score;
           return createSuccessResponse(
-            `No sufficiently relevant code found. Best match score: ${similarityScore.toFixed(3)} ` +
+            `No sufficiently relevant code found. Best match score: ${bestScore.toFixed(3)} ` +
               `(threshold: ${minSimilarity}). Try rephrasing your query.`,
           );
         }
 
-        // Include similarity score in the title so users can see relevance
-        const scoreDisplay = typeof similarityScore === 'number' ? similarityScore.toFixed(3) : 'N/A';
+        // Best match — traverse from this node
+        const bestMatch = qualifiedResults[0];
+        const nodeId = bestMatch.node.properties.id;
+        const bestScore = bestMatch.score.toFixed(3);
 
-        return await traversalHandler.traverseFromNode(nodeId, embedding, {
+        // Build alternative matches summary for the response
+        const alternatives = qualifiedResults.slice(1);
+        const altLines = alternatives.map(
+          (r: { node: { properties: { id: string; name?: string; filePath?: string } }; score: number }) => {
+            const props = r.node.properties;
+            const name = props.name ?? props.id;
+            const file = props.filePath ? ` (${props.filePath})` : '';
+            return `  - ${name}${file} [score: ${r.score.toFixed(3)}, id: ${props.id}]`;
+          },
+        );
+
+        const altSection =
+          altLines.length > 0
+            ? `\n\nAlternative matches (use traverse_from_node to explore):\n${altLines.join('\n')}`
+            : '';
+
+        const traversalResult = await traversalHandler.traverseFromNode(nodeId, embedding, {
           projectId: resolvedProjectId,
           maxDepth: sanitizedMaxDepth,
-          direction: 'BOTH', // Show both incoming (who calls this) and outgoing (what this calls)
+          direction: 'BOTH',
           includeCode,
           maxNodesPerChain: sanitizedMaxNodesPerChain,
           skip: sanitizedSkip,
           summaryOnly: false,
           snippetLength: sanitizedSnippetLength,
-          title: `Search Results (similarity: ${scoreDisplay}) - Starting from: ${nodeId}`,
+          title: `Search Results (${qualifiedResults.length} matches, best: ${bestScore}) - Traversing from: ${nodeId}`,
           useWeightedTraversal,
         });
+
+        // Append alternatives to the traversal response
+        if (altSection && traversalResult.content?.[0]?.type === 'text') {
+          traversalResult.content[0].text += altSection;
+        }
+
+        return traversalResult;
       } catch (error) {
         console.error('Search codebase error:', error);
         await debugLog('Search codebase error', error);

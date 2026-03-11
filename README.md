@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-007ACC?logo=typescript&logoColor=white)](https://typescriptlang.org/)
 [![Neo4j](https://img.shields.io/badge/Neo4j-5.23+-018bff?logo=neo4j&logoColor=white)](https://neo4j.com/)
 [![NestJS](https://img.shields.io/badge/NestJS-Compatible-E0234E?logo=nestjs&logoColor=white)](https://nestjs.com/)
-[![OpenAI](https://img.shields.io/badge/OpenAI-Powered-412991?logo=openai&logoColor=white)](https://openai.com/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-Optional-412991?logo=openai&logoColor=white)](https://openai.com/)
 [![MCP](https://img.shields.io/badge/MCP-Server-blue)](https://modelcontextprotocol.io/)
 
 **Give your AI coding assistant a photographic memory of your codebase.**
@@ -27,7 +27,7 @@ Code Graph Context is an MCP server that builds a semantic graph of your TypeScr
                     │                   CODE GRAPH CONTEXT                        │
                     │                                                             │
                     │   AST Parser ──► Neo4j Graph ──► Vector Embeddings          │
-                    │   (ts-morph)     (Relationships)  (OpenAI)                  │
+                    │   (ts-morph)     (Relationships)  (Local or OpenAI)         │
                     │                                                             │
                     └─────────────────────────────────────────────────────────────┘
                                                 │
@@ -56,7 +56,7 @@ Code Graph Context is an MCP server that builds a semantic graph of your TypeScr
 ## Features
 
 - **Multi-Project Support**: Parse and query multiple projects in a single database with complete isolation
-- **Semantic Search**: Vector-based search using OpenAI embeddings to find relevant code
+- **Semantic Search**: Vector-based search using local or OpenAI embeddings to find relevant code
 - **Natural Language Querying**: Convert questions into Cypher queries
 - **Framework-Aware**: Built-in NestJS schema with ability to define custom framework patterns
 - **Weighted Graph Traversal**: Intelligent traversal scoring paths by importance and relevance
@@ -79,7 +79,7 @@ TypeScript Source → AST Parser (ts-morph) → Neo4j Graph + Vector Embeddings 
 **Core Components:**
 - `src/core/parsers/typescript-parser.ts` - AST parsing with ts-morph
 - `src/storage/neo4j/neo4j.service.ts` - Graph storage and queries
-- `src/core/embeddings/embeddings.service.ts` - OpenAI embeddings
+- `src/core/embeddings/embeddings.service.ts` - Embedding service (local sidecar or OpenAI)
 - `src/mcp/mcp.server.ts` - MCP server and tool registration
 
 **Dual-Schema System:**
@@ -93,29 +93,33 @@ Nodes have both `coreType` (AST) and `semanticType` (framework meaning), enablin
 ### Prerequisites
 
 - **Node.js** >= 18
+- **Python** >= 3.10 (for local embeddings)
 - **Docker** (for Neo4j)
-- **OpenAI API Key**
 
-
+> **No API keys required.** Local embeddings work out of the box using a Python sidecar.
 
 ### 1. Install
 
 ```bash
 npm install -g code-graph-context
-code-graph-context init  # Sets up Neo4j via Docker
+code-graph-context init  # Sets up Neo4j + Python sidecar + downloads embedding model
 ```
+
+The `init` command handles everything:
+- Starts a Neo4j container via Docker
+- Creates a Python virtual environment
+- Installs embedding dependencies (PyTorch, sentence-transformers)
+- Downloads the default embedding model (~3GB)
 
 ### 2. Configure Claude Code
 
-Add to Claude Code with your OpenAI API key:
-
 ```bash
-claude mcp add --scope user code-graph-context \
-  -e OPENAI_API_KEY=sk-your-key-here \
-  -- code-graph-context
+claude mcp add --scope user code-graph-context -- code-graph-context
 ```
 
-**That's it.** Restart Claude Code and you're ready to go.
+**That's it.** No API keys needed. Restart Claude Code and you're ready to go.
+
+> **Want to use OpenAI instead?** See [Embedding Configuration](#embedding-configuration) below.
 
 ### 3. Parse Your Project
 
@@ -145,8 +149,20 @@ If you prefer to edit the config files directly:
 {
   "mcpServers": {
     "code-graph-context": {
+      "command": "code-graph-context"
+    }
+  }
+}
+```
+
+**With OpenAI (optional):**
+```json
+{
+  "mcpServers": {
+    "code-graph-context": {
       "command": "code-graph-context",
       "env": {
+        "OPENAI_ENABLED": "true",
         "OPENAI_API_KEY": "sk-your-key-here"
       }
     }
@@ -160,10 +176,7 @@ If you prefer to edit the config files directly:
   "mcpServers": {
     "code-graph-context": {
       "command": "node",
-      "args": ["/absolute/path/to/code-graph-context/dist/cli/cli.js"],
-      "env": {
-        "OPENAI_API_KEY": "sk-your-key-here"
-      }
+      "args": ["/absolute/path/to/code-graph-context/dist/cli/cli.js"]
     }
   }
 }
@@ -173,10 +186,13 @@ If you prefer to edit the config files directly:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | **Yes** | - | For embeddings and NL queries |
 | `NEO4J_URI` | No | `bolt://localhost:7687` | Neo4j connection URI |
 | `NEO4J_USER` | No | `neo4j` | Neo4j username |
 | `NEO4J_PASSWORD` | No | `PASSWORD` | Neo4j password |
+| `EMBEDDING_MODEL` | No | `Qodo/Qodo-Embed-1-1.5B` | Local embedding model (see [Embedding Configuration](#embedding-configuration)) |
+| `EMBEDDING_SIDECAR_PORT` | No | `8787` | Port for local embedding server |
+| `OPENAI_ENABLED` | No | `false` | Set `true` to use OpenAI instead of local |
+| `OPENAI_API_KEY` | No* | - | Required when `OPENAI_ENABLED=true` |
 
 ---
 
@@ -515,6 +531,54 @@ This enables queries like "find all hooks that use context" while maintaining AS
 
 ---
 
+## Embedding Configuration
+
+Local embeddings are the default — **no API key needed**. The Python sidecar starts automatically on first use and runs a local model for high-quality code embeddings.
+
+### Available Models
+
+Set via the `EMBEDDING_MODEL` environment variable:
+
+| Model | Dimensions | RAM | Quality | Best For |
+|-------|-----------|-----|---------|----------|
+| `Qodo/Qodo-Embed-1-1.5B` (default) | 1536 | ~9 GB | Best | Machines with 32+ GB RAM |
+| `BAAI/bge-base-en-v1.5` | 768 | ~500 MB | Good | General purpose, low RAM |
+| `sentence-transformers/all-MiniLM-L6-v2` | 384 | ~200 MB | OK | Minimal RAM, fast |
+| `nomic-ai/nomic-embed-text-v1.5` | 768 | ~600 MB | Good | Code + prose mixed |
+| `sentence-transformers/all-mpnet-base-v2` | 768 | ~500 MB | Good | Balanced quality/speed |
+| `BAAI/bge-small-en-v1.5` | 384 | ~130 MB | OK | Smallest footprint |
+
+**Example:** Use a lightweight model on a 16GB machine:
+```bash
+claude mcp add --scope user code-graph-context \
+  -e EMBEDDING_MODEL=BAAI/bge-base-en-v1.5 \
+  -- code-graph-context
+```
+
+### Switching Models
+
+**Switching models requires re-parsing** — vector index dimensions are locked per model. Drop existing indexes first:
+
+```cypher
+DROP INDEX embedded_nodes_idx IF EXISTS;
+DROP INDEX session_notes_idx IF EXISTS;
+```
+
+Then re-parse your project with the new model configured.
+
+### Using OpenAI Instead
+
+If you prefer OpenAI embeddings (higher quality, requires API key):
+
+```bash
+claude mcp add --scope user code-graph-context \
+  -e OPENAI_ENABLED=true \
+  -e OPENAI_API_KEY=sk-your-key-here \
+  -- code-graph-context
+```
+
+---
+
 ## Troubleshooting
 
 ### MCP Server Not Connecting
@@ -530,18 +594,29 @@ docker ps | grep neo4j
 code-graph-context status
 ```
 
-### Missing OPENAI_API_KEY
+### Embedding Errors
 
-Symptoms: "Failed to generate embedding" errors
-
-Fix: Ensure the key is in your config file:
+**"Failed to generate embedding"** — The local sidecar may not have started. Check:
 ```bash
-# Check current config
-cat ~/.claude.json | grep -A5 "code-graph-context"
+# Verify Python deps are installed
+code-graph-context status
 
-# Re-add with key
+# Re-run init to fix sidecar setup
+code-graph-context init
+```
+
+**Out of memory (large model on 16GB machine)** — Switch to a lighter model:
+```bash
+claude mcp add --scope user code-graph-context \
+  -e EMBEDDING_MODEL=BAAI/bge-base-en-v1.5 \
+  -- code-graph-context
+```
+
+**Using OpenAI and getting auth errors** — Ensure your key is configured:
+```bash
 claude mcp remove code-graph-context
 claude mcp add --scope user code-graph-context \
+  -e OPENAI_ENABLED=true \
   -e OPENAI_API_KEY=sk-your-key-here \
   -- code-graph-context
 ```
@@ -572,8 +647,8 @@ parse_typescript_project({
 ## CLI Commands
 
 ```bash
-code-graph-context init [options]   # Set up Neo4j container
-code-graph-context status           # Check Docker/Neo4j status
+code-graph-context init [options]   # Set up Neo4j + Python sidecar + embedding model
+code-graph-context status           # Check Docker/Neo4j/sidecar status
 code-graph-context stop             # Stop Neo4j container
 ```
 

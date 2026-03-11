@@ -1,0 +1,147 @@
+"""
+Local embedding server for code-graph-context.
+Uses Qodo-Embed-1-1.5B for high-quality code embeddings without OpenAI dependency.
+Runs as a sidecar process managed by the Node.js MCP server.
+"""
+
+import gc
+import os
+import sys
+import signal
+import logging
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    stream=sys.stderr,
+)
+logger = logging.getLogger("embedding-sidecar")
+
+app = FastAPI(title="code-graph-context embedding sidecar")
+
+model = None
+model_name = os.environ.get("EMBEDDING_MODEL", "Qodo/Qodo-Embed-1-1.5B")
+
+
+class EmbedRequest(BaseModel):
+    texts: list[str]
+    batch_size: int = 8
+
+
+class EmbedResponse(BaseModel):
+    embeddings: list[list[float]]
+    dimensions: int
+    model: str
+
+
+@app.on_event("startup")
+def load_model():
+    global model
+    try:
+        import torch
+        from sentence_transformers import SentenceTransformer
+
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        logger.info(f"Loading {model_name} on {device}...")
+        model = SentenceTransformer(model_name, device=device)
+
+        # Warm up with a test embedding
+        test = model.encode(["warmup"], show_progress_bar=False)
+        dims = len(test[0])
+        logger.info(f"Model loaded: {dims} dimensions, device={device}")
+    except Exception as e:
+        logger.error(f"Failed to load model: {e}")
+        raise
+
+
+@app.get("/health")
+def health():
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    sample = model.encode(["dim_check"], show_progress_bar=False)
+    return {
+        "status": "ok",
+        "model": model_name,
+        "dimensions": len(sample[0]),
+        "device": str(model.device),
+    }
+
+
+@app.post("/embed", response_model=EmbedResponse)
+async def embed(req: EmbedRequest):
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    if not req.texts:
+        return EmbedResponse(embeddings=[], dimensions=0, model=model_name)
+
+    try:
+        embeddings = _encode_with_oom_fallback(req.texts, req.batch_size)
+        dims = len(embeddings[0])
+        return EmbedResponse(
+            embeddings=embeddings,
+            dimensions=dims,
+            model=model_name,
+        )
+    except Exception as e:
+        logger.error(f"Embedding error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _encode_with_oom_fallback(texts: list[str], batch_size: int) -> list[list[float]]:
+    """
+    Encode texts, falling back to CPU if MPS runs out of memory.
+    Also retries with smaller batch sizes before giving up.
+    """
+    import torch
+
+    try:
+        result = model.encode(
+            texts,
+            batch_size=batch_size,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        )
+        return result.tolist()
+    except (torch.mps.OutOfMemoryError, RuntimeError) as e:
+        if "out of memory" not in str(e).lower():
+            raise
+
+        logger.warning(f"MPS OOM with batch_size={batch_size}, len={len(texts)}. Falling back to CPU.")
+
+        # Free MPS memory
+        if hasattr(torch.mps, "empty_cache"):
+            torch.mps.empty_cache()
+        gc.collect()
+
+        # Fall back to CPU for this request
+        original_device = model.device
+        model.to("cpu")
+
+        try:
+            # Use smaller batches on CPU
+            cpu_batch = min(batch_size, 4)
+            result = model.encode(
+                texts,
+                batch_size=cpu_batch,
+                show_progress_bar=False,
+                normalize_embeddings=True,
+            )
+            return result.tolist()
+        finally:
+            # Move back to MPS for future requests
+            try:
+                model.to(original_device)
+            except Exception:
+                logger.warning("Could not move model back to MPS, staying on CPU")
+
+
+def handle_signal(sig, _frame):
+    logger.info(f"Received signal {sig}, shutting down")
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, handle_signal)

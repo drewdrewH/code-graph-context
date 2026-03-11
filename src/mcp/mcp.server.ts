@@ -21,6 +21,8 @@ dotenv.config({ path: join(rootDir, '.env'), quiet: true });
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
+import { stopEmbeddingSidecar } from '../core/embeddings/embedding-sidecar.js';
+
 import { MCP_SERVER_CONFIG, MESSAGES } from './constants.js';
 import { performIncrementalParse } from './handlers/incremental-parse.handler.js';
 import { initializeServices } from './service-init.js';
@@ -132,6 +134,7 @@ const shutdown = async (signal: string): Promise<void> => {
   await logServerStats(`shutdown-${signal}`);
   try {
     await watchManager.stopAllWatchers();
+    await stopEmbeddingSidecar();
     await debugLog('Shutdown complete', { signal });
   } catch (error) {
     console.error(JSON.stringify({ level: 'error', message: 'Error during shutdown', error: String(error) }));

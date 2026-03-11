@@ -6,7 +6,7 @@
 import fs from 'fs/promises';
 
 import { Neo4jNode, Neo4jEdge } from '../../core/config/schema.js';
-import { EmbeddingsService, EMBEDDING_BATCH_CONFIG } from '../../core/embeddings/embeddings.service.js';
+import { EmbeddingsService, EMBEDDING_BATCH_CONFIG, getEmbeddingDimensions } from '../../core/embeddings/embeddings.service.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { DEFAULTS } from '../constants.js';
 import { debugLog } from '../utils.js';
@@ -224,10 +224,11 @@ export class GraphGeneratorHandler {
   }
 
   private async createVectorIndexes(): Promise<void> {
-    console.error('Creating vector indexes...');
-    await this.neo4jService.run(QUERIES.CREATE_EMBEDDED_VECTOR_INDEX);
-    await this.neo4jService.run(QUERIES.CREATE_SESSION_NOTES_VECTOR_INDEX);
-    await debugLog('Vector indexes created');
+    const dims = getEmbeddingDimensions();
+    console.error(`Creating vector indexes (dimensions: ${dims})...`);
+    await this.neo4jService.run(QUERIES.CREATE_EMBEDDED_VECTOR_INDEX(dims));
+    await this.neo4jService.run(QUERIES.CREATE_SESSION_NOTES_VECTOR_INDEX(dims));
+    await debugLog('Vector indexes created', { dimensions: dims });
   }
 
   private flattenProperties(properties: any): any {

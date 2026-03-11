@@ -136,16 +136,51 @@ traverse_from_node({ projectId: "...", nodeId: "...", includeCode: false, maxNod
 ## Dependencies
 
 - **Neo4j 5.0+** with APOC plugin required
-- **OpenAI API** for embeddings (text-embedding-3-large) and NL queries
+- **Python 3.10+** for local embeddings (sidecar)
 - **ts-morph** for TypeScript AST parsing
+- **OpenAI API** (optional) for embeddings and NL queries
+
+## Embedding Configuration
+
+Local embeddings are the default — no API key needed. The sidecar runs a Python
+model that starts automatically on first use.
+
+| Env Variable | Default | Description |
+|---|---|---|
+| `EMBEDDING_MODEL` | `Qodo/Qodo-Embed-1-1.5B` | HuggingFace model for local embeddings |
+| `OPENAI_ENABLED` | `false` | Set `true` to use OpenAI instead of local |
+| `OPENAI_API_KEY` | — | Required when OPENAI_ENABLED=true |
+| `EMBEDDING_SIDECAR_PORT` | `8787` | Port for the local embedding server |
+
+**Available local models (set via EMBEDDING_MODEL):**
+
+| Model | Dims | RAM | Quality | Best for |
+|---|---|---|---|---|
+| `Qodo/Qodo-Embed-1-1.5B` | 1536 | ~9 GB | Best | Machines with 32+ GB RAM |
+| `BAAI/bge-base-en-v1.5` | 768 | ~500 MB | Good | General purpose, low RAM |
+| `sentence-transformers/all-MiniLM-L6-v2` | 384 | ~200 MB | OK | Minimal RAM, fast |
+| `nomic-ai/nomic-embed-text-v1.5` | 768 | ~600 MB | Good | Code + prose mixed |
+| `sentence-transformers/all-mpnet-base-v2` | 768 | ~500 MB | Good | Balanced quality/speed |
+| `BAAI/bge-small-en-v1.5` | 384 | ~130 MB | OK | Smallest footprint |
+
+**Switching models requires re-parsing** — vector index dimensions are locked per model.
+Drop existing indexes first:
+```cypher
+DROP INDEX embedded_nodes_idx IF EXISTS;
+DROP INDEX session_notes_idx IF EXISTS;
+```
 
 ## Environment Variables
 
 ```
-OPENAI_API_KEY=required
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=PASSWORD
+
+# Optional — local embeddings work without any of these
+EMBEDDING_MODEL=Qodo/Qodo-Embed-1-1.5B
+OPENAI_ENABLED=true
+OPENAI_API_KEY=sk-...
 ```
 
 ## Commit Convention

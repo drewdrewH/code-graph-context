@@ -34,6 +34,7 @@
   },
   "files": [
     "dist/**/*",
+    "sidecar/**/*",
     "README.md",
     "LICENSE",
     ".env.example"

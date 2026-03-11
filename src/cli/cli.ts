@@ -5,7 +5,8 @@
  * Handles CLI commands (init, status, stop) and delegates to MCP server
  */
 
-import { readFileSync } from 'fs';
+import { execSync, spawn as spawnProcess } from 'child_process';
+import { existsSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -69,7 +70,7 @@ const spinner = (msg: string): { stop: (ok: boolean, finalMsg?: string) => void 
   return {
     stop: (ok: boolean, finalMsg?: string) => {
       clearInterval(interval);
-      process.stdout.write(`\r  ${ok ? sym.ok : sym.err} ${finalMsg || msg}\n`);
+      process.stdout.write(`\r  ${ok ? sym.ok : sym.err} ${finalMsg ?? msg}\n`);
     },
   };
 };
@@ -90,27 +91,280 @@ ${c.bold}Next steps:${c.reset}
        "mcpServers": {
          "code-graph-context": {
            "command": "code-graph-context",
-           "env": {
-             "OPENAI_API_KEY": "sk-..."${
-               password !== NEO4J_CONFIG.defaultPassword
-                 ? `,
-             "NEO4J_PASSWORD": "${password}"`
-                 : ''
-             }${
-               boltPort !== NEO4J_CONFIG.boltPort
-                 ? `,
+           "env": {${
+             password !== NEO4J_CONFIG.defaultPassword
+               ? `
+             "NEO4J_PASSWORD": "${password}"${boltPort !== NEO4J_CONFIG.boltPort ? ',' : ''}`
+               : ''
+           }${
+             boltPort !== NEO4J_CONFIG.boltPort
+               ? `
              "NEO4J_URI": "bolt://localhost:${boltPort}"`
-                 : ''
-             }
+               : ''
+           }
            }
          }
        }
      }${c.reset}
 
-     ${c.yellow}Get your OpenAI API key:${c.reset} https://platform.openai.com/api-keys
+     ${c.dim}Local embeddings are used by default (no API key needed).
+     To use OpenAI instead, add:
+       "OPENAI_ENABLED": "true",
+       "OPENAI_API_KEY": "sk-..."${c.reset}
 
   3. Restart Claude Code
 `);
+};
+
+/**
+ * Resolve the sidecar directory (works from both src/ and dist/)
+ */
+const getSidecarDir = (): string => join(__dirname, '..', '..', 'sidecar');
+
+/**
+ * Get the path to the venv python binary inside the sidecar dir.
+ * Returns null if the venv doesn't exist yet.
+ */
+const getVenvPython = (sidecarDir: string): string | null => {
+  const venvPython = join(sidecarDir, '.venv', 'bin', 'python3');
+  return existsSync(venvPython) ? venvPython : null;
+};
+
+/**
+ * Get the best python binary to use for the sidecar.
+ * Prefers venv python, falls back to system python3.
+ */
+const getSidecarPython = (sidecarDir: string): string => {
+  return getVenvPython(sidecarDir) ?? 'python3';
+};
+
+/**
+ * Check if python3 is available and return its version
+ */
+const getPythonVersion = (): string | null => {
+  try {
+    return execSync('python3 --version', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Check if a pip package is importable using the sidecar python
+ */
+const checkPipPackage = (pkg: string, python: string = 'python3'): boolean => {
+  try {
+    execSync(`${python} -c "import ${pkg}"`, { stdio: ['pipe', 'pipe', 'pipe'] });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Create a venv in the sidecar directory
+ */
+const createVenv = (sidecarDir: string): boolean => {
+  try {
+    const venvPath = join(sidecarDir, '.venv');
+    execSync(`python3 -m venv ${venvPath}`, { stdio: ['pipe', 'pipe', 'pipe'] });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Install sidecar Python dependencies via pip inside the venv
+ */
+const installSidecarDeps = (sidecarDir: string): Promise<boolean> => {
+  return new Promise((resolve) => {
+    const venvPip = join(sidecarDir, '.venv', 'bin', 'pip');
+    const requirementsPath = join(sidecarDir, 'requirements.txt');
+    const pip = spawnProcess(venvPip, ['install', '-r', requirementsPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    pip.stderr?.on('data', (data: Buffer) => {
+      const line = data.toString().trim();
+      if (line && (line.includes('Downloading') || line.includes('Installing') || line.includes('ERROR'))) {
+        process.stdout.write(`\r  ${c.blue}⠸${c.reset} ${line.slice(0, 70).padEnd(70)}`);
+      }
+    });
+
+    pip.on('close', (code) => {
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      resolve(code === 0);
+    });
+
+    pip.on('error', () => {
+      resolve(false);
+    });
+  });
+};
+
+/**
+ * Verify sentence-transformers can be imported using the venv python
+ */
+const verifySidecar = (sidecarDir: string): Promise<boolean> => {
+  return new Promise((resolve) => {
+    const python = getSidecarPython(sidecarDir);
+    const test = spawnProcess(python, ['-c', 'from sentence_transformers import SentenceTransformer; print("ok")'], {
+      cwd: sidecarDir,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    test.stdout?.on('data', (d: Buffer) => (stdout += d.toString()));
+    test.on('close', (code) => resolve(code === 0 && stdout.includes('ok')));
+    test.on('error', () => resolve(false));
+  });
+};
+
+/**
+ * Set up the Python embedding sidecar
+ */
+const setupSidecar = async (): Promise<void> => {
+  console.log('');
+  header('Embedding Sidecar Setup');
+
+  const sidecarDir = getSidecarDir();
+
+  // Check Python
+  const pythonVersion = getPythonVersion();
+  if (!pythonVersion) {
+    log(sym.err, 'Python 3 is not installed');
+    console.log(`\n  Install Python 3.10+: ${c.cyan}https://www.python.org/downloads/${c.reset}`);
+    console.log(`  ${c.dim}Or use OpenAI embeddings instead: set OPENAI_ENABLED=true${c.reset}\n`);
+    return;
+  }
+  log(sym.ok, `${pythonVersion}`);
+
+  // Create or reuse venv
+  const venvPath = join(sidecarDir, '.venv');
+  if (existsSync(venvPath)) {
+    log(sym.ok, `Virtual environment exists (${c.dim}sidecar/.venv${c.reset})`);
+  } else {
+    const venvSpinner = spinner('Creating virtual environment...');
+    const created = createVenv(sidecarDir);
+    if (!created) {
+      venvSpinner.stop(false, 'Failed to create virtual environment');
+      console.log(`\n  Try manually: ${c.dim}python3 -m venv ${venvPath}${c.reset}\n`);
+      return;
+    }
+    venvSpinner.stop(true, `Virtual environment created (${c.dim}sidecar/.venv${c.reset})`);
+  }
+
+  const python = getSidecarPython(sidecarDir);
+
+  // Check if deps already installed in venv
+  const hasSentenceTransformers = checkPipPackage('sentence_transformers', python);
+  const hasFastApi = checkPipPackage('fastapi', python);
+  const hasTorch = checkPipPackage('torch', python);
+
+  if (hasSentenceTransformers && hasFastApi && hasTorch) {
+    log(sym.ok, 'Python dependencies already installed');
+  } else {
+    const missing: string[] = [];
+    if (!hasTorch) missing.push('torch');
+    if (!hasSentenceTransformers) missing.push('sentence-transformers');
+    if (!hasFastApi) missing.push('fastapi');
+    log(sym.info, `Missing packages: ${missing.join(', ')}`);
+
+    const s = spinner('Installing Python dependencies (this may take a few minutes)...');
+    const installed = await installSidecarDeps(sidecarDir);
+    if (!installed) {
+      s.stop(false, 'Failed to install Python dependencies');
+      console.log(
+        `\n  Try manually: ${c.dim}${join(venvPath, 'bin', 'pip')} install -r ${join(sidecarDir, 'requirements.txt')}${c.reset}\n`,
+      );
+      return;
+    }
+    s.stop(true, 'Python dependencies installed');
+  }
+
+  // Verify sentence-transformers works
+  const verifySpinner = spinner('Verifying sentence-transformers...');
+  const verified = await verifySidecar(sidecarDir);
+  verifySpinner.stop(verified, verified ? 'sentence-transformers OK' : 'sentence-transformers import failed');
+
+  if (!verified) {
+    console.log(`\n  ${c.dim}Try: ${python} -c "from sentence_transformers import SentenceTransformer"${c.reset}`);
+    console.log(`  ${c.dim}Or use OpenAI embeddings instead: set OPENAI_ENABLED=true${c.reset}\n`);
+    return;
+  }
+
+  // Pre-download the embedding model so first real use is fast
+  const modelName = process.env.EMBEDDING_MODEL ?? 'Qodo/Qodo-Embed-1-1.5B';
+  await preDownloadModel(sidecarDir, python, modelName);
+};
+
+/**
+ * Pre-download the embedding model during init so the first parse doesn't hang.
+ * SentenceTransformer downloads to ~/.cache/huggingface/ on first load.
+ */
+const preDownloadModel = async (sidecarDir: string, python: string, modelName: string): Promise<void> => {
+  // Check if model is already cached by trying a quick load
+  const checkCached = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const proc = spawnProcess(
+        python,
+        [
+          '-c',
+          `from sentence_transformers import SentenceTransformer; m = SentenceTransformer("${modelName}"); print(f"dims:{len(m.encode(['test'])[0])}")`,
+        ],
+        { cwd: sidecarDir, stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000 },
+      );
+
+      let stdout = '';
+      proc.stdout?.on('data', (d: Buffer) => (stdout += d.toString()));
+      proc.on('close', (code) => resolve(code === 0 && stdout.includes('dims:')));
+      proc.on('error', () => resolve(false));
+    });
+  };
+
+  // Quick check — if model is cached, this returns in ~5s
+  const quickSpinner = spinner(`Checking for cached model (${modelName})...`);
+  const isCached = await checkCached();
+
+  if (isCached) {
+    quickSpinner.stop(true, `Model ready (${modelName})`);
+    return;
+  }
+
+  quickSpinner.stop(false, 'Model not cached yet');
+  log(sym.info, 'Downloading embedding model (~600MB, only needed once)');
+
+  // Download the model — this can take a few minutes.
+  // Pipe stderr directly to the terminal so HuggingFace progress bars render natively.
+  const downloaded = await new Promise<boolean>((resolve) => {
+    const proc = spawnProcess(
+      python,
+      [
+        '-c',
+        `from sentence_transformers import SentenceTransformer; print("downloading..."); m = SentenceTransformer("${modelName}"); print(f"done dims:{len(m.encode(['test'])[0])}")`,
+      ],
+      { cwd: sidecarDir, stdio: ['pipe', 'pipe', 'inherit'] },
+    );
+
+    let stdout = '';
+    proc.stdout?.on('data', (d: Buffer) => {
+      stdout += d.toString();
+    });
+    proc.on('close', (code) => {
+      resolve(code === 0 && stdout.includes('done'));
+    });
+    proc.on('error', () => resolve(false));
+  });
+
+  if (downloaded) {
+    log(sym.ok, 'Embedding model downloaded and cached');
+  } else {
+    log(sym.warn, 'Model download failed — it will retry on first use');
+    console.log(
+      `  ${c.dim}You can download manually: ${python} -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${modelName}')"${c.reset}`,
+    );
+  }
 };
 
 interface InitOptions {
@@ -127,8 +381,8 @@ interface InitOptions {
 const runInit = async (options: InitOptions): Promise<void> => {
   const boltPort = options.port ? parseInt(options.port, 10) : NEO4J_CONFIG.boltPort;
   const httpPort = options.httpPort ? parseInt(options.httpPort, 10) : NEO4J_CONFIG.httpPort;
-  const password = options.password || NEO4J_CONFIG.defaultPassword;
-  const memory = options.memory || '4G';
+  const password = options.password ?? NEO4J_CONFIG.defaultPassword;
+  const memory = options.memory ?? '4G';
 
   header('Code Graph Context Setup');
 
@@ -157,6 +411,10 @@ const runInit = async (options: InitOptions): Promise<void> => {
     log(apocOk ? sym.ok : sym.warn, apocOk ? 'APOC plugin available' : 'APOC plugin not detected');
 
     console.log(`\n  ${c.dim}Use --force to recreate the container${c.reset}`);
+
+    // Still set up sidecar even if Neo4j is already running
+    await setupSidecar();
+
     printConfigInstructions(password, boltPort);
     return;
   }
@@ -214,6 +472,9 @@ ${c.bold}Neo4j is ready${c.reset}
   Bolt URI:    ${c.cyan}bolt://localhost:${boltPort}${c.reset}
   Credentials: ${c.dim}neo4j / ${password}${c.reset}`);
 
+  // Set up Python embedding sidecar
+  await setupSidecar();
+
   printConfigInstructions(password, boltPort);
 };
 
@@ -249,6 +510,26 @@ const runStatus = (): void => {
       status.apocAvailable ? sym.ok : sym.warn,
       `APOC plugin: ${status.apocAvailable ? 'available' : 'not available'}`,
     );
+  }
+
+  // Sidecar status
+  console.log('');
+  const pythonVersion = getPythonVersion();
+  log(pythonVersion ? sym.ok : sym.warn, `Python: ${pythonVersion ?? 'not found'}`);
+
+  if (pythonVersion) {
+    const sidecarDir = getSidecarDir();
+    const venvExists = existsSync(join(sidecarDir, '.venv'));
+    log(venvExists ? sym.ok : sym.warn, `Sidecar venv: ${venvExists ? 'exists' : 'not created'}`);
+
+    if (venvExists) {
+      const python = getSidecarPython(sidecarDir);
+      const hasDeps =
+        checkPipPackage('sentence_transformers', python) &&
+        checkPipPackage('fastapi', python) &&
+        checkPipPackage('torch', python);
+      log(hasDeps ? sym.ok : sym.warn, `Sidecar deps: ${hasDeps ? 'installed' : 'not installed'}`);
+    }
   }
 
   console.log('');

@@ -7,6 +7,7 @@ import fs from 'fs/promises';
 import { join } from 'path';
 
 import { ensureNeo4jRunning, isDockerInstalled, isDockerRunning } from '../cli/neo4j-docker.js';
+import { isOpenAIEnabled, getEmbeddingDimensions } from '../core/embeddings/embeddings.service.js';
 import { Neo4jService, QUERIES } from '../storage/neo4j/neo4j.service.js';
 
 import { FILE_PATHS, LOG_CONFIG } from './constants.js';
@@ -17,14 +18,43 @@ import { debugLog } from './utils.js';
  * Log startup warnings for missing configuration
  */
 const checkConfiguration = async (): Promise<void> => {
-  if (!process.env.OPENAI_API_KEY) {
+  const openai = isOpenAIEnabled();
+  const dims = getEmbeddingDimensions();
+  const provider = openai ? 'openai' : 'local';
+
+  console.error(
+    JSON.stringify({
+      level: 'info',
+      message: `[code-graph-context] Embedding provider: ${provider} (${dims} dimensions)`,
+    }),
+  );
+  await debugLog('Embedding configuration', { provider, dimensions: dims });
+
+  if (openai && !process.env.OPENAI_API_KEY) {
     console.error(
       JSON.stringify({
         level: 'warn',
-        message: '[code-graph-context] OPENAI_API_KEY not set. Semantic search and NL queries unavailable.',
+        message: '[code-graph-context] OPENAI_ENABLED=true but OPENAI_API_KEY not set. Embedding calls will fail.',
       }),
     );
-    await debugLog('Configuration warning', { warning: 'OPENAI_API_KEY not set' });
+    await debugLog('Configuration warning', { warning: 'OPENAI_ENABLED=true but OPENAI_API_KEY not set' });
+  }
+
+  if (!openai) {
+    console.error(
+      JSON.stringify({
+        level: 'info',
+        message: '[code-graph-context] Using local embeddings (Python sidecar). Starts on first embedding request.',
+      }),
+    );
+    if (!process.env.OPENAI_API_KEY) {
+      console.error(
+        JSON.stringify({
+          level: 'info',
+          message: '[code-graph-context] natural_language_to_cypher requires OPENAI_API_KEY and is unavailable.',
+        }),
+      );
+    }
   }
 };
 

@@ -142,6 +142,9 @@ dist
 *.swo
 *~
 
+# Python venv (created by `code-graph-context init`)
+sidecar/.venv/
+
 # Debug and generated files
 debug-search.log
 neo4j-apoc-schema.json

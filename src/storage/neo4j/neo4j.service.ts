@@ -158,20 +158,20 @@ export const QUERIES = {
     ORDER BY count DESC
   `,
 
-  CREATE_EMBEDDED_VECTOR_INDEX: `
+  CREATE_EMBEDDED_VECTOR_INDEX: (dimensions: number) => `
   CREATE VECTOR INDEX embedded_nodes_idx IF NOT EXISTS
   FOR (n:Embedded) ON (n.embedding)
   OPTIONS {indexConfig: {
-    \`vector.dimensions\`: 3072,
+    \`vector.dimensions\`: ${dimensions},
     \`vector.similarity_function\`: 'cosine'
   }}
 `,
 
-  CREATE_SESSION_NOTES_VECTOR_INDEX: `
+  CREATE_SESSION_NOTES_VECTOR_INDEX: (dimensions: number) => `
   CREATE VECTOR INDEX session_notes_idx IF NOT EXISTS
   FOR (n:SessionNote) ON (n.embedding)
   OPTIONS {indexConfig: {
-    \`vector.dimensions\`: 3072,
+    \`vector.dimensions\`: ${dimensions},
     \`vector.similarity_function\`: 'cosine'
   }}
 `,

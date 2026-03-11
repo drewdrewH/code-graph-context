@@ -1,187 +1,90 @@
-import OpenAI from 'openai';
-
-import { debugLog } from '../../mcp/utils.js';
-import { getTimeoutConfig } from '../config/timeouts.js';
-
 /**
- * Custom error class for OpenAI configuration issues
- * Provides helpful guidance on how to resolve the issue
+ * Embeddings Service — barrel module
+ *
+ * Exports a common interface and a factory. Consumers do `new EmbeddingsService()`
+ * and get the right implementation based on OPENAI_ENABLED.
+ *
+ *   OPENAI_ENABLED=true  → OpenAI text-embedding-3-large (requires OPENAI_API_KEY)
+ *   default              → Local Python sidecar with Qodo-Embed-1-1.5B
  */
-export class OpenAIConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'OpenAIConfigError';
-  }
-}
 
-/**
- * Custom error class for OpenAI API issues (rate limits, quota, etc.)
- */
-export class OpenAIAPIError extends Error {
-  constructor(
-    message: string,
-    public readonly statusCode?: number,
-  ) {
-    super(message);
-    this.name = 'OpenAIAPIError';
-  }
+import { LocalEmbeddingsService } from './local-embeddings.service.js';
+import { OpenAIEmbeddingsService } from './openai-embeddings.service.js';
+
+// Re-export error classes so existing imports keep working
+export { OpenAIConfigError, OpenAIAPIError } from './openai-embeddings.service.js';
+
+export interface IEmbeddingsService {
+  embedText(text: string): Promise<number[]>;
+  embedTexts(texts: string[]): Promise<(number[] | null)[]>;
+  embedTextsInBatches(texts: string[], batchSize?: number): Promise<(number[] | null)[]>;
 }
 
 export const EMBEDDING_BATCH_CONFIG = {
-  maxBatchSize: 100, // OpenAI supports up to 2048, but 100 is efficient
-  delayBetweenBatchesMs: 500, // Rate limit protection (500ms = ~2 batches/sec)
+  maxBatchSize: 100,
+  delayBetweenBatchesMs: 500,
 } as const;
 
-export class EmbeddingsService {
-  private readonly openai: OpenAI;
-  private readonly model: string;
+/**
+ * Known dimensions per model.
+ * For unlisted models, dimensions are detected at runtime from the sidecar health endpoint.
+ */
+export const EMBEDDING_DIMENSIONS: Record<string, number> = {
+  // OpenAI models
+  'text-embedding-3-large': 3072,
+  'text-embedding-3-small': 1536,
+  // Local models (via sidecar)
+  'Qodo/Qodo-Embed-1-1.5B': 1536,
+  'sentence-transformers/all-MiniLM-L6-v2': 384,
+  'sentence-transformers/all-mpnet-base-v2': 768,
+  'BAAI/bge-small-en-v1.5': 384,
+  'BAAI/bge-base-en-v1.5': 768,
+  'nomic-ai/nomic-embed-text-v1.5': 768,
+};
 
-  constructor(model: string = 'text-embedding-3-large') {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new OpenAIConfigError(
-        'OPENAI_API_KEY environment variable is required.\n\n' +
-          'To use semantic search features (search_codebase, natural_language_to_cypher), ' +
-          'you need an OpenAI API key.\n\n' +
-          'Set it in your environment:\n' +
-          '  export OPENAI_API_KEY=sk-...\n\n' +
-          'Or in .env file:\n' +
-          '  OPENAI_API_KEY=sk-...\n\n' +
-          'Alternative: Use impact_analysis or traverse_from_node which do not require OpenAI.',
-      );
-    }
-    const timeoutConfig = getTimeoutConfig();
-    this.openai = new OpenAI({
-      apiKey,
-      timeout: timeoutConfig.openai.embeddingTimeoutMs,
-      maxRetries: 2, // Built-in retry for transient errors
-    });
-    this.model = model;
+export const isOpenAIEnabled = (): boolean => {
+  return process.env.OPENAI_ENABLED?.toLowerCase() === 'true';
+};
+
+/**
+ * Get the vector dimensions for the active embedding provider.
+ * For known models, returns a static value. For unknown local models,
+ * falls back to 1536 — the actual dimensions are verified at runtime
+ * when the sidecar starts and reports via /health.
+ */
+export const getEmbeddingDimensions = (): number => {
+  if (isOpenAIEnabled()) {
+    const model = process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-large';
+    return EMBEDDING_DIMENSIONS[model] ?? 3072;
   }
+  const model = process.env.EMBEDDING_MODEL ?? 'Qodo/Qodo-Embed-1-1.5B';
+  return EMBEDDING_DIMENSIONS[model] ?? 1536;
+};
 
-  /**
-   * Embed a single text string
-   */
-  async embedText(text: string): Promise<number[]> {
-    try {
-      const response = await this.openai.embeddings.create({
-        model: this.model,
-        input: text,
-      });
-      return response.data[0].embedding;
-    } catch (error: any) {
-      // Handle specific error types with helpful messages
-      if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-        throw new OpenAIAPIError(
-          'OpenAI embedding request timed out. Consider increasing OPENAI_EMBEDDING_TIMEOUT_MS.',
-        );
-      }
+/**
+ * Factory that returns the correct service based on OPENAI_ENABLED.
+ * Drop-in replacement everywhere `new EmbeddingsService()` was used.
+ */
+export class EmbeddingsService implements IEmbeddingsService {
+  private readonly impl: IEmbeddingsService;
 
-      if (error.status === 429) {
-        throw new OpenAIAPIError(
-          'OpenAI rate limit exceeded.\n\n' +
-            'This usually means:\n' +
-            '- You have hit your API rate limit\n' +
-            '- You have exceeded your quota\n\n' +
-            'Solutions:\n' +
-            '- Wait a few minutes and try again\n' +
-            '- Check your OpenAI usage at https://platform.openai.com/usage\n' +
-            '- Use impact_analysis or traverse_from_node which do not require OpenAI',
-          429,
-        );
-      }
-
-      if (error.status === 401) {
-        throw new OpenAIAPIError(
-          'OpenAI API key is invalid or expired.\n\n' + 'Please check your OPENAI_API_KEY environment variable.',
-          401,
-        );
-      }
-
-      if (error.status === 402 || error.message?.includes('quota') || error.message?.includes('billing')) {
-        throw new OpenAIAPIError(
-          'OpenAI quota exceeded or billing issue.\n\n' +
-            'Solutions:\n' +
-            '- Check your OpenAI billing at https://platform.openai.com/settings/organization/billing\n' +
-            '- Add credits to your account\n' +
-            '- Use impact_analysis or traverse_from_node which do not require OpenAI',
-          402,
-        );
-      }
-
-      console.error('Error creating embedding:', error);
-      throw error;
+  constructor(model?: string) {
+    if (isOpenAIEnabled()) {
+      this.impl = new OpenAIEmbeddingsService(model);
+    } else {
+      this.impl = new LocalEmbeddingsService();
     }
   }
 
-  /**
-   * Embed multiple texts in a single API call.
-   * OpenAI's embedding API supports batching natively.
-   */
-  async embedTexts(texts: string[]): Promise<(number[] | null)[]> {
-    if (texts.length === 0) return [];
-
-    try {
-      const response = await this.openai.embeddings.create({
-        model: this.model,
-        input: texts,
-      });
-
-      // Map results back to original order (OpenAI returns with index)
-      return response.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
-    } catch (error: any) {
-      if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
-        throw new OpenAIAPIError(
-          'OpenAI batch embedding request timed out. Consider reducing batch size or increasing timeout.',
-        );
-      }
-      // Rate limited - SDK already has maxRetries:2, don't add recursive retry
-      if (error.status === 429) {
-        throw new OpenAIAPIError(
-          'OpenAI rate limit exceeded. Wait a few minutes and try again.\n' +
-            'Check your usage at https://platform.openai.com/usage',
-          429,
-        );
-      }
-      // Re-throw with context
-      throw new OpenAIAPIError(`OpenAI embedding failed: ${error.message}`, error.status);
-    }
+  embedText(text: string): Promise<number[]> {
+    return this.impl.embedText(text);
   }
 
-  /**
-   * Embed texts in batches with rate limiting.
-   * Returns array of embeddings in same order as input.
-   * @param texts Array of texts to embed
-   * @param batchSize Number of texts per API call (default: 100)
-   */
-  async embedTextsInBatches(
-    texts: string[],
-    batchSize: number = EMBEDDING_BATCH_CONFIG.maxBatchSize,
-  ): Promise<(number[] | null)[]> {
-    await debugLog('Batch embedding started', { textCount: texts.length });
-
-    const results: (number[] | null)[] = [];
-    const totalBatches = Math.ceil(texts.length / batchSize);
-
-    for (let i = 0; i < texts.length; i += batchSize) {
-      const batch = texts.slice(i, i + batchSize);
-      const batchIndex = Math.floor(i / batchSize) + 1;
-
-      await debugLog('Embedding batch progress', { batchIndex, totalBatches, batchSize: batch.length });
-
-      const batchResults = await this.embedTexts(batch);
-      results.push(...batchResults);
-
-      // Rate limit protection between batches
-      if (i + batchSize < texts.length) {
-        await this.delay(EMBEDDING_BATCH_CONFIG.delayBetweenBatchesMs);
-      }
-    }
-
-    return results;
+  embedTexts(texts: string[]): Promise<(number[] | null)[]> {
+    return this.impl.embedTexts(texts);
   }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  embedTextsInBatches(texts: string[], batchSize?: number): Promise<(number[] | null)[]> {
+    return this.impl.embedTextsInBatches(texts, batchSize);
   }
 }

@@ -6,7 +6,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { EmbeddingsService } from '../../core/embeddings/embeddings.service.js';
+import { EmbeddingsService, getEmbeddingDimensions } from '../../core/embeddings/embeddings.service.js';
 import { Neo4jService, QUERIES } from '../../storage/neo4j/neo4j.service.js';
 import { TOOL_NAMES, TOOL_METADATA } from '../constants.js';
 import { createErrorResponse, createSuccessResponse, resolveProjectIdOrError, debugLog } from '../utils.js';
@@ -36,17 +36,16 @@ const CREATE_SESSION_NOTE_QUERY = `
   // Link to referenced code nodes (filter out internal coordination nodes)
   WITH n
   UNWIND CASE WHEN size($aboutNodeIds) = 0 THEN [null] ELSE $aboutNodeIds END AS aboutNodeId
-  WITH n, aboutNodeId
-  WHERE aboutNodeId IS NOT NULL
   OPTIONAL MATCH (target)
-  WHERE target.id = aboutNodeId
+  WHERE aboutNodeId IS NOT NULL
+    AND target.id = aboutNodeId
     AND target.projectId = $projectId
     AND NOT target:SessionNote
     AND NOT target:SessionBookmark
     AND NOT target:Pheromone
     AND NOT target:SwarmTask
   WITH n, collect(target) AS targets
-  FOREACH (t IN targets | MERGE (n)-[:ABOUT]->(t))
+  FOREACH (t IN [x IN targets WHERE x IS NOT NULL] | MERGE (n)-[:ABOUT]->(t))
 
   // Link to the latest SessionBookmark for this session (if one exists)
   WITH n
@@ -222,7 +221,7 @@ export const createSaveSessionNoteTool = (server: McpServer): void => {
         // Ensure vector index exists (idempotent — IF NOT EXISTS)
         let hasEmbedding = false;
         try {
-          await neo4jService.run(QUERIES.CREATE_SESSION_NOTES_VECTOR_INDEX);
+          await neo4jService.run(QUERIES.CREATE_SESSION_NOTES_VECTOR_INDEX(getEmbeddingDimensions()));
           const embeddingsService = new EmbeddingsService();
           const embeddingText = `${topic}\n\n${content}`;
           const embedding = await embeddingsService.embedText(embeddingText);
