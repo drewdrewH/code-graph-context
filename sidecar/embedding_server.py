@@ -49,7 +49,8 @@ def load_model():
         model = SentenceTransformer(model_name, device=device)
 
         # Warm up with a test embedding
-        test = model.encode(["warmup"], show_progress_bar=False)
+        with torch.no_grad():
+            test = model.encode(["warmup"], show_progress_bar=False)
         dims = len(test[0])
         logger.info(f"Model loaded: {dims} dimensions, device={device}")
     except Exception as e:
@@ -99,12 +100,16 @@ def _encode_with_oom_fallback(texts: list[str], batch_size: int) -> list[list[fl
     import torch
 
     try:
-        result = model.encode(
-            texts,
-            batch_size=batch_size,
-            show_progress_bar=False,
-            normalize_embeddings=True,
-        )
+        with torch.no_grad():
+            result = model.encode(
+                texts,
+                batch_size=batch_size,
+                show_progress_bar=False,
+                normalize_embeddings=True,
+            )
+        # Free intermediate tensors after each request
+        if hasattr(torch.mps, "empty_cache"):
+            torch.mps.empty_cache()
         return result.tolist()
     except (torch.mps.OutOfMemoryError, RuntimeError) as e:
         if "out of memory" not in str(e).lower():
@@ -124,12 +129,13 @@ def _encode_with_oom_fallback(texts: list[str], batch_size: int) -> list[list[fl
         try:
             # Use smaller batches on CPU
             cpu_batch = min(batch_size, 4)
-            result = model.encode(
-                texts,
-                batch_size=cpu_batch,
-                show_progress_bar=False,
-                normalize_embeddings=True,
-            )
+            with torch.no_grad():
+                result = model.encode(
+                    texts,
+                    batch_size=cpu_batch,
+                    show_progress_bar=False,
+                    normalize_embeddings=True,
+                )
             return result.tolist()
         finally:
             # Move back to MPS for future requests
@@ -145,3 +151,27 @@ def handle_signal(sig, _frame):
 
 
 signal.signal(signal.SIGTERM, handle_signal)
+
+
+def _watch_stdin():
+    """
+    Watch stdin for EOF — when the parent Node.js process dies (any reason),
+    the pipe breaks and stdin closes. This is our most reliable way to detect
+    parent death and self-terminate instead of becoming an orphan.
+    """
+    import threading
+
+    def _watcher():
+        try:
+            # Blocks until stdin is closed (parent died)
+            sys.stdin.read()
+        except Exception:
+            pass
+        logger.info("Parent process died (stdin closed), shutting down")
+        os._exit(0)
+
+    t = threading.Thread(target=_watcher, daemon=True)
+    t.start()
+
+
+_watch_stdin()

@@ -34,6 +34,7 @@ export class EmbeddingSidecar {
   private config: SidecarConfig;
   private _dimensions: number | null = null;
   private stopping = false;
+  private _exitHandler: (() => void) | null = null;
 
   constructor(config: Partial<SidecarConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -99,13 +100,17 @@ export class EmbeddingSidecar {
       ['-m', 'uvicorn', 'embedding_server:app', '--host', this.config.host, '--port', String(this.config.port)],
       {
         cwd: sidecarDir,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        // stdin='pipe' so the child detects parent death when the pipe breaks
+        stdio: ['pipe', 'pipe', 'pipe'],
         env: {
           ...process.env,
           EMBEDDING_MODEL: this.config.model,
         },
       },
     );
+
+    // Store pid for synchronous cleanup on exit
+    const childPid = this.process.pid;
 
     // Forward stderr for visibility (model loading progress, errors)
     this.process.stderr?.on('data', (data: Buffer) => {
@@ -123,6 +128,21 @@ export class EmbeddingSidecar {
       }
       this.cleanup();
     });
+
+    // Synchronous kill on parent exit — this is the only guaranteed cleanup
+    // when the Node process dies unexpectedly (SIGKILL, crash, etc.)
+    if (childPid) {
+      const exitHandler = (): void => {
+        try {
+          process.kill(childPid, 'SIGKILL');
+        } catch {
+          // Process already dead — ignore
+        }
+      };
+      process.on('exit', exitHandler);
+      // Store handler so we can remove it when the sidecar stops normally
+      this._exitHandler = exitHandler;
+    }
 
     // Poll until healthy
     await this.waitForHealthy();
@@ -284,6 +304,10 @@ export class EmbeddingSidecar {
   }
 
   private cleanup(): void {
+    if (this._exitHandler) {
+      process.removeListener('exit', this._exitHandler);
+      this._exitHandler = null;
+    }
     this.process = null;
     this.readyPromise = null;
   }
