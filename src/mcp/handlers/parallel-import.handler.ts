@@ -4,8 +4,6 @@
  * Used for large codebases (>= PARSING.parallelThreshold files).
  */
 
-import { join } from 'path';
-
 import { Neo4jNode, Neo4jEdge } from '../../core/config/schema.js';
 import { ProjectType } from '../../core/parsers/parser-factory.js';
 import { StreamingParser } from '../../core/parsers/typescript-parser.js';
@@ -74,6 +72,9 @@ export class ParallelImportHandler {
       projectId: config.projectId,
       projectType: config.projectType,
     });
+
+    // Create indexes once before chunked imports start
+    await this.graphGeneratorHandler.ensureIndexes();
 
     // Pipelined: import starts as soon as each chunk completes parsing
     const poolResult = await pool.processChunks(chunks, async (result, stats) => {
@@ -167,22 +168,6 @@ export class ParallelImportHandler {
 
   private async importToNeo4j(nodes: Neo4jNode[], edges: Neo4jEdge[]): Promise<void> {
     if (nodes.length === 0 && edges.length === 0) return;
-
-    const fs = await import('fs/promises');
-    const { randomBytes } = await import('crypto');
-    const { tmpdir } = await import('os');
-
-    const tempPath = join(tmpdir(), `chunk-${Date.now()}-${randomBytes(8).toString('hex')}.json`);
-
-    try {
-      await fs.writeFile(tempPath, JSON.stringify({ nodes, edges, metadata: { parallel: true } }));
-      await this.graphGeneratorHandler.generateGraph(tempPath, 100, false);
-    } finally {
-      try {
-        await fs.unlink(tempPath);
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
+    await this.graphGeneratorHandler.generateGraphFromData(nodes, edges, 100, false, {}, true);
   }
 }

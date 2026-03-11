@@ -227,7 +227,7 @@ export class EmbeddingSidecar {
   /**
    * Embed an array of texts. Lazily starts the sidecar if not running.
    */
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], gpuBatchSize?: number): Promise<number[][]> {
     await this.start();
 
     const controller = new AbortController();
@@ -235,10 +235,13 @@ export class EmbeddingSidecar {
     const startTime = Date.now();
 
     try {
+      const body: { texts: string[]; batch_size?: number } = { texts };
+      if (gpuBatchSize) body.batch_size = gpuBatchSize;
+
       const res = await fetch(`${this.baseUrl}/embed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ texts }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 

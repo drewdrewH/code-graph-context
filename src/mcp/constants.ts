@@ -387,11 +387,11 @@ export const DEFAULTS = {
 // Parsing Configuration
 export const PARSING = {
   /** File count threshold to trigger parallel parsing with worker pool */
-  parallelThreshold: 500,
+  parallelThreshold: 250,
   /** File count threshold to trigger streaming import */
   streamingThreshold: 100,
   /** Default number of files per chunk */
-  defaultChunkSize: 100,
+  defaultChunkSize: 75,
   /** Worker timeout in milliseconds (30 minutes) */
   workerTimeoutMs: 30 * 60 * 1000,
 } as const;

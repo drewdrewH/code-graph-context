@@ -3,24 +3,11 @@
  * Orchestrates chunked parsing and import for large codebases
  */
 
-import { randomBytes } from 'crypto';
-import { tmpdir } from 'os';
-import { join } from 'path';
-
 import { Neo4jNode, Neo4jEdge } from '../../core/config/schema.js';
 import { StreamingParser } from '../../core/parsers/typescript-parser.js';
 import { ProgressCallback, ProgressReporter } from '../../core/utils/progress-reporter.js';
 import { DEFAULTS } from '../constants.js';
 import { debugLog } from '../utils.js';
-
-/**
- * Generate a secure temporary file path using crypto random bytes
- * to avoid race conditions and predictable filenames
- */
-const generateTempPath = (prefix: string): string => {
-  const randomSuffix = randomBytes(16).toString('hex');
-  return join(tmpdir(), `${prefix}-${Date.now()}-${randomSuffix}.json`);
-};
 
 import { GraphGeneratorHandler } from './graph-generator.handler.js';
 
@@ -78,6 +65,9 @@ export class StreamingImportHandler {
 
     let totalNodesImported = 0;
     let totalEdgesImported = 0;
+
+    // Create indexes once before chunked imports start
+    await this.graphGeneratorHandler.ensureIndexes();
 
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
       const chunk = chunks[chunkIndex];
@@ -169,36 +159,11 @@ export class StreamingImportHandler {
   }
 
   private async importChunkToNeo4j(nodes: Neo4jNode[], edges: Neo4jEdge[]): Promise<void> {
-    const tempPath = generateTempPath('chunk');
-    const fs = await import('fs/promises');
-
-    try {
-      await fs.writeFile(tempPath, JSON.stringify({ nodes, edges, metadata: { chunked: true } }));
-      await this.graphGeneratorHandler.generateGraph(tempPath, DEFAULTS.batchSize, false);
-    } finally {
-      try {
-        await fs.unlink(tempPath);
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
+    await this.graphGeneratorHandler.generateGraphFromData(nodes, edges, DEFAULTS.batchSize, false, {}, true);
   }
 
   private async importEdgesToNeo4j(edges: Neo4jEdge[]): Promise<void> {
     if (edges.length === 0) return;
-
-    const tempPath = generateTempPath('edges');
-    const fs = await import('fs/promises');
-
-    try {
-      await fs.writeFile(tempPath, JSON.stringify({ nodes: [], edges, metadata: { edgesOnly: true } }));
-      await this.graphGeneratorHandler.generateGraph(tempPath, DEFAULTS.batchSize, false);
-    } finally {
-      try {
-        await fs.unlink(tempPath);
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
+    await this.graphGeneratorHandler.generateGraphFromData([], edges, DEFAULTS.batchSize, false, {}, true);
   }
 }

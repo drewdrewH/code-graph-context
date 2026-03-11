@@ -45,23 +45,42 @@ export class GraphGeneratorHandler {
     clearExisting = true,
   ): Promise<ImportResult> {
     console.error(`Generating graph from JSON file: ${graphJsonPath}`);
-    await debugLog('Starting graph generation', { graphJsonPath, batchSize, clearExisting, projectId: this.projectId });
+    const graphData = await this.loadGraphData(graphJsonPath);
+    return this.generateGraphFromData(graphData.nodes, graphData.edges, batchSize, clearExisting, graphData.metadata);
+  }
+
+  /**
+   * Import nodes and edges directly from in-memory data.
+   * Skips the file read/write round-trip used by generateGraph.
+   *
+   * @param skipIndexes - When true, skips index creation (caller manages indexes).
+   *   Use this for chunked imports where indexes are created once before/after all chunks.
+   */
+  async generateGraphFromData(
+    nodes: Neo4jNode[],
+    edges: Neo4jEdge[],
+    batchSize: number = DEFAULTS.batchSize,
+    clearExisting = true,
+    metadata: any = {},
+    skipIndexes = false,
+  ): Promise<ImportResult> {
+    await debugLog('Starting graph generation', { nodeCount: nodes.length, edgeCount: edges.length, batchSize, clearExisting, skipIndexes, projectId: this.projectId });
 
     try {
-      const graphData = await this.loadGraphData(graphJsonPath);
-      const { nodes, edges, metadata } = graphData;
-
       console.error(`Generating graph with ${nodes.length} nodes and ${edges.length} edges`);
-      await debugLog('Graph data loaded', { nodeCount: nodes.length, edgeCount: edges.length });
 
       if (clearExisting) {
         await this.clearExistingData();
       }
 
-      await this.createProjectIndexes();
+      if (!skipIndexes) {
+        await this.createProjectIndexes();
+      }
       await this.importNodes(nodes, batchSize);
       await this.importEdges(edges, batchSize);
-      await this.createVectorIndexes();
+      if (!skipIndexes) {
+        await this.createVectorIndexes();
+      }
 
       const result: ImportResult = {
         nodesImported: nodes.length,
@@ -76,6 +95,14 @@ export class GraphGeneratorHandler {
       await debugLog('Graph generation error', error);
       throw error;
     }
+  }
+
+  /**
+   * Create all indexes. Call once before chunked imports start.
+   */
+  async ensureIndexes(): Promise<void> {
+    await this.createProjectIndexes();
+    await this.createVectorIndexes();
   }
 
   private async loadGraphData(graphJsonPath: string): Promise<GraphData> {
@@ -111,19 +138,29 @@ export class GraphGeneratorHandler {
   private async importNodes(nodes: Neo4jNode[], batchSize: number): Promise<void> {
     console.error(`Importing ${nodes.length} nodes with embeddings...`);
 
+    // Pipelined: write batch N to Neo4j while embedding batch N+1.
+    // This overlaps GPU work with Neo4j I/O.
+    let pendingWrite: Promise<void> | null = null;
+
     for (let i = 0; i < nodes.length; i += batchSize) {
+      // Embed this batch (GPU-bound, the slow part)
       const batch = await this.processNodeBatch(nodes.slice(i, i + batchSize));
-      const result = await this.neo4jService.run(QUERIES.CREATE_NODE, { nodes: batch });
 
+      // Wait for previous Neo4j write before starting next
+      if (pendingWrite) await pendingWrite;
+
+      const batchStart = i + 1;
       const batchEnd = Math.min(i + batchSize, nodes.length);
-      console.error(`Created ${result[0].created} nodes in batch ${i + 1}-${batchEnd}`);
 
-      await debugLog('Node batch imported', {
-        batchStart: i + 1,
-        batchEnd,
-        created: result[0].created,
+      // Start Neo4j write — don't await, overlap with next batch's embedding
+      pendingWrite = this.neo4jService.run(QUERIES.CREATE_NODE, { nodes: batch }).then(async (result) => {
+        console.error(`Created ${result[0].created} nodes in batch ${batchStart}-${batchEnd}`);
+        await debugLog('Node batch imported', { batchStart, batchEnd, created: result[0].created });
       });
     }
+
+    // Wait for the final write to complete
+    if (pendingWrite) await pendingWrite;
   }
 
   /**
