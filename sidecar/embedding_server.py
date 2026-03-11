@@ -58,10 +58,10 @@ def load_model():
 
         use_half = os.environ.get("EMBEDDING_HALF_PRECISION", "").lower() == "true"
         if use_half:
-            model = SentenceTransformer(model_name, device=device, model_kwargs={"torch_dtype": "float16"})
+            model = SentenceTransformer(model_name, device=device, trust_remote_code=True, model_kwargs={"torch_dtype": "float16"})
             logger.info(f"Model loaded in float16 (half precision)")
         else:
-            model = SentenceTransformer(model_name, device=device)
+            model = SentenceTransformer(model_name, device=device, trust_remote_code=True)
             logger.info(f"Model loaded in float32 (full precision)")
         logger.info(f"Running warmup...")
 
