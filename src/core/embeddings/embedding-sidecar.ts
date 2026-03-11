@@ -218,6 +218,15 @@ export class EmbeddingSidecar {
 
       if (!res.ok) {
         const detail = await res.text();
+        const isOOM = detail.toLowerCase().includes('out of memory');
+
+        if (res.status === 500 && isOOM) {
+          // OOM leaves GPU memory in a corrupted state — kill the sidecar
+          // so the next request spawns a fresh process with clean memory
+          console.error('[embedding-sidecar] OOM detected, restarting sidecar to reclaim GPU memory');
+          await this.stop();
+        }
+
         throw new Error(`Sidecar embed failed (${res.status}): ${detail}`);
       }
 
@@ -226,6 +235,9 @@ export class EmbeddingSidecar {
       return data.embeddings;
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
+        // Timeout likely means the sidecar is stuck — kill it
+        console.error('[embedding-sidecar] Request timed out, restarting sidecar');
+        await this.stop();
         throw new Error(`Embedding request timed out after ${this.config.requestTimeoutMs}ms`);
       }
       throw err;
