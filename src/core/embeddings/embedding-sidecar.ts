@@ -39,8 +39,41 @@ export class EmbeddingSidecar {
   private _exitHandler: (() => void) | null = null;
   private _idleTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Concurrency semaphore — model.encode() is GPU-bound and processes
+  // requests serially inside uvicorn. If 15 workers send requests at once,
+  // the first takes ~3s, the last waits ~45s and times out. By queuing
+  // excess requests here (no timeout pressure) we let only N through at a
+  // time, keeping each request well within the 60s timeout.
+  private readonly maxConcurrent = parseInt(process.env.EMBEDDING_MAX_CONCURRENT ?? '', 10) || 2;
+  private inflight = 0;
+  private readonly waitQueue: Array<() => void> = [];
+
   constructor(config: Partial<SidecarConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /**
+   * Wait for a concurrency slot. If under the limit, returns immediately.
+   * Otherwise parks the caller in a FIFO queue until a slot opens.
+   */
+  private acquireSlot(): Promise<void> | void {
+    if (this.inflight < this.maxConcurrent) {
+      this.inflight++;
+      return;             // fast path — no allocation, no Promise
+    }
+    return new Promise<void>((resolve) => this.waitQueue.push(() => {
+      this.inflight++;
+      resolve();
+    }));
+  }
+
+  /**
+   * Release a slot, unblocking the next queued caller if any.
+   */
+  private releaseSlot(): void {
+    this.inflight--;
+    const next = this.waitQueue.shift();
+    if (next) next();     // wake one waiter — it will increment inflight
   }
 
   get baseUrl(): string {
@@ -226,9 +259,20 @@ export class EmbeddingSidecar {
 
   /**
    * Embed an array of texts. Lazily starts the sidecar if not running.
+   * Concurrency-limited: at most `maxConcurrent` requests hit the sidecar
+   * at once. Excess callers wait in a FIFO queue (no timeout pressure).
    */
   async embed(texts: string[], gpuBatchSize?: number): Promise<number[][]> {
     await this.start();
+
+    // Wait for a concurrency slot — the timeout only starts AFTER we
+    // acquire the slot, so queued requests don't eat into their timeout.
+    const queuedAt = Date.now();
+    await this.acquireSlot();
+    const queueMs = Date.now() - queuedAt;
+    if (queueMs > 100) {
+      console.error(`[embedding-sidecar] Waited ${queueMs}ms for concurrency slot (inflight=${this.inflight}, queued=${this.waitQueue.length})`);
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.config.requestTimeoutMs);
@@ -250,8 +294,6 @@ export class EmbeddingSidecar {
         const isOOM = detail.toLowerCase().includes('out of memory');
 
         if (res.status === 500 && isOOM) {
-          // OOM leaves GPU memory in a corrupted state — kill the sidecar
-          // so the next request spawns a fresh process with clean memory
           console.error('[embedding-sidecar] OOM detected, restarting sidecar to reclaim GPU memory');
           await this.stop();
         }
@@ -276,6 +318,7 @@ export class EmbeddingSidecar {
       throw err;
     } finally {
       clearTimeout(timeout);
+      this.releaseSlot();   // always release, even on error
     }
   }
 
