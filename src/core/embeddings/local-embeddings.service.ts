@@ -9,7 +9,7 @@ import { debugLog } from '../../mcp/utils.js';
 import { getEmbeddingSidecar } from './embedding-sidecar.js';
 
 const BATCH_CONFIG = {
-  maxBatchSize: 16, // Small batches — 1.5B model on MPS has limited VRAM
+  maxBatchSize: 8, // Small batches — 1.5B model on MPS OOMs at higher values on 16GB machines
 } as const;
 
 export class LocalEmbeddingsService {
@@ -28,14 +28,16 @@ export class LocalEmbeddingsService {
     texts: string[],
     batchSize: number = BATCH_CONFIG.maxBatchSize,
   ): Promise<(number[] | null)[]> {
+    // Cap batch size — callers (e.g. graph-generator) may pass 100 which OOMs the local model
+    const safeBatchSize = Math.min(batchSize, BATCH_CONFIG.maxBatchSize);
     await debugLog('Batch embedding started', { provider: 'local', textCount: texts.length });
 
     const sidecar = getEmbeddingSidecar();
     const results: (number[] | null)[] = [];
-    const totalBatches = Math.ceil(texts.length / batchSize);
+    const totalBatches = Math.ceil(texts.length / safeBatchSize);
 
-    for (let i = 0; i < texts.length; i += batchSize) {
-      const batch = texts.slice(i, i + batchSize);
+    for (let i = 0; i < texts.length; i += safeBatchSize) {
+      const batch = texts.slice(i, i + safeBatchSize);
       const batchIndex = Math.floor(i / batchSize) + 1;
       await debugLog('Embedding batch progress', {
         provider: 'local',

@@ -150,12 +150,14 @@ process.on('uncaughtException', async (error) => {
   );
   await debugLog('Uncaught exception', { error: String(error), stack: error.stack });
   await logServerStats('uncaught-exception');
+  await stopEmbeddingSidecar();
 });
 
 process.on('unhandledRejection', async (reason) => {
   console.error(JSON.stringify({ level: 'error', message: 'Unhandled rejection', reason: String(reason) }));
   await debugLog('Unhandled rejection', { reason: String(reason) });
   await logServerStats('unhandled-rejection');
+  await stopEmbeddingSidecar();
 });
 
 // Log other process events that might indicate issues
@@ -166,6 +168,7 @@ process.on('warning', async (warning) => {
 process.on('beforeExit', async (code) => {
   await debugLog('Process beforeExit', { code });
   await logServerStats('before-exit');
+  await stopEmbeddingSidecar();
 });
 
 process.on('exit', (code) => {
