@@ -62,7 +62,9 @@ export const createNaturalLanguageToCypherTool = (server: McpServer): void => {
 
         if (!naturalLanguageToCypherService) {
           await debugLog('Natural language service not available', { projectId: resolvedProjectId, query });
-          return createSuccessResponse(MESSAGES.errors.serviceNotInitialized);
+          return createSuccessResponse(
+            'natural_language_to_cypher requires OPENAI_API_KEY. Set it and restart the MCP server to enable this tool.',
+          );
         }
 
         const cypherResult = await naturalLanguageToCypherService.promptToQuery(query, resolvedProjectId);

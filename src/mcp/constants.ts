@@ -429,7 +429,7 @@ export const MESSAGES = {
   errors: {
     noRelevantCode: 'No relevant code found.',
     serviceNotInitialized:
-      'ERROR: Natural Language to Cypher service is not initialized yet. Please try again in a few moments.',
+      'natural_language_to_cypher requires OPENAI_API_KEY. Set it and restart the MCP server to enable this tool.',
     connectionTestFailed: 'Connection test failed',
     neo4jRequirement: 'Note: This server requires Neo4j with APOC plugin installed',
     genericError: 'ERROR:',

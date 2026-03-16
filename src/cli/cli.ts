@@ -109,7 +109,7 @@ ${c.bold}Next steps:${c.reset}
 
      ${c.dim}Local embeddings are used by default (no API key needed).
      To use OpenAI instead, add:
-       "OPENAI_ENABLED": "true",
+       "OPENAI_EMBEDDINGS_ENABLED": "true",
        "OPENAI_API_KEY": "sk-..."${c.reset}
 
   3. Restart Claude Code
@@ -242,7 +242,7 @@ const setupSidecar = async (): Promise<void> => {
   if (!pythonVersion) {
     log(sym.err, 'Python 3 is not installed');
     console.log(`\n  Install Python 3.10+: ${c.cyan}https://www.python.org/downloads/${c.reset}`);
-    console.log(`  ${c.dim}Or use OpenAI embeddings instead: set OPENAI_ENABLED=true${c.reset}\n`);
+    console.log(`  ${c.dim}Or use OpenAI embeddings instead: set OPENAI_EMBEDDINGS_ENABLED=true${c.reset}\n`);
     return;
   }
   log(sym.ok, `${pythonVersion}`);
@@ -297,7 +297,7 @@ const setupSidecar = async (): Promise<void> => {
 
   if (!verified) {
     console.log(`\n  ${c.dim}Try: ${python} -c "from sentence_transformers import SentenceTransformer"${c.reset}`);
-    console.log(`  ${c.dim}Or use OpenAI embeddings instead: set OPENAI_ENABLED=true${c.reset}\n`);
+    console.log(`  ${c.dim}Or use OpenAI embeddings instead: set OPENAI_EMBEDDINGS_ENABLED=true${c.reset}\n`);
     return;
   }
 

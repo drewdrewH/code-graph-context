@@ -2,10 +2,10 @@
  * Embeddings Service — barrel module
  *
  * Exports a common interface and a factory. Consumers do `new EmbeddingsService()`
- * and get the right implementation based on OPENAI_ENABLED.
+ * and get the right implementation based on OPENAI_EMBEDDINGS_ENABLED.
  *
- *   OPENAI_ENABLED=true  → OpenAI text-embedding-3-large (requires OPENAI_API_KEY)
- *   default              → Local Python sidecar with Qwen3-Embedding-0.6B
+ *   OPENAI_EMBEDDINGS_ENABLED=true  → OpenAI text-embedding-3-large (requires OPENAI_API_KEY)
+ *   default                         → Local Python sidecar with Qwen3-Embedding-0.6B
  */
 
 import { LocalEmbeddingsService } from './local-embeddings.service.js';
@@ -44,8 +44,25 @@ export const EMBEDDING_DIMENSIONS: Record<string, number> = {
 };
 
 export const isOpenAIEnabled = (): boolean => {
-  return process.env.OPENAI_ENABLED?.toLowerCase() === 'true';
+  if (process.env.OPENAI_EMBEDDINGS_ENABLED?.toLowerCase() === 'true') {
+    return true;
+  }
+  // Backward-compat: OPENAI_ENABLED is deprecated in favour of OPENAI_EMBEDDINGS_ENABLED
+  if (process.env.OPENAI_ENABLED?.toLowerCase() === 'true') {
+    console.error(
+      JSON.stringify({
+        level: 'warn',
+        message:
+          '[code-graph-context] OPENAI_ENABLED is deprecated. Use OPENAI_EMBEDDINGS_ENABLED=true instead.',
+      }),
+    );
+    return true;
+  }
+  return false;
 };
+
+/** Returns true when OPENAI_API_KEY is present, regardless of embedding provider. */
+export const isOpenAIAvailable = (): boolean => !!process.env.OPENAI_API_KEY;
 
 /**
  * Get the vector dimensions for the active embedding provider.
@@ -63,7 +80,7 @@ export const getEmbeddingDimensions = (): number => {
 };
 
 /**
- * Factory that returns the correct service based on OPENAI_ENABLED.
+ * Factory that returns the correct service based on OPENAI_EMBEDDINGS_ENABLED.
  * Drop-in replacement everywhere `new EmbeddingsService()` was used.
  */
 export class EmbeddingsService implements IEmbeddingsService {

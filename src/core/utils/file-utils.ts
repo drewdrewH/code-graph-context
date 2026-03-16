@@ -9,9 +9,24 @@ export const hashFile = async (filePath: string): Promise<string> => {
   return crypto.createHash('sha256').update(content).digest('hex');
 };
 
+const serializeForLog = (data: any): any => {
+  if (data instanceof Error) {
+    return { name: data.name, message: data.message, stack: data.stack };
+  }
+  if (data !== null && typeof data === 'object') {
+    const result: Record<string, any> = {};
+    for (const key of Object.keys(data)) {
+      result[key] = serializeForLog(data[key]);
+    }
+    return result;
+  }
+  return data;
+};
+
 export const debugLog = async (message: string, data?: any): Promise<void> => {
   const timestamp = new Date().toISOString();
-  const logEntry = `[${timestamp}] ${message}\n${data ? JSON.stringify(data, null, LOG_CONFIG.jsonIndent) : ''}\n${LOG_CONFIG.separator}\n`;
+  const serialized = data !== undefined ? serializeForLog(data) : undefined;
+  const logEntry = `[${timestamp}] ${message}\n${serialized !== undefined ? JSON.stringify(serialized, null, LOG_CONFIG.jsonIndent) : ''}\n${LOG_CONFIG.separator}\n`;
 
   try {
     await fs.appendFile(path.join(process.cwd(), LOG_CONFIG.debugLogFile), logEntry);

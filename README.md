@@ -162,7 +162,7 @@ If you prefer to edit the config files directly:
     "code-graph-context": {
       "command": "code-graph-context",
       "env": {
-        "OPENAI_ENABLED": "true",
+        "OPENAI_EMBEDDINGS_ENABLED": "true",
         "OPENAI_API_KEY": "sk-your-key-here"
       }
     }
@@ -194,8 +194,8 @@ If you prefer to edit the config files directly:
 | `EMBEDDING_SIDECAR_PORT` | No | `8787` | Port for local embedding server |
 | `EMBEDDING_DEVICE` | No | auto (`mps`/`cpu`) | Device for embeddings. Auto-detects MPS on Apple Silicon |
 | `EMBEDDING_HALF_PRECISION` | No | `false` | Set `true` for float16 (uses ~0.5x memory) |
-| `OPENAI_ENABLED` | No | `false` | Set `true` to use OpenAI instead of local |
-| `OPENAI_API_KEY` | No* | - | Required when `OPENAI_ENABLED=true` |
+| `OPENAI_EMBEDDINGS_ENABLED` | No | `false` | Set `true` to use OpenAI instead of local embeddings |
+| `OPENAI_API_KEY` | No* | - | Required when `OPENAI_EMBEDDINGS_ENABLED=true`; also enables `natural_language_to_cypher` |
 
 ---
 
@@ -582,7 +582,7 @@ If you prefer OpenAI embeddings (higher quality, requires API key):
 
 ```bash
 claude mcp add --scope user code-graph-context \
-  -e OPENAI_ENABLED=true \
+  -e OPENAI_EMBEDDINGS_ENABLED=true \
   -e OPENAI_API_KEY=sk-your-key-here \
   -- code-graph-context
 ```
@@ -626,7 +626,7 @@ claude mcp add --scope user code-graph-context \
 ```bash
 claude mcp remove code-graph-context
 claude mcp add --scope user code-graph-context \
-  -e OPENAI_ENABLED=true \
+  -e OPENAI_EMBEDDINGS_ENABLED=true \
   -e OPENAI_API_KEY=sk-your-key-here \
   -- code-graph-context
 ```

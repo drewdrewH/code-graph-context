@@ -7,7 +7,8 @@ import fs from 'fs/promises';
 import { join } from 'path';
 
 import { ensureNeo4jRunning, isDockerInstalled, isDockerRunning } from '../cli/neo4j-docker.js';
-import { isOpenAIEnabled, getEmbeddingDimensions } from '../core/embeddings/embeddings.service.js';
+import { isOpenAIEnabled, isOpenAIAvailable, getEmbeddingDimensions } from '../core/embeddings/embeddings.service.js';
+import { LIST_PROJECTS_QUERY } from '../core/utils/project-id.js';
 import { Neo4jService, QUERIES } from '../storage/neo4j/neo4j.service.js';
 
 import { FILE_PATHS, LOG_CONFIG } from './constants.js';
@@ -30,14 +31,15 @@ const checkConfiguration = async (): Promise<void> => {
   );
   await debugLog('Embedding configuration', { provider, dimensions: dims });
 
-  if (openai && !process.env.OPENAI_API_KEY) {
+  if (openai && !isOpenAIAvailable()) {
     console.error(
       JSON.stringify({
         level: 'warn',
-        message: '[code-graph-context] OPENAI_ENABLED=true but OPENAI_API_KEY not set. Embedding calls will fail.',
+        message:
+          '[code-graph-context] OPENAI_EMBEDDINGS_ENABLED=true but OPENAI_API_KEY not set. Embedding calls will fail.',
       }),
     );
-    await debugLog('Configuration warning', { warning: 'OPENAI_ENABLED=true but OPENAI_API_KEY not set' });
+    await debugLog('Configuration warning', { warning: 'OPENAI_EMBEDDINGS_ENABLED=true but OPENAI_API_KEY not set' });
   }
 
   if (!openai) {
@@ -47,14 +49,15 @@ const checkConfiguration = async (): Promise<void> => {
         message: '[code-graph-context] Using local embeddings (Python sidecar). Starts on first embedding request.',
       }),
     );
-    if (!process.env.OPENAI_API_KEY) {
-      console.error(
-        JSON.stringify({
-          level: 'info',
-          message: '[code-graph-context] natural_language_to_cypher requires OPENAI_API_KEY and is unavailable.',
-        }),
-      );
-    }
+  }
+
+  if (!isOpenAIAvailable()) {
+    console.error(
+      JSON.stringify({
+        level: 'info',
+        message: '[code-graph-context] natural_language_to_cypher unavailable: OPENAI_API_KEY not set.',
+      }),
+    );
   }
 };
 
@@ -114,28 +117,38 @@ export const initializeServices = async (): Promise<void> => {
 
   // Initialize services sequentially - schema must be written before NL service reads it
   await initializeNeo4jSchema();
-  await initializeNaturalLanguageService();
+
+  if (isOpenAIAvailable()) {
+    await initializeNaturalLanguageService();
+  } else {
+    console.error(
+      JSON.stringify({
+        level: 'info',
+        message: '[code-graph-context] natural_language_to_cypher unavailable: OPENAI_API_KEY not set',
+      }),
+    );
+  }
 };
 
 /**
  * Dynamically discover schema from the actual graph contents.
  * This is framework-agnostic - it discovers what's actually in the graph.
  */
-const discoverSchemaFromGraph = async (neo4jService: Neo4jService) => {
+const discoverSchemaFromGraph = async (neo4jService: Neo4jService, projectId: string) => {
   try {
     // Discover actual node types, relationships, and patterns from the graph
     const [nodeTypes, relationshipTypes, semanticTypes, commonPatterns] = await Promise.all([
-      neo4jService.run(QUERIES.DISCOVER_NODE_TYPES),
-      neo4jService.run(QUERIES.DISCOVER_RELATIONSHIP_TYPES),
-      neo4jService.run(QUERIES.DISCOVER_SEMANTIC_TYPES),
-      neo4jService.run(QUERIES.DISCOVER_COMMON_PATTERNS),
+      neo4jService.run(QUERIES.DISCOVER_NODE_TYPES, { projectId }),
+      neo4jService.run(QUERIES.DISCOVER_RELATIONSHIP_TYPES, { projectId }),
+      neo4jService.run(QUERIES.DISCOVER_SEMANTIC_TYPES, { projectId }),
+      neo4jService.run(QUERIES.DISCOVER_COMMON_PATTERNS, { projectId }),
     ]);
 
     return {
       nodeTypes: nodeTypes.map((r: any) => ({
         label: r.label,
         count: typeof r.nodeCount === 'object' ? r.nodeCount.toNumber() : r.nodeCount,
-        properties: r.sampleProperties ?? [],
+        properties: r.properties ?? [],
       })),
       relationshipTypes: relationshipTypes.map((r: any) => ({
         type: r.relationshipType,
@@ -144,6 +157,7 @@ const discoverSchemaFromGraph = async (neo4jService: Neo4jService) => {
       })),
       semanticTypes: semanticTypes.map((r: any) => ({
         type: r.semanticType,
+        label: r.nodeLabel,
         count: typeof r.count === 'object' ? r.count.toNumber() : r.count,
       })),
       commonPatterns: commonPatterns.map((r: any) => ({
@@ -165,15 +179,13 @@ const discoverSchemaFromGraph = async (neo4jService: Neo4jService) => {
 const initializeNeo4jSchema = async (): Promise<void> => {
   try {
     const neo4jService = new Neo4jService();
-    const rawSchema = await neo4jService.getSchema();
+
+    // Find the most recently updated project to scope discovery queries
+    const projects = await neo4jService.run(LIST_PROJECTS_QUERY, {});
+    const projectId = projects.length > 0 ? (projects[0].projectId as string) : null;
 
     // Dynamically discover what's actually in the graph
-    const discoveredSchema = await discoverSchemaFromGraph(neo4jService);
-
-    const schema = {
-      rawSchema,
-      discoveredSchema,
-    };
+    const schema = projectId ? await discoverSchemaFromGraph(neo4jService, projectId) : null;
 
     const schemaPath = join(process.cwd(), FILE_PATHS.schemaOutput);
     await fs.writeFile(schemaPath, JSON.stringify(schema, null, LOG_CONFIG.jsonIndentation));

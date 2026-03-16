@@ -54,31 +54,6 @@ export class Neo4jService {
     return this.driver;
   }
 
-  public async getSchema() {
-    const session = this.driver.session();
-    const timeoutConfig = getTimeoutConfig();
-    try {
-      return await session.run(
-        QUERIES.APOC_SCHEMA,
-        {},
-        {
-          timeout: timeoutConfig.neo4j.queryTimeoutMs,
-        },
-      );
-    } catch (error) {
-      console.error('Error fetching schema:', error);
-      throw error;
-    } finally {
-      // Wrap session close in try-catch to avoid masking the original error
-      try {
-        await session.close();
-      } catch (closeError) {
-        // Log but don't re-throw to preserve original error
-        console.warn('Error closing Neo4j session:', closeError);
-      }
-    }
-  }
-
   /**
    * Close the Neo4j driver connection.
    * Should be called when the service is no longer needed to release resources.
@@ -91,11 +66,6 @@ export class Neo4jService {
 }
 
 export const QUERIES = {
-  APOC_SCHEMA: `
-    CALL apoc.meta.schema() YIELD value
-      RETURN value as schema
-    `,
-
   // Project-scoped deletion - only deletes nodes for the specified project
   // Uses APOC batched deletion to avoid transaction memory limits on large projects
   CLEAR_PROJECT: `
@@ -490,68 +460,70 @@ export const QUERIES = {
   // ============================================
 
   /**
-   * Get all distinct node labels with counts and sample properties
+   * Get all distinct node labels with counts, property keys, and property types.
+   * Samples up to 10 nodes per label to collect comprehensive property info.
    */
   DISCOVER_NODE_TYPES: `
     CALL db.labels() YIELD label
     CALL {
       WITH label
       MATCH (n) WHERE label IN labels(n) AND n.projectId = $projectId
-      WITH n LIMIT 1
-      RETURN keys(n) AS sampleProperties
+      RETURN count(n) AS nodeCount
     }
     CALL {
       WITH label
       MATCH (n) WHERE label IN labels(n) AND n.projectId = $projectId
-      RETURN count(n) AS nodeCount
+      WITH n LIMIT 10
+      UNWIND keys(n) AS key
+      WITH DISTINCT key, n[key] AS val
+      RETURN collect(DISTINCT key) AS properties
     }
-    RETURN label, nodeCount, sampleProperties
+    RETURN label, nodeCount, properties
     ORDER BY nodeCount DESC
   `,
 
   /**
-   * Get all distinct relationship types with counts and which node types they connect
+   * Get all distinct relationship types with counts and all connection patterns
    */
   DISCOVER_RELATIONSHIP_TYPES: `
     CALL db.relationshipTypes() YIELD relationshipType
     CALL {
       WITH relationshipType
       MATCH (a)-[r]->(b) WHERE type(r) = relationshipType AND a.projectId = $projectId AND b.projectId = $projectId
-      WITH labels(a)[0] AS fromLabel, labels(b)[0] AS toLabel
-      RETURN fromLabel, toLabel
-      LIMIT 10
+      RETURN count(r) AS relCount
     }
     CALL {
       WITH relationshipType
-      MATCH (a)-[r]->(b) WHERE type(r) = relationshipType AND a.projectId = $projectId
-      RETURN count(r) AS relCount
+      MATCH (a)-[r]->(b) WHERE type(r) = relationshipType AND a.projectId = $projectId AND b.projectId = $projectId
+      WITH DISTINCT labels(a)[0] AS fromLabel, labels(b)[0] AS toLabel
+      RETURN collect({from: fromLabel, to: toLabel}) AS connections
     }
-    RETURN relationshipType, relCount, collect(DISTINCT {from: fromLabel, to: toLabel}) AS connections
+    RETURN relationshipType, relCount, connections
     ORDER BY relCount DESC
   `,
 
   /**
-   * Get sample nodes of each semantic type for context
+   * Get semantic types with counts and which label they appear on
    */
   DISCOVER_SEMANTIC_TYPES: `
     MATCH (n)
     WHERE n.semanticType IS NOT NULL AND n.projectId = $projectId
-    WITH n.semanticType AS semanticType, count(*) AS count
+    WITH n.semanticType AS semanticType, labels(n)[0] AS nodeLabel, count(*) AS count
+    RETURN semanticType, nodeLabel, count
     ORDER BY count DESC
-    RETURN semanticType, count
   `,
 
   /**
-   * Get example query patterns based on actual graph structure
+   * Get all relationship patterns between node types
    */
   DISCOVER_COMMON_PATTERNS: `
     MATCH (a)-[r]->(b)
     WHERE a.projectId = $projectId AND b.projectId = $projectId
     WITH labels(a)[0] AS fromType, type(r) AS relType, labels(b)[0] AS toType, count(*) AS count
-    WHERE count > 5
+    WHERE count > 2
     RETURN fromType, relType, toType, count
     ORDER BY count DESC
-    LIMIT 20
+    LIMIT 50
   `,
 
   // ============================================

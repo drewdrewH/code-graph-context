@@ -1,7 +1,7 @@
 /**
  * OpenAI Embeddings Service
  * Uses OpenAI's text-embedding API. Requires OPENAI_API_KEY.
- * Opt-in via OPENAI_ENABLED=true.
+ * Opt-in via OPENAI_EMBEDDINGS_ENABLED=true.
  */
 
 import OpenAI from 'openai';

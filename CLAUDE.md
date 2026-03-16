@@ -152,8 +152,8 @@ model that starts automatically on first use.
 | `EMBEDDING_HALF_PRECISION` | `false` | Set `true` for float16 (halves memory) |
 | `EMBEDDING_BATCH_SIZE` | `8` | Texts per embedding batch (lower = less memory, higher = faster) |
 | `EMBEDDING_SIDECAR_PORT` | `8787` | Port for the local embedding server |
-| `OPENAI_ENABLED` | `false` | Set `true` to use OpenAI instead of local |
-| `OPENAI_API_KEY` | — | Required when OPENAI_ENABLED=true |
+| `OPENAI_EMBEDDINGS_ENABLED` | `false` | Set `true` to use OpenAI instead of local embeddings |
+| `OPENAI_API_KEY` | — | Required when `OPENAI_EMBEDDINGS_ENABLED=true`; also enables `natural_language_to_cypher` |
 
 **Available local models (set via EMBEDDING_MODEL):**
 
@@ -183,8 +183,8 @@ NEO4J_PASSWORD=PASSWORD
 
 # Optional — local embeddings work without any of these
 EMBEDDING_MODEL=codesage/codesage-base-v2
-OPENAI_ENABLED=true
-OPENAI_API_KEY=sk-...
+OPENAI_EMBEDDINGS_ENABLED=true  # set true to use OpenAI for embeddings (deprecated: OPENAI_ENABLED)
+OPENAI_API_KEY=sk-...            # also enables natural_language_to_cypher when set
 ```
 
 ## Commit Convention

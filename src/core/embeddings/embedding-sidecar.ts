@@ -198,7 +198,7 @@ export class EmbeddingSidecar {
             'python3 not found. Local embeddings require Python 3.10+.\n\n' +
               'Install Python and the sidecar dependencies:\n' +
               '  pip install -r sidecar/requirements.txt\n\n' +
-              'Or set OPENAI_ENABLED=true to use OpenAI instead.',
+              'Or set OPENAI_EMBEDDINGS_ENABLED=true to use OpenAI instead.',
           ),
         );
       });
