@@ -3,7 +3,7 @@
  * Common utility functions used across the MCP server
  */
 
-import { resolveProjectIdFromInput } from '../core/utils/project-id.js';
+import { resolveProjectIdFromInput, LIST_PROJECTS_QUERY } from '../core/utils/project-id.js';
 import { Neo4jService } from '../storage/neo4j/neo4j.service.js';
 
 import { MESSAGES } from './constants.js';
@@ -28,6 +28,49 @@ export const resolveProjectIdOrError = async (
   try {
     const resolved = await resolveProjectIdFromInput(projectId, neo4jService);
     return { success: true, projectId: resolved };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: createErrorResponse(message) };
+  }
+};
+
+/**
+ * Auto-resolve projectId when omitted. If only one project exists, use it.
+ * If multiple exist, return error listing them. If none, return error.
+ */
+export const autoResolveProjectId = async (
+  projectId: string | undefined,
+  neo4jService: Neo4jService,
+): Promise<ResolveProjectIdResult> => {
+  // If projectId provided, use normal resolution
+  if (projectId) {
+    return resolveProjectIdOrError(projectId, neo4jService);
+  }
+
+  // Auto-resolve: query all projects
+  try {
+    const projects = await neo4jService.run(LIST_PROJECTS_QUERY, {});
+    if (projects.length === 0) {
+      return {
+        success: false,
+        error: createErrorResponse(
+          'No projects found. Use parse_typescript_project to add a project first.',
+        ),
+      };
+    }
+    if (projects.length === 1) {
+      return { success: true, projectId: projects[0].projectId };
+    }
+    // Multiple projects — can't auto-resolve
+    const projectList = projects
+      .map((p: any) => `  - ${p.name || p.projectId} (${p.projectId})`)
+      .join('\n');
+    return {
+      success: false,
+      error: createErrorResponse(
+        `Multiple projects found. Specify projectId:\n${projectList}`,
+      ),
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: createErrorResponse(message) };
