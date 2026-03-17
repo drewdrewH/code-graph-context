@@ -18,6 +18,8 @@ import { createSearchCodebaseTool } from './search-codebase.tool.js';
 import { createRestoreSessionBookmarkTool, createSaveSessionBookmarkTool } from './session-bookmark.tool.js';
 import { createCleanupSessionTool } from './session-cleanup.tool.js';
 import { createRecallSessionNotesTool, createSaveSessionNoteTool } from './session-note.tool.js';
+import { createSessionRecallTool } from './session-recall.tool.js';
+import { createSessionSaveTool } from './session-save.tool.js';
 import { createStartWatchProjectTool } from './start-watch-project.tool.js';
 import { createStopWatchProjectTool } from './stop-watch-project.tool.js';
 import { createSwarmAdvanceTaskTool } from './swarm-advance-task.tool.js';
@@ -110,4 +112,10 @@ export const registerAllTools = (server: McpServer): void => {
 
   // Register session cleanup tool
   createCleanupSessionTool(server);
+
+  // Register unified session save tool
+  createSessionSaveTool(server);
+
+  // Register unified session recall tool
+  createSessionRecallTool(server);
 };
