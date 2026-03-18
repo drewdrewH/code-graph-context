@@ -116,7 +116,37 @@ export class WorkspaceDetector {
    */
   private async getWorkspacePatterns(rootPath: string, type: WorkspaceType): Promise<string[]> {
     switch (type) {
-      case 'turborepo':
+      case 'turborepo': {
+        // Turborepo uses the package manager's workspace config.
+        // Check pnpm-workspace.yaml first, then package.json workspaces, then defaults.
+        const turboPnpmPath = path.join(rootPath, 'pnpm-workspace.yaml');
+        if (await this.fileExists(turboPnpmPath)) {
+          try {
+            const content = await fs.readFile(turboPnpmPath, 'utf-8');
+            const config = YAML.parse(content);
+            if (config?.packages && Array.isArray(config.packages)) {
+              return config.packages;
+            }
+          } catch {
+            // Fall through
+          }
+        }
+        // Turbo with Yarn/npm workspaces — read from package.json
+        const turboPackageJsonPath = path.join(rootPath, 'package.json');
+        try {
+          const packageJson = JSON.parse(await fs.readFile(turboPackageJsonPath, 'utf-8'));
+          if (Array.isArray(packageJson.workspaces)) {
+            return packageJson.workspaces;
+          }
+          if (packageJson.workspaces?.packages) {
+            return packageJson.workspaces.packages;
+          }
+        } catch {
+          // Fall through to defaults
+        }
+        return ['apps/*', 'packages/*'];
+      }
+
       case 'pnpm': {
         // pnpm-workspace.yaml defines packages
         const pnpmWorkspacePath = path.join(rootPath, 'pnpm-workspace.yaml');
@@ -131,8 +161,7 @@ export class WorkspaceDetector {
             // Fall through to defaults
           }
         }
-        // Turborepo default patterns
-        return ['apps/*', 'packages/*'];
+        return ['packages/*'];
       }
 
       case 'nx': {
