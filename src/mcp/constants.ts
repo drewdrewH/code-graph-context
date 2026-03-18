@@ -219,9 +219,9 @@ export const PARSING = {
   /** File count threshold to trigger streaming import */
   streamingThreshold: 100,
   /** Default number of files per chunk */
-  defaultChunkSize: 75,
-  /** Worker timeout in milliseconds (30 minutes) */
-  workerTimeoutMs: 30 * 60 * 1000,
+  defaultChunkSize: 50,
+  /** Worker timeout in milliseconds (60 minutes) */
+  workerTimeoutMs: 60 * 60 * 1000,
 } as const;
 
 // Job Management
